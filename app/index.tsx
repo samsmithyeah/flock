@@ -74,12 +74,16 @@ const toastConfig = {
 const Root: React.FC = () => {
   const linking = {
     prefixes: [
-      'com.googleusercontent.apps.814136772684-8bgo4g20f9q1p4g532kvqhj7lt497v7e://',
-      'appScheme://',
+      'com.googleusercontent.apps.814136772684-8bgo4g20f9q1p4g532kvqhj7lt497v7e://*',
+      'appScheme://*',
+      'goingoutapp://*',
+      'goingoutapp://',
+      'goingoutapp:///',
     ],
     config: {
       screens: {
-        PhoneVerification: 'firebaseauth/link*',
+        // TODO: Add a more specific route. This is a workaround for now.
+        PhoneVerification: '*',
       },
     },
   };
