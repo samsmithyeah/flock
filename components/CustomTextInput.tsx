@@ -10,7 +10,7 @@ import {
   TextStyle,
   Text,
 } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 
 type CustomTextInputProps = TextInputProps & {
   iconName?: keyof typeof Ionicons.glyphMap; // Optional Ionicon name

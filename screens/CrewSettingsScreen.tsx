@@ -20,7 +20,7 @@ import { deleteCrew, db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
 import { useCrews } from '@/context/CrewsContext';
 import { User } from '@/types/User';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 import { NavParamList } from '@/navigation/AppNavigator';
 import ProfilePicturePicker from '@/components/ProfilePicturePicker';
 import MemberList from '@/components/MemberList';

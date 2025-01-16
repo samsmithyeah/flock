@@ -8,8 +8,6 @@ import {
   TextInput,
   TouchableOpacity,
 } from 'react-native';
-import auth from '@react-native-firebase/auth';
-import CustomButton from '@/components/CustomButton';
 import Toast from 'react-native-toast-message';
 import Colors from '@/styles/colors';
 import {
@@ -18,22 +16,46 @@ import {
   useBlurOnFulfill,
   useClearByFocusCell,
 } from 'react-native-confirmation-code-field';
-import { useRoute, RouteProp } from '@react-navigation/native';
-import { NavParamList } from '@/navigation/AppNavigator';
-import { User } from '@/types/User';
-import { useUser } from '@/context/UserContext';
 import { CountryPicker } from 'react-native-country-codes-picker';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '@/firebase';
+import { useUser } from '@/context/UserContext';
+import CustomButton from '@/components/CustomButton';
+import { User } from '@/types/User';
+import { useRoute, RouteProp } from '@react-navigation/native';
+import { NavParamList } from '@/navigation/AppNavigator';
 
 const CELL_COUNT = 6;
 
+// ----------- INTERFACES FOR CALLABLE FUNCTIONS -----------
+interface SendCodeRequest {
+  phone: string;
+}
+
+interface SendCodeResponse {
+  success: boolean;
+  message: string;
+}
+
+interface VerifyCodeRequest {
+  phone: string;
+  code: string;
+}
+
+interface VerifyCodeResponse {
+  success: boolean;
+  message: string;
+}
+
+// -------------- HELPER FOR COUNTRY FLAG EMOJI --------------
 const getFlagEmoji = (countryCode: string): string => {
   return countryCode
     .toUpperCase()
     .replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
 };
 
+// ------------------- MAIN COMPONENT ------------------------
 const PhoneVerificationScreen: React.FC = () => {
   const [selectedCountry, setSelectedCountry] = useState<{
     dial_code: string;
@@ -45,15 +67,21 @@ const PhoneVerificationScreen: React.FC = () => {
     name: 'United Kingdom',
   });
 
+  const route = useRoute<RouteProp<NavParamList, 'PhoneVerification'>>();
+  const { uid } = route.params;
+
   const [phoneNumber, setPhoneNumber] = useState<string>('');
   const [verificationCode, setVerificationCode] = useState<string>('');
-  const [confirm, setConfirm] = useState<any>(null);
+  const [isVerificationCodeSent, setIsVerificationCodeSent] =
+    useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [formError, setFormError] = useState<string>('');
   const [showCountryPicker, setShowCountryPicker] = useState<boolean>(false);
   const [fullPhoneNumber, setFullPhoneNumber] = useState<string>('');
+
   const { setUser } = useUser();
 
+  // CodeField hooks
   const codeRef = useBlurOnFulfill({
     value: verificationCode,
     cellCount: CELL_COUNT,
@@ -63,15 +91,25 @@ const PhoneVerificationScreen: React.FC = () => {
     setValue: setVerificationCode,
   });
 
-  const route = useRoute<RouteProp<NavParamList, 'PhoneVerification'>>();
-  const { uid } = route.params;
+  // Initialize Cloud Functions
+  const functions = getFunctions();
+  const sendCodeFn = httpsCallable<SendCodeRequest, SendCodeResponse>(
+    functions,
+    'sendCode',
+  );
+  const verifyCodeFn = httpsCallable<VerifyCodeRequest, VerifyCodeResponse>(
+    functions,
+    'verifyCode',
+  );
 
+  // Update full phone number whenever user changes input or country
   useEffect(() => {
     const sanitized = phoneNumber.trim().replace(/^0+/, '');
     const computedFullPhoneNumber = `${selectedCountry.dial_code}${sanitized}`;
     setFullPhoneNumber(computedFullPhoneNumber);
   }, [selectedCountry, phoneNumber]);
 
+  // ------------------ SEND VERIFICATION CODE ------------------
   const handleSendVerification = async () => {
     setFormError('');
     if (!phoneNumber.trim()) {
@@ -79,27 +117,26 @@ const PhoneVerificationScreen: React.FC = () => {
       return;
     }
 
-    const sanitizedPhoneNumber = phoneNumber.trim().replace(/^0+/, '');
-    const fullPhoneNumberLocal = `${selectedCountry.dial_code}${sanitizedPhoneNumber}`;
-
+    // Basic E.164 check
     const phoneRegex = /^\+[1-9]\d{1,14}$/;
-    if (!phoneRegex.test(fullPhoneNumberLocal)) {
+    if (!phoneRegex.test(fullPhoneNumber)) {
       setFormError('Please enter a valid phone number in E.164 format.');
       return;
     }
 
     setLoading(true);
     try {
-      const confirmation =
-        await auth().signInWithPhoneNumber(fullPhoneNumberLocal);
-      setConfirm(confirmation);
-      setFullPhoneNumber(fullPhoneNumberLocal);
-      Toast.show({
-        type: 'success',
-        text1: 'Verification code sent',
-        text2: 'A verification code has been sent to your phone.',
-      });
-    } catch (error: unknown) {
+      const result = await sendCodeFn({ phone: fullPhoneNumber });
+      // result.data is typed as SendCodeResponse
+      if (result.data.success) {
+        setIsVerificationCodeSent(true);
+        Toast.show({
+          type: 'success',
+          text1: 'Verification code sent',
+          text2: 'A verification code has been sent to your phone.',
+        });
+      }
+    } catch (error) {
       console.error('Error sending verification code:', error);
       setFormError('Failed to send verification code. Please try again.');
     } finally {
@@ -107,9 +144,10 @@ const PhoneVerificationScreen: React.FC = () => {
     }
   };
 
+  // ------------------ VERIFY THE CODE ------------------
   const handleVerifyCode = async () => {
     setFormError('');
-    if (!confirm) {
+    if (!isVerificationCodeSent) {
       setFormError(
         'No verification process found. Please send the code again.',
       );
@@ -122,43 +160,54 @@ const PhoneVerificationScreen: React.FC = () => {
 
     setLoading(true);
     try {
-      await confirm.confirm(verificationCode);
-      // At this point, the user is signed in with the phone number.
-      // Now we can update the Firestore record.
-      const userDocRef = doc(db, 'users', uid);
-      const userDoc = await getDoc(userDocRef);
+      const result = await verifyCodeFn({
+        phone: fullPhoneNumber,
+        code: verificationCode,
+      });
+      // result.data is typed as VerifyCodeResponse
+      if (result.data.success) {
+        // Code verified; update Firestore record
+        const userDocRef = doc(db, 'users', uid!);
+        const userDoc = await getDoc(userDocRef);
 
-      if (userDoc.exists()) {
-        await updateDoc(userDocRef, {
-          phoneNumber: fullPhoneNumber,
-          country: selectedCountry.country_code,
-        });
-        Toast.show({
-          type: 'success',
-          text1: 'Success',
-          text2: 'Phone number verified',
-        });
-        const userData = userDoc.data() as User;
-        setUser(userData);
-      } else {
-        setFormError('User not found.');
+        if (userDoc.exists()) {
+          // Cast DocumentData to your User type
+          const userData = userDoc.data() as User;
+
+          await updateDoc(userDocRef, {
+            phoneNumber: fullPhoneNumber,
+            country: selectedCountry.country_code,
+          });
+
+          setUser(userData);
+          Toast.show({
+            type: 'success',
+            text1: 'Success',
+            text2: 'Phone number verified',
+          });
+        } else {
+          setFormError('User not found.');
+        }
       }
-    } catch (error: unknown) {
+    } catch (error) {
       console.error('Error verifying code:', error);
-      setFormError('Invalid verification code or network issue.');
+      setFormError(
+        'Invalid verification code or network issue. Please try again.',
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  // --------------------- RENDER ---------------------
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <View style={styles.container}>
         <View style={styles.formContainer}>
           <Text style={styles.title}>Verify your phone number</Text>
-          {formError ? <Text style={styles.error}>{formError}</Text> : null}
+          {!!formError && <Text style={styles.error}>{formError}</Text>}
 
-          {!confirm && (
+          {!isVerificationCodeSent && (
             <>
               <View style={styles.countryPickerContainer}>
                 <TouchableOpacity
@@ -182,6 +231,7 @@ const PhoneVerificationScreen: React.FC = () => {
                   keyboardType="phone-pad"
                 />
               </View>
+
               <CountryPicker
                 show={showCountryPicker}
                 pickerButtonOnPress={(item: any) => {
@@ -195,6 +245,7 @@ const PhoneVerificationScreen: React.FC = () => {
                 lang="en"
                 style={{ modal: { height: '92%' } }}
               />
+
               <CustomButton
                 title="Send verification code"
                 onPress={handleSendVerification}
@@ -204,7 +255,7 @@ const PhoneVerificationScreen: React.FC = () => {
             </>
           )}
 
-          {confirm && (
+          {isVerificationCodeSent && (
             <>
               <CodeField
                 ref={codeRef}
@@ -238,6 +289,7 @@ const PhoneVerificationScreen: React.FC = () => {
   );
 };
 
+// --------------------- STYLES ---------------------
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -281,6 +333,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#444',
   },
+  dropdownArrow: {
+    fontSize: 9,
+    color: '#444',
+    marginLeft: 2,
+    marginTop: 9,
+  },
   phoneInput: {
     flex: 1,
     borderWidth: 1,
@@ -313,12 +371,6 @@ const styles = StyleSheet.create({
     color: 'red',
     textAlign: 'center',
     marginBottom: 15,
-  },
-  dropdownArrow: {
-    fontSize: 9,
-    color: '#444',
-    marginLeft: 2,
-    marginTop: 9,
   },
 });
 

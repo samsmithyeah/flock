@@ -8,7 +8,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 import ScreenTitle from '@/components/ScreenTitle';
 import InvitationCard from '@/components/InvitationCard';
 import { useInvitations } from '@/context/InvitationsContext';

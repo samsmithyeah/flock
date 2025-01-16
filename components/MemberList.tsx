@@ -11,7 +11,7 @@ import {
 import ProfilePicturePicker from '@/components/ProfilePicturePicker';
 import SkeletonUserItem from '@/components/SkeletonUserItem';
 import { User } from '@/types/User';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 
 // Define the extended interface with optional status
 interface MemberWithStatus extends User {

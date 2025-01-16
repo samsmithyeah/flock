@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 import InvitationsScreen from '@/screens/InvitationsScreen';
 import UserProfileStackNavigator from '@/navigation/UserProfileStackNavigator';
 import DashboardStackNavigator from '@/navigation/DashboardStackNavigator';

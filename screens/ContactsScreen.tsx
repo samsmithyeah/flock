@@ -12,7 +12,7 @@ import ScreenTitle from '@/components/ScreenTitle';
 import useglobalStyles from '@/styles/globalStyles';
 import CustomSearchInput from '@/components/CustomSearchInput';
 import LoadingOverlay from '@/components/LoadingOverlay';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 
 type ContactsScreenProp = NativeStackNavigationProp<NavParamList, 'Contacts'>;
 

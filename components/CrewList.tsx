@@ -8,7 +8,7 @@ import {
   View,
   StyleSheet,
 } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 import FastImage from 'react-native-fast-image';
 import { Crew } from '@/types/Crew';
 import { User } from '@/types/User';

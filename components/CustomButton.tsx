@@ -10,7 +10,7 @@ import {
   GestureResponderEvent,
   View,
 } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 
 interface IconProps {
   name: string;
