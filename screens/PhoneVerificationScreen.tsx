@@ -117,6 +117,9 @@ const PhoneVerificationScreen: React.FC = () => {
       return;
     }
 
+    // const sanitizedPhoneNumber = phoneNumber.trim().replace(/^0+/, '');
+    // const fullPhoneNumberLocal = `${selectedCountry.dial_code}${sanitizedPhoneNumber}`;
+
     // Basic E.164 check
     const phoneRegex = /^\+[1-9]\d{1,14}$/;
     if (!phoneRegex.test(fullPhoneNumber)) {
