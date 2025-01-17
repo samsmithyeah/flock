@@ -4,7 +4,7 @@ import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
-import * as moment from 'moment';
+import moment from 'moment';
 
 /**
  * Notify users when a new message is posted in a Crew Date Chat

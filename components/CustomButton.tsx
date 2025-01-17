@@ -16,7 +16,6 @@ interface IconProps {
   name: string;
   size?: number;
   color?: string;
-  library?: 'Ionicons' | 'MaterialIcons' | 'FontAwesome' | 'Entypo'; // Extend as needed
 }
 
 type ButtonVariant =
