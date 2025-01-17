@@ -99,6 +99,8 @@ Follow these instructions to get Flock up and running on your local machine for 
    firebase deploy --only functions
    ```
 
+```
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE.txt) file for details.
@@ -106,3 +108,4 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE.txt) f
 ## Contact
 
 For any questions or feedback, feel free to reach out to [sam@sammysmith.co.uk](mailto:sam@sammysmith.co.uk).
+```
