@@ -82,8 +82,6 @@
           }
         }
       ],
-      "@react-native-firebase/auth",
-      "@react-native-firebase/app",
       "expo-font"
     ],
     "experiments": {

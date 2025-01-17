@@ -9,6 +9,7 @@ import { deleteCrew } from './utils/deleteCrew';
 import { notifyUserOnNewDMMessage } from './notifications/notifyUserOnNewDMMessage';
 import { notifyUsersOnNewGroupMessage } from './notifications/notifyUsersOnNewGroupMessage';
 import { pokeCrew } from './notifications/pokeCrew';
+import { sendCode, verifyCode } from './utils/phoneVerification';
 
 export {
   notifyCrewMembersOnCrewDeletion,
@@ -21,6 +22,8 @@ export {
   notifyUserOnNewDMMessage,
   notifyUsersOnNewGroupMessage,
   pokeCrew,
+  sendCode,
+  verifyCode,
 };
 
 // Initialize Firebase Admin SDK

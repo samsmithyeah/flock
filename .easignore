@@ -21,14 +21,10 @@ expo-env.d.ts
 # @end expo-cli
 
 # iOS
-/ios
 *.ipa
 
 # Android
-/android
 *.aab
-android/sentry.properties
-google-services.json
 
 # Firebase
 functions/*.log
@@ -36,7 +32,7 @@ firebase-debug.log
 
 goingoutapp-c90b1-65d96c7159f9.json
 goingoutapp-c90b1-65d96c7159f9.json_backup
-goingoutapp-c90b1-62d33a2b09a9.json
+
 original.json
 truncated.json
 converter.py
