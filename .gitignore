@@ -21,9 +21,11 @@ expo-env.d.ts
 # @end expo-cli
 
 # iOS
+/ios
 *.ipa
 
 # Android
+/android
 *.aab
 android/sentry.properties
 google-services.json
