@@ -49,7 +49,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
 
           if (userDoc.exists()) {
             const userData = userDoc.data() as User;
-            //setUser(userData);
+            userData.phoneNumber && setUser(userData);
 
             // Initialize activeChats from Firestore
             const activeChatsFromDB = new Set<string>(
