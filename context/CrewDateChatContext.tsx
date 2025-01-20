@@ -87,9 +87,6 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
   // Ref to keep track of message listeners
   const listenersRef = useRef<{ [chatId: string]: () => void }>({});
 
-  const CACHE_DURATION = 1000 * 60 * 60; // 1 hour
-  const pendingRequests = new Map<string, Promise<User>>();
-
   const debouncedFirestoreFetch = useCallback(
     debounce(async (uid: string): Promise<User> => {
       const userDoc = await getDoc(doc(db, 'users', uid));
