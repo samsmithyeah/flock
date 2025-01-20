@@ -60,7 +60,7 @@ const ChatsListScreen: React.FC = () => {
   const { dms, fetchUnreadCount: fetchDMUnreadCount } = useDirectMessages();
   const { chats: groupChats, fetchUnreadCount: fetchGroupUnreadCount } =
     useCrewDateChat();
-  const { crews, usersCache } = useCrews();
+  const { crews, usersCache, fetchCrew } = useCrews();
   const { user } = useUser();
   const globalStyles = useGlobalStyles();
   const navigation = useNavigation<NavigationProp<NavParamList>>();
@@ -244,19 +244,16 @@ const ChatsListScreen: React.FC = () => {
     [fetchDMUnreadCount, fetchGroupUnreadCount],
   );
 
-  // const fetchUnread = useCallback(
-  //   async (chatId: string, chatType: 'direct' | 'group') => {
-  //     // Directly fetch fresh unread count from Firestore every time
-  //     return await fetchUnreadFromFirestore(chatId, chatType);
-  //   },
-  //   [fetchUnreadFromFirestore],
-  // );
-
   const getCrewName = useCallback(
-    (chatId: string): string => {
+    async (chatId: string): Promise<string> => {
       const crewId = chatId.split('_')[0];
       const crew = crews.find((c) => c.id === crewId);
-      return crew ? crew.name : 'Unknown Crew';
+      if (crew) {
+        return crew.name;
+      } else {
+        const crew = await fetchCrew(crewId);
+        return crew ? crew.name : 'Unknown Crew';
+      }
     },
     [crews],
   );
@@ -306,7 +303,7 @@ const ChatsListScreen: React.FC = () => {
       });
 
       const groupChatsPromises = groupChats.map(async (gc) => {
-        const crewName = getCrewName(gc.id);
+        const crewName = await getCrewName(gc.id);
         const chatDate = getFormattedChatDate(gc.id);
         const title = `${crewName} (${chatDate})`;
         const iconUrl = getIconUrlForCrew(gc.id);

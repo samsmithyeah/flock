@@ -52,6 +52,7 @@ interface CrewsContextProps {
   loadingCrews: boolean;
   loadingStatuses: boolean;
   loadingMatches: boolean;
+  fetchCrew: (crewId: string) => Promise<Crew | null>;
 }
 
 const CrewsContext = createContext<CrewsContextProps | undefined>(undefined);
@@ -86,6 +87,19 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     }
     return dates;
   }, []);
+
+  const fetchCrew = async (crewId: string): Promise<Crew | null> => {
+    const crewDoc = await getDoc(doc(db, 'crews', crewId));
+    if (crewDoc.exists()) {
+      const crew = {
+        id: crewDoc.id,
+        ...(crewDoc.data() as Omit<Crew, 'id'>),
+      } as Crew;
+      crews.push(crew);
+      return crew;
+    }
+    return null;
+  };
 
   const fetchUserCrews = async (uid: string): Promise<string[]> => {
     const crewsRef = collection(db, 'crews');
@@ -535,6 +549,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         loadingCrews,
         loadingStatuses,
         loadingMatches,
+        fetchCrew,
       }}
     >
       {children}

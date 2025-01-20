@@ -96,7 +96,7 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
 
   // Fetch crew details
   useEffect(() => {
-    if (!crewId) {
+    if (!crewId || !user?.uid) {
       setCrew({ name: 'Unknown Crew', iconUrl: undefined });
       return;
     }
@@ -125,7 +125,7 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
     };
 
     fetchCrew();
-  }, [crewId, crews]);
+  }, [crewId, crews, user?.uid]);
 
   // Fetch other members' details
   useEffect(() => {
@@ -155,7 +155,7 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
     };
 
     fetchMembers();
-  }, [chatId, user?.uid, fetchUserDetails]);
+  }, [chatId, user?.uid]);
 
   // Set navigation title after crew is fetched
   useLayoutEffect(() => {
@@ -289,7 +289,7 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
     return () => {
       unsubscribeMessages();
     };
-  }, [chatId, listenToMessages]);
+  }, [chatId]);
 
   // Other users typing logic: Listen to typingStatus field
   useEffect(() => {

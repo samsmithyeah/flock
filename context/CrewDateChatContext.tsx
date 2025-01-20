@@ -82,48 +82,112 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
   const [chats, setChats] = useState<CrewDateChat[]>([]);
   const [messages, setMessages] = useState<{ [chatId: string]: Message[] }>({});
   const [totalUnread, setTotalUnread] = useState<number>(0);
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY = 1000; // 1 second
 
   // Ref to keep track of message listeners
   const listenersRef = useRef<{ [chatId: string]: () => void }>({});
 
-  // Helper function to fetch user details by UID with caching
+  const pendingBatches = new Map<string, Promise<any>>();
+
+  const fetchUserDetailsBatch = async (uids: Set<string>) => {
+    const uncachedUids = [...uids].filter((uid) => !usersCache[uid]);
+
+    if (uncachedUids.length === 0) return;
+
+    // Create batch key
+    const batchKey = uncachedUids.sort().join(',');
+
+    // Check for pending batch
+    if (pendingBatches.has(batchKey)) {
+      return pendingBatches.get(batchKey);
+    }
+
+    // Create new batch request
+    const batchPromise = (async () => {
+      try {
+        console.log('Batch fetch:', new Set(uncachedUids));
+        // Your existing fetch logic here
+        const userDocs = await getDocs(collection(db, 'users'));
+
+        const results = userDocs.docs.map(
+          (doc) =>
+            ({
+              uid: doc.id,
+              displayName: doc.data().displayName || 'Unknown User',
+              email: doc.data().email || '',
+              photoURL: doc.data().photoURL,
+              ...doc.data(),
+            }) as User,
+        );
+
+        // Update cache
+        const newUsers = Object.fromEntries(
+          results.map((user) => [user.uid, user]),
+        );
+        setUsersCache((prev) => ({ ...prev, ...newUsers }));
+
+        // Cleanup pending batch
+        pendingBatches.delete(batchKey);
+
+        return results;
+      } catch (error) {
+        pendingBatches.delete(batchKey);
+        throw error;
+      }
+    })();
+
+    pendingBatches.set(batchKey, batchPromise);
+    return batchPromise;
+  };
+
+  // Update fetchUserDetails to use batch
   const fetchUserDetails = useCallback(
     async (uid: string): Promise<User> => {
       if (usersCache[uid]) {
         return usersCache[uid];
       }
 
-      try {
-        const userDoc = await getDoc(doc(db, 'users', uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          const fetchedUser: User = {
-            uid: userDoc.id,
-            displayName: userData.displayName || 'Unnamed User',
-            email: userData.email || '',
-            photoURL: userData.photoURL,
-          };
-          setUsersCache((prev) => ({ ...prev, [uid]: fetchedUser }));
-          return fetchedUser;
-        } else {
-          // Handle case where user data does not exist
-          return {
-            uid,
-            displayName: 'Unknown User',
-            email: 'unknown@example.com',
-          };
-        }
-      } catch (error) {
-        console.error(`Error fetching user data for UID ${uid}:`, error);
-        return {
-          uid,
-          displayName: 'Error Fetching User',
-          email: 'error@example.com',
-        };
+      const results = await fetchUserDetailsBatch(new Set([uid]));
+      const user: User | undefined = results?.find(
+        (user: User): boolean => user.uid === uid,
+      );
+
+      if (!user) {
+        throw new Error(`User ${uid} not found`);
       }
+
+      return user;
     },
-    [usersCache, setUsersCache],
+    [usersCache, fetchUserDetailsBatch],
   );
+
+  const fetchUserDetailsWithRetry = async (
+    uid: string,
+    retries = 0,
+  ): Promise<User> => {
+    try {
+      const user = await fetchUserDetails(uid);
+      if (!user) throw new Error(`User ${uid} not found`);
+      return user;
+    } catch (error) {
+      console.error(`Error fetching user ${uid}:`, error);
+      if (retries < MAX_RETRIES) {
+        console.log(`Retrying fetch for user ${uid}, attempt ${retries + 1}`);
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
+        return fetchUserDetailsWithRetry(uid, retries + 1);
+      }
+
+      console.warn(`Failed to fetch user ${uid} after ${MAX_RETRIES} retries`);
+      // Return placeholder user to prevent chat breaking
+      return {
+        uid,
+        displayName: 'Unknown User',
+        photoURL: undefined,
+        email: '',
+      };
+    }
+  };
 
   // Fetch unread count for a specific chat
   const fetchUnreadCount = useCallback(
@@ -226,8 +290,9 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         const otherMemberIds = memberIds.filter((id) => id !== user.uid);
 
         // Fetch details for other members in parallel
+        console.log('Fetching user details from fetchChats');
         const otherMembers: User[] = await Promise.all(
-          otherMemberIds.map((uid) => fetchUserDetails(uid)),
+          otherMemberIds.map((uid) => fetchUserDetailsWithRetry(uid)),
         );
 
         // Extract crewId from chatId (document ID)
@@ -263,7 +328,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         text2: 'Could not fetch crew date chats',
       });
     }
-  }, [user?.uid, crews, fetchUserDetails]);
+  }, [user?.uid, crews]);
 
   // Listen to real-time updates in crew date chats
   const listenToChats = useCallback(() => {
@@ -290,7 +355,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
 
             // Fetch details for other members in parallel
             const otherMembers: User[] = await Promise.all(
-              otherMemberIds.map((uid) => fetchUserDetails(uid)),
+              otherMemberIds.map((uid) => fetchUserDetailsWithRetry(uid)),
             );
 
             // Extract crewId from chatId (document ID)
@@ -341,14 +406,13 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
 
     return () => {
       unsubscribe();
-      console.log('Unsubscribed from crew date chat listener.');
     };
-  }, [user?.uid, crews, fetchUserDetails]);
+  }, [user?.uid, crews]);
 
   // Runs when user uid changes to fetch initial chats
   useEffect(() => {
     fetchChats(); // Just fetch once when user changes
-  }, [user?.uid, fetchChats]);
+  }, [user?.uid]);
 
   // Separate effect that listens to real-time updates
   useEffect(() => {
@@ -499,8 +563,15 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
   const listenToMessages = useCallback(
     (chatId: string) => {
       if (!user?.uid) return () => {};
+
+      // Clean up existing listener if any
+      if (listenersRef.current[chatId]) {
+        listenersRef.current[chatId]();
+        delete listenersRef.current[chatId];
+      }
+
       const messagesRef = collection(db, 'crew_date_chats', chatId, 'messages');
-      const msgQuery = query(messagesRef, orderBy('createdAt', 'asc')); // Order ascending for GiftedChat
+      const msgQuery = query(messagesRef, orderBy('createdAt', 'asc'));
 
       // Load cached messages if available
       const cachedMessages = storage.getString(`messages_${chatId}`);
@@ -528,7 +599,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
               querySnapshot.docs.map(async (docSnap) => {
                 const msgData = docSnap.data();
                 const senderId: string = msgData.senderId;
-                const sender = await fetchUserDetails(senderId);
+                const sender = await fetchUserDetailsWithRetry(senderId);
 
                 return {
                   id: docSnap.id,
@@ -536,8 +607,8 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
                   text: msgData.text,
                   createdAt: msgData.createdAt
                     ? msgData.createdAt.toDate()
-                    : new Date(), // Convert Timestamp to Date
-                  senderName: sender.displayName, // Include sender's name
+                    : new Date(),
+                  senderName: sender.displayName,
                 };
               }),
             );
@@ -547,7 +618,6 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
               [chatId]: fetchedMessages,
             }));
 
-            // Save messages to MMKV with createdAt as ISO string
             const messagesToCache = fetchedMessages.map((msg) => ({
               ...msg,
               createdAt: msg.createdAt.toISOString(),
@@ -564,26 +634,19 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         },
         (error) => {
           console.error('Error listening to messages:', error);
-          Toast.show({
-            type: 'error',
-            text1: 'Error',
-            text2: 'Could not listen to messages.',
-          });
         },
       );
 
-      // Store the unsubscribe function
       listenersRef.current[chatId] = unsubscribe;
 
       return () => {
-        // Clean up the listener
         if (listenersRef.current[chatId]) {
           listenersRef.current[chatId]();
           delete listenersRef.current[chatId];
         }
       };
     },
-    [fetchUserDetails, user?.uid],
+    [user?.uid, fetchUserDetails],
   );
 
   // Get count of chat participants
