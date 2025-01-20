@@ -32,6 +32,7 @@ import { User } from '@/types/User';
 import { useCrews } from '@/context/CrewsContext';
 import Toast from 'react-native-toast-message';
 import { storage } from '@/storage'; // MMKV storage instance
+import { debounce } from 'lodash';
 
 // Define the Message interface with createdAt as Date
 interface Message {
@@ -86,46 +87,94 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
   // Ref to keep track of message listeners
   const listenersRef = useRef<{ [chatId: string]: () => void }>({});
 
-  // Helper function to fetch user details by UID with caching
+  const CACHE_DURATION = 1000 * 60 * 60; // 1 hour
+  const pendingRequests = new Map<string, Promise<User>>();
+
+  const debouncedFirestoreFetch = useCallback(
+    debounce(async (uid: string): Promise<User> => {
+      const userDoc = await getDoc(doc(db, 'users', uid));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        const fetchedUser: User = {
+          uid: userDoc.id,
+          displayName: userData.displayName || 'Unnamed User',
+          email: userData.email || '',
+          photoURL: userData.photoURL,
+        };
+        return fetchedUser;
+      }
+      throw new Error(`User ${uid} not found`);
+    }, 500),
+    [],
+  );
+
+  // Add debug helper
+  const logWithTrace = (message: string) => {
+    console.debug(
+      `[CrewDateChat] ${message}`,
+      new Error().stack?.split('\n')[2],
+    ); // Show caller
+  };
+
+  // Batch multiple requests
+  const fetchUserDetailsBatch = useCallback(
+    async (uids: string[]): Promise<Map<string, User>> => {
+      const results = new Map<string, User>();
+      const toFetch = new Set<string>();
+
+      // Check cache first
+      uids.forEach((uid) => {
+        if (usersCache[uid]) {
+          results.set(uid, usersCache[uid]);
+        } else {
+          toFetch.add(uid);
+        }
+      });
+
+      if (toFetch.size === 0) return results;
+
+      // Batch fetch from Firestore
+      try {
+        const batch = await Promise.all(
+          Array.from(toFetch).map((uid) => debouncedFirestoreFetch(uid)),
+        );
+
+        batch.forEach((user, i) => {
+          console.log('Batch fetch result:', user);
+          const uid = Array.from(toFetch)[i];
+          if (user) {
+            results.set(uid, user);
+            // Update cache
+            setUsersCache((prev) => ({ ...prev, [uid]: user }));
+          }
+        });
+      } catch (error) {
+        logWithTrace(`Batch fetch failed: ${error}`);
+      }
+
+      return results;
+    },
+    [usersCache, debouncedFirestoreFetch],
+  );
+
+  // Update fetchUserDetails to use batch
   const fetchUserDetails = useCallback(
     async (uid: string): Promise<User> => {
-      console.log('Fetching user data for UID:', uid);
       if (usersCache[uid]) {
         return usersCache[uid];
       }
 
-      try {
-        const userDoc = await getDoc(doc(db, 'users', uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          const fetchedUser: User = {
-            uid: userDoc.id,
-            displayName: userData.displayName || 'Unnamed User',
-            email: userData.email || '',
-            photoURL: userData.photoURL,
-          };
-          setUsersCache((prev) => ({ ...prev, [uid]: fetchedUser }));
-          return fetchedUser;
-        } else {
-          // Handle case where user data does not exist
-          return {
-            uid,
-            displayName: 'Unknown User',
-            email: 'unknown@example.com',
-          };
-        }
-      } catch (error) {
-        console.error(`Error fetching user data for UID ${uid}:`, error);
-        return {
-          uid,
-          displayName: 'Error Fetching User',
-          email: 'error@example.com',
-        };
-      }
-    },
-    [usersCache, setUsersCache],
-  );
+      const results = await fetchUserDetailsBatch([uid]);
+      const user = results.get(uid);
 
+      if (!user) {
+        throw new Error(`User ${uid} not found`);
+      }
+
+      return user;
+    },
+    [usersCache, fetchUserDetailsBatch],
+  );
   // Fetch unread count for a specific chat
   const fetchUnreadCount = useCallback(
     async (chatId: string): Promise<number> => {

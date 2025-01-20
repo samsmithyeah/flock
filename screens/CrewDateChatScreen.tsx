@@ -285,6 +285,7 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
   // Listen to messages
   useEffect(() => {
     if (!chatId) return;
+    console.log('Listening to messages');
 
     const unsubscribeMessages = listenToMessages(chatId);
     return () => {
