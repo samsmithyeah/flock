@@ -140,7 +140,6 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
           const memberIds: string[] = chatData.memberIds || [];
           const otherMemberIds = memberIds.filter((id) => id !== user?.uid);
 
-          console.log('Fetching user details from fetchMembers');
           const fetchedMembers: User[] = await Promise.all(
             otherMemberIds.map((uid) => fetchUserDetails(uid)),
           );
@@ -285,7 +284,6 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
   // Listen to messages
   useEffect(() => {
     if (!chatId) return;
-    console.log('Listening to messages');
 
     const unsubscribeMessages = listenToMessages(chatId);
     return () => {

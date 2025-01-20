@@ -355,7 +355,6 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
             const otherMemberIds = memberIds.filter((id) => id !== user.uid);
 
             // Fetch details for other members in parallel
-            console.log('Fetching user details from listenToChats');
             const otherMembers: User[] = await Promise.all(
               otherMemberIds.map((uid) => fetchUserDetailsWithRetry(uid)),
             );
@@ -408,7 +407,6 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
 
     return () => {
       unsubscribe();
-      console.log('Unsubscribed from crew date chat listener.');
     };
   }, [user?.uid, crews]);
 
@@ -419,11 +417,9 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
 
   // Separate effect that listens to real-time updates
   useEffect(() => {
-    console.log('Chats listener effect running, user:', user?.uid);
     if (!user?.uid) return;
     const unsubscribe = listenToChats();
     return () => {
-      console.log('Cleaning up chats listener');
       unsubscribe && unsubscribe();
     };
   }, [user?.uid, listenToChats]);
