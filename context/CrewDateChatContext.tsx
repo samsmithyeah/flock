@@ -89,6 +89,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
   // Helper function to fetch user details by UID with caching
   const fetchUserDetails = useCallback(
     async (uid: string): Promise<User> => {
+      console.log('Fetching user data for UID:', uid);
       if (usersCache[uid]) {
         return usersCache[uid];
       }
@@ -226,6 +227,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         const otherMemberIds = memberIds.filter((id) => id !== user.uid);
 
         // Fetch details for other members in parallel
+        console.log('Fetching user details from fetchChats');
         const otherMembers: User[] = await Promise.all(
           otherMemberIds.map((uid) => fetchUserDetails(uid)),
         );
@@ -263,7 +265,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         text2: 'Could not fetch crew date chats',
       });
     }
-  }, [user?.uid, crews, fetchUserDetails]);
+  }, [user?.uid, crews]);
 
   // Listen to real-time updates in crew date chats
   const listenToChats = useCallback(() => {
@@ -289,6 +291,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
             const otherMemberIds = memberIds.filter((id) => id !== user.uid);
 
             // Fetch details for other members in parallel
+            console.log('Fetching user details from listenToChats');
             const otherMembers: User[] = await Promise.all(
               otherMemberIds.map((uid) => fetchUserDetails(uid)),
             );
@@ -343,12 +346,12 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
       unsubscribe();
       console.log('Unsubscribed from crew date chat listener.');
     };
-  }, [user?.uid, crews, fetchUserDetails]);
+  }, [user?.uid, crews]);
 
   // Runs when user uid changes to fetch initial chats
   useEffect(() => {
     fetchChats(); // Just fetch once when user changes
-  }, [user?.uid, fetchChats]);
+  }, [user?.uid]);
 
   // Separate effect that listens to real-time updates
   useEffect(() => {
@@ -499,8 +502,15 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
   const listenToMessages = useCallback(
     (chatId: string) => {
       if (!user?.uid) return () => {};
+
+      // Clean up existing listener if any
+      if (listenersRef.current[chatId]) {
+        listenersRef.current[chatId]();
+        delete listenersRef.current[chatId];
+      }
+
       const messagesRef = collection(db, 'crew_date_chats', chatId, 'messages');
-      const msgQuery = query(messagesRef, orderBy('createdAt', 'asc')); // Order ascending for GiftedChat
+      const msgQuery = query(messagesRef, orderBy('createdAt', 'asc'));
 
       // Load cached messages if available
       const cachedMessages = storage.getString(`messages_${chatId}`);
@@ -536,8 +546,8 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
                   text: msgData.text,
                   createdAt: msgData.createdAt
                     ? msgData.createdAt.toDate()
-                    : new Date(), // Convert Timestamp to Date
-                  senderName: sender.displayName, // Include sender's name
+                    : new Date(),
+                  senderName: sender.displayName,
                 };
               }),
             );
@@ -547,7 +557,6 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
               [chatId]: fetchedMessages,
             }));
 
-            // Save messages to MMKV with createdAt as ISO string
             const messagesToCache = fetchedMessages.map((msg) => ({
               ...msg,
               createdAt: msg.createdAt.toISOString(),
@@ -572,18 +581,16 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         },
       );
 
-      // Store the unsubscribe function
       listenersRef.current[chatId] = unsubscribe;
 
       return () => {
-        // Clean up the listener
         if (listenersRef.current[chatId]) {
           listenersRef.current[chatId]();
           delete listenersRef.current[chatId];
         }
       };
     },
-    [fetchUserDetails, user?.uid],
+    [user?.uid, fetchUserDetails],
   );
 
   // Get count of chat participants

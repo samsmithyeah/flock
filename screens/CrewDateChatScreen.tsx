@@ -140,6 +140,7 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
           const memberIds: string[] = chatData.memberIds || [];
           const otherMemberIds = memberIds.filter((id) => id !== user?.uid);
 
+          console.log('Fetching user details from fetchMembers');
           const fetchedMembers: User[] = await Promise.all(
             otherMemberIds.map((uid) => fetchUserDetails(uid)),
           );
@@ -155,7 +156,7 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
     };
 
     fetchMembers();
-  }, [chatId, user?.uid, fetchUserDetails]);
+  }, [chatId, user?.uid]);
 
   // Set navigation title after crew is fetched
   useLayoutEffect(() => {
