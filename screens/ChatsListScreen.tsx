@@ -244,23 +244,6 @@ const ChatsListScreen: React.FC = () => {
     [fetchDMUnreadCount, fetchGroupUnreadCount],
   );
 
-  // const fetchUnread = useCallback(
-  //   async (chatId: string, chatType: 'direct' | 'group') => {
-  //     // Directly fetch fresh unread count from Firestore every time
-  //     return await fetchUnreadFromFirestore(chatId, chatType);
-  //   },
-  //   [fetchUnreadFromFirestore],
-  // );
-
-  // const getCrewName = useCallback(
-  //   (chatId: string): string => {
-  //     const crewId = chatId.split('_')[0];
-  //     const crew = crews.find((c) => c.id === crewId);
-  //     return crew ? crew.name : 'Unknown Crew';
-  //   },
-  //   [crews],
-  // );
-
   const getCrewName = useCallback(
     async (chatId: string): Promise<string> => {
       const crewId = chatId.split('_')[0];

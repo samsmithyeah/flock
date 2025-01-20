@@ -185,7 +185,6 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         displayName: 'Unknown User',
         photoURL: undefined,
         email: '',
-        // Add other required User properties with defaults
       };
     }
   };
