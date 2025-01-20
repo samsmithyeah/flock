@@ -32,7 +32,6 @@ import { User } from '@/types/User';
 import { useCrews } from '@/context/CrewsContext';
 import Toast from 'react-native-toast-message';
 import { storage } from '@/storage'; // MMKV storage instance
-import { debounce } from 'lodash';
 
 // Define the Message interface with createdAt as Date
 interface Message {
@@ -88,32 +87,6 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
 
   // Ref to keep track of message listeners
   const listenersRef = useRef<{ [chatId: string]: () => void }>({});
-
-  const debouncedFirestoreFetch = useCallback(
-    debounce(async (uid: string): Promise<User> => {
-      const userDoc = await getDoc(doc(db, 'users', uid));
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        const fetchedUser: User = {
-          uid: userDoc.id,
-          displayName: userData.displayName || 'Unnamed User',
-          email: userData.email || '',
-          photoURL: userData.photoURL,
-        };
-        return fetchedUser;
-      }
-      throw new Error(`User ${uid} not found`);
-    }, 500),
-    [],
-  );
-
-  // Add debug helper
-  const logWithTrace = (message: string) => {
-    console.debug(
-      `[CrewDateChat] ${message}`,
-      new Error().stack?.split('\n')[2],
-    ); // Show caller
-  };
 
   const pendingBatches = new Map<string, Promise<any>>();
 
@@ -446,9 +419,11 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
 
   // Separate effect that listens to real-time updates
   useEffect(() => {
+    console.log('Chats listener effect running, user:', user?.uid);
     if (!user?.uid) return;
     const unsubscribe = listenToChats();
     return () => {
+      console.log('Cleaning up chats listener');
       unsubscribe && unsubscribe();
     };
   }, [user?.uid, listenToChats]);
