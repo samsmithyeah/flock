@@ -291,7 +291,7 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
     return () => {
       unsubscribeMessages();
     };
-  }, [chatId, listenToMessages]);
+  }, [chatId]);
 
   // Other users typing logic: Listen to typingStatus field
   useEffect(() => {
