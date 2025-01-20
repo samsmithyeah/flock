@@ -115,46 +115,58 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
     ); // Show caller
   };
 
-  // Batch multiple requests
-  const fetchUserDetailsBatch = useCallback(
-    async (uids: string[]): Promise<Map<string, User>> => {
-      const results = new Map<string, User>();
-      const toFetch = new Set<string>();
+  const pendingBatches = new Map<string, Promise<any>>();
 
-      // Check cache first
-      uids.forEach((uid) => {
-        if (usersCache[uid]) {
-          results.set(uid, usersCache[uid]);
-        } else {
-          toFetch.add(uid);
-        }
-      });
+  const fetchUserDetailsBatch = async (uids: Set<string>) => {
+    const uncachedUids = [...uids].filter((uid) => !usersCache[uid]);
 
-      if (toFetch.size === 0) return results;
+    if (uncachedUids.length === 0) return;
 
-      // Batch fetch from Firestore
+    // Create batch key
+    const batchKey = uncachedUids.sort().join(',');
+
+    // Check for pending batch
+    if (pendingBatches.has(batchKey)) {
+      return pendingBatches.get(batchKey);
+    }
+
+    // Create new batch request
+    const batchPromise = (async () => {
       try {
-        const batch = await Promise.all(
-          Array.from(toFetch).map((uid) => debouncedFirestoreFetch(uid)),
+        console.log('Batch fetch:', new Set(uncachedUids));
+        // Your existing fetch logic here
+        const userDocs = await getDocs(collection(db, 'users'));
+
+        const results = userDocs.docs.map(
+          (doc) =>
+            ({
+              uid: doc.id,
+              displayName: doc.data().displayName || 'Unknown User',
+              email: doc.data().email || '',
+              photoURL: doc.data().photoURL,
+              ...doc.data(),
+            }) as User,
         );
 
-        batch.forEach((user, i) => {
-          console.log('Batch fetch result:', user);
-          const uid = Array.from(toFetch)[i];
-          if (user) {
-            results.set(uid, user);
-            // Update cache
-            setUsersCache((prev) => ({ ...prev, [uid]: user }));
-          }
-        });
-      } catch (error) {
-        logWithTrace(`Batch fetch failed: ${error}`);
-      }
+        // Update cache
+        const newUsers = Object.fromEntries(
+          results.map((user) => [user.uid, user]),
+        );
+        setUsersCache((prev) => ({ ...prev, ...newUsers }));
 
-      return results;
-    },
-    [usersCache, debouncedFirestoreFetch],
-  );
+        // Cleanup pending batch
+        pendingBatches.delete(batchKey);
+
+        return results;
+      } catch (error) {
+        pendingBatches.delete(batchKey);
+        throw error;
+      }
+    })();
+
+    pendingBatches.set(batchKey, batchPromise);
+    return batchPromise;
+  };
 
   // Update fetchUserDetails to use batch
   const fetchUserDetails = useCallback(
@@ -163,8 +175,10 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         return usersCache[uid];
       }
 
-      const results = await fetchUserDetailsBatch([uid]);
-      const user = results.get(uid);
+      const results = await fetchUserDetailsBatch(new Set([uid]));
+      const user: User | undefined = results?.find(
+        (user: User): boolean => user.uid === uid,
+      );
 
       if (!user) {
         throw new Error(`User ${uid} not found`);
@@ -184,6 +198,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
       if (!user) throw new Error(`User ${uid} not found`);
       return user;
     } catch (error) {
+      console.error(`Error fetching user ${uid}:`, error);
       if (retries < MAX_RETRIES) {
         console.log(`Retrying fetch for user ${uid}, attempt ${retries + 1}`);
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
@@ -649,11 +664,6 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         },
         (error) => {
           console.error('Error listening to messages:', error);
-          Toast.show({
-            type: 'error',
-            text1: 'Error',
-            text2: 'Could not listen to messages.',
-          });
         },
       );
 
