@@ -51,9 +51,11 @@ const App: React.FC = () => {
             initial: false,
           });
         } else if (screen === 'CrewDateChat' && chatId) {
+          const crewId = chatId.split('_')[0];
+          const date = chatId.split('_')[1];
           navigation.navigate('ChatsStack', {
             screen,
-            params: { id: chatId },
+            params: { id: chatId, crewId, date },
             initial: false,
           });
         } else if (screen === 'DMChat' && senderId) {
