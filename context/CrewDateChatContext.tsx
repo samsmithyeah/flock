@@ -83,6 +83,8 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
   const [chats, setChats] = useState<CrewDateChat[]>([]);
   const [messages, setMessages] = useState<{ [chatId: string]: Message[] }>({});
   const [totalUnread, setTotalUnread] = useState<number>(0);
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY = 1000; // 1 second
 
   // Ref to keep track of message listeners
   const listenersRef = useRef<{ [chatId: string]: () => void }>({});
@@ -172,6 +174,34 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
     },
     [usersCache, fetchUserDetailsBatch],
   );
+
+  const fetchUserDetailsWithRetry = async (
+    uid: string,
+    retries = 0,
+  ): Promise<User> => {
+    try {
+      const user = await fetchUserDetails(uid);
+      if (!user) throw new Error(`User ${uid} not found`);
+      return user;
+    } catch (error) {
+      if (retries < MAX_RETRIES) {
+        console.log(`Retrying fetch for user ${uid}, attempt ${retries + 1}`);
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
+        return fetchUserDetailsWithRetry(uid, retries + 1);
+      }
+
+      console.warn(`Failed to fetch user ${uid} after ${MAX_RETRIES} retries`);
+      // Return placeholder user to prevent chat breaking
+      return {
+        uid,
+        displayName: 'Unknown User',
+        photoURL: undefined,
+        email: '',
+        // Add other required User properties with defaults
+      };
+    }
+  };
+
   // Fetch unread count for a specific chat
   const fetchUnreadCount = useCallback(
     async (chatId: string): Promise<number> => {
@@ -339,7 +369,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
             // Fetch details for other members in parallel
             console.log('Fetching user details from listenToChats');
             const otherMembers: User[] = await Promise.all(
-              otherMemberIds.map((uid) => fetchUserDetails(uid)),
+              otherMemberIds.map((uid) => fetchUserDetailsWithRetry(uid)),
             );
 
             // Extract crewId from chatId (document ID)
@@ -584,7 +614,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
               querySnapshot.docs.map(async (docSnap) => {
                 const msgData = docSnap.data();
                 const senderId: string = msgData.senderId;
-                const sender = await fetchUserDetails(senderId);
+                const sender = await fetchUserDetailsWithRetry(senderId);
 
                 return {
                   id: docSnap.id,
