@@ -11,11 +11,12 @@ import {
 } from 'react-native';
 import CustomButton from './CustomButton';
 import Colors from '@/styles/colors';
+import SpinLoader from './SpinLoader';
 
 type ButtonProps = {
   label: string;
   onPress: () => void;
-  variant: 'primary' | 'secondary' | 'danger' | 'success' | 'secondaryDanger'; // Include all available variants
+  variant: 'primary' | 'secondary' | 'danger' | 'success' | 'secondaryDanger';
   disabled?: boolean;
 };
 
@@ -41,25 +42,30 @@ const CustomModal: React.FC<CustomModalProps> = ({
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            {/* Title */}
-            <Text style={styles.modalTitle}>{title}</Text>
-            {/* Content */}
-            {children}
-            {/* Buttons */}
-            <View style={styles.buttonContainer}>
-              {buttons.map((button, index) => (
-                <CustomButton
-                  key={index}
-                  title={button.label}
-                  onPress={button.onPress}
-                  variant={button.variant}
-                  disabled={button.disabled || loading}
-                  loading={loading}
-                  accessibilityLabel={`${button.label} Button`}
-                  accessibilityHint={`Press to ${button.label.toLowerCase()}`}
-                />
-              ))}
+            {/* Main content (opacity 0 if loading, but still takes up space) */}
+            <View style={{ opacity: loading ? 0 : 1 }}>
+              <Text style={styles.modalTitle}>{title}</Text>
+              {children}
+              <View style={styles.buttonContainer}>
+                {buttons.map((button, index) => (
+                  <CustomButton
+                    key={index}
+                    title={button.label}
+                    onPress={button.onPress}
+                    variant={button.variant}
+                    disabled={button.disabled}
+                    loading={false}
+                  />
+                ))}
+              </View>
             </View>
+
+            {/* Loading overlay (absolute positioning) */}
+            {!loading && (
+              <View style={styles.loadingOverlay}>
+                <SpinLoader text="Processing..." />
+              </View>
+            )}
           </View>
         </View>
       </TouchableWithoutFeedback>
@@ -74,14 +80,15 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)', // Semi-transparent background
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   modalContent: {
+    position: 'relative',
     backgroundColor: Colors.background,
     borderRadius: 10,
     padding: 25,
-    alignItems: 'center',
     width: '85%',
+    alignItems: 'center',
     shadowColor: '#000',
     elevation: 5,
   },
@@ -96,5 +103,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',
+    marginTop: 10,
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255,255,255,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
   },
 });

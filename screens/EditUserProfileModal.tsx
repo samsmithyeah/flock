@@ -1,5 +1,3 @@
-// screens/EditUserProfileModal.tsx
-
 import React, { useState } from 'react';
 import {
   View,
@@ -13,7 +11,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '@/firebase';
+import { db, deleteAccount } from '@/firebase';
 import { useUser } from '@/context/UserContext';
 import ProfilePicturePicker from '@/components/ProfilePicturePicker';
 import CustomButton from '@/components/CustomButton';
@@ -21,7 +19,7 @@ import CustomTextInput from '@/components/CustomTextInput';
 import Toast from 'react-native-toast-message';
 
 const EditUserProfileModal: React.FC = () => {
-  const { user, setUser } = useUser();
+  const { user, setUser, logout, isAdmin } = useUser();
   const [firstName, setFirstName] = useState<string>(user?.firstName || '');
   const [lastName, setLastName] = useState<string>(user?.lastName || '');
   const [displayName, setDisplayName] = useState<string>(
@@ -29,6 +27,9 @@ const EditUserProfileModal: React.FC = () => {
   );
   const [photoURL, setPhotoURL] = useState<string>(user?.photoURL || '');
   const [saving, setSaving] = useState<boolean>(false);
+
+  // NEW: Field for admin to delete other users
+  const [adminTargetUserId, setAdminTargetUserId] = useState<string>('');
 
   const navigation = useNavigation();
 
@@ -41,39 +42,18 @@ const EditUserProfileModal: React.FC = () => {
   }
 
   const handleSave = async () => {
-    // Prevent multiple save actions
     if (saving) return;
 
-    // Validate inputs
-    if (!firstName.trim()) {
+    if (!firstName.trim() || !lastName.trim() || !displayName.trim()) {
       Toast.show({
         type: 'error',
         text1: 'Validation Error',
-        text2: 'First name cannot be empty.',
-      });
-      return;
-    }
-
-    if (!lastName.trim()) {
-      Toast.show({
-        type: 'error',
-        text1: 'Validation Error',
-        text2: 'Last name cannot be empty.',
-      });
-      return;
-    }
-
-    if (!displayName.trim()) {
-      Toast.show({
-        type: 'error',
-        text1: 'Validation Error',
-        text2: 'Display name cannot be empty.',
+        text2: 'First name, last name, and display name cannot be empty.',
       });
       return;
     }
 
     setSaving(true);
-
     try {
       const userRef = doc(db, 'users', user.uid);
       await updateDoc(userRef, {
@@ -83,7 +63,6 @@ const EditUserProfileModal: React.FC = () => {
         photoURL: photoURL.trim(),
       });
 
-      // Update local user context
       setUser({
         ...user,
         firstName: firstName.trim(),
@@ -97,9 +76,7 @@ const EditUserProfileModal: React.FC = () => {
         text1: 'Profile updated',
         text2: 'Your profile has been updated successfully.',
       });
-      navigation.goBack(); // Close the modal after saving
-
-      // Dismiss the keyboard after saving
+      navigation.goBack();
       Keyboard.dismiss();
     } catch (error) {
       console.error('Error updating profile:', error);
@@ -125,12 +102,82 @@ const EditUserProfileModal: React.FC = () => {
         {
           text: 'Yes',
           onPress: () => {
-            // Reset fields to original values
+            // Reset fields
             setFirstName(user.firstName || '');
             setLastName(user.lastName || '');
             setDisplayName(user.displayName || '');
             setPhotoURL(user.photoURL || '');
-            navigation.goBack(); // Close the modal after canceling
+            navigation.goBack();
+          },
+        },
+      ],
+    );
+  };
+
+  const handleDeleteOwnAccount = () => {
+    Alert.alert(
+      'Delete account',
+      'Are you sure you want to delete your account? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteAccount();
+              await logout();
+              Toast.show({ type: 'success', text1: 'Account deleted' });
+            } catch (error) {
+              console.error('Error deleting account:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'Failed to delete account',
+              });
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  // For an admin to delete another user
+  const handleDeleteOtherUser = () => {
+    if (!adminTargetUserId.trim()) {
+      Toast.show({
+        type: 'error',
+        text1: 'Validation Error',
+        text2: 'Please enter a valid user UID.',
+      });
+      return;
+    }
+
+    Alert.alert(
+      'Delete Another User',
+      `Are you sure you want to delete the user with UID "${adminTargetUserId}"? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteAccount(adminTargetUserId); // admin usage
+              Toast.show({
+                type: 'success',
+                text1: 'User Deleted',
+                text2: `Successfully deleted user with UID: ${adminTargetUserId}.`,
+              });
+              setAdminTargetUserId('');
+            } catch (error) {
+              console.error('Error deleting other user account:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'Failed to delete the specified user account.',
+              });
+            }
           },
         },
       ],
@@ -146,7 +193,6 @@ const EditUserProfileModal: React.FC = () => {
         contentContainerStyle={styles.scrollContainer}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Profile Picture */}
         <ProfilePicturePicker
           imageUrl={photoURL || null}
           onImageUpdate={async (newUrl) => {
@@ -171,49 +217,38 @@ const EditUserProfileModal: React.FC = () => {
           size={150}
         />
 
-        {/* Form Fields */}
         <View style={styles.formContainer}>
-          {/* First Name */}
-          <View>
-            <CustomTextInput
-              value={firstName}
-              onChangeText={setFirstName}
-              placeholder="Enter your first name"
-              autoCapitalize="words"
-              returnKeyType="next"
-              hasBorder={true}
-              labelText="First name"
-            />
-          </View>
+          <CustomTextInput
+            value={firstName}
+            onChangeText={setFirstName}
+            placeholder="Enter your first name"
+            autoCapitalize="words"
+            returnKeyType="next"
+            hasBorder
+            labelText="First name"
+          />
 
-          {/* Last Name */}
-          <View>
-            <CustomTextInput
-              value={lastName}
-              onChangeText={setLastName}
-              placeholder="Enter your last name"
-              autoCapitalize="words"
-              returnKeyType="next"
-              hasBorder={true}
-              labelText="Last name"
-            />
-          </View>
+          <CustomTextInput
+            value={lastName}
+            onChangeText={setLastName}
+            placeholder="Enter your last name"
+            autoCapitalize="words"
+            returnKeyType="next"
+            hasBorder
+            labelText="Last name"
+          />
 
-          {/* Display Name */}
-          <View>
-            <CustomTextInput
-              value={displayName}
-              onChangeText={setDisplayName}
-              placeholder="Enter your display name"
-              autoCapitalize="words"
-              returnKeyType="done"
-              hasBorder={true}
-              labelText="Display name"
-            />
-          </View>
+          <CustomTextInput
+            value={displayName}
+            onChangeText={setDisplayName}
+            placeholder="Enter your display name"
+            autoCapitalize="words"
+            returnKeyType="done"
+            hasBorder
+            labelText="Display name"
+          />
         </View>
 
-        {/* Action Buttons */}
         <View style={styles.actionButtonsContainer}>
           <CustomButton
             title="Save"
@@ -248,6 +283,47 @@ const EditUserProfileModal: React.FC = () => {
             accessibilityHint="Discard changes and close the edit screen"
           />
         </View>
+
+        {/* DELETE OWN ACCOUNT BUTTON */}
+        <View style={{ marginTop: 20, width: '100%' }}>
+          <CustomButton
+            title="Delete account"
+            onPress={handleDeleteOwnAccount}
+            loading={saving}
+            variant="danger"
+            icon={{
+              name: 'trash-outline',
+              size: 24,
+            }}
+            accessibilityLabel="Delete your account"
+            accessibilityHint="Permanently delete your account"
+          />
+        </View>
+
+        {/* ADMIN-ONLY: DELETE ANOTHER USER */}
+        {isAdmin && (
+          <View style={{ marginTop: 30, width: '100%' }}>
+            <CustomTextInput
+              value={adminTargetUserId}
+              onChangeText={setAdminTargetUserId}
+              placeholder="Enter target user UID"
+              labelText="Delete Another User (Admin)"
+              hasBorder
+            />
+            <CustomButton
+              title="Delete Another User"
+              onPress={handleDeleteOtherUser}
+              loading={saving}
+              variant="danger"
+              icon={{
+                name: 'person-remove-outline',
+                size: 24,
+              }}
+              accessibilityLabel="Delete another user's account"
+              accessibilityHint="Permanently delete the specified user"
+            />
+          </View>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -263,6 +339,11 @@ const styles = StyleSheet.create({
     padding: 20,
     alignItems: 'center',
   },
+  loaderContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   formContainer: {
     width: '100%',
     marginTop: 10,
@@ -272,11 +353,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
     justifyContent: 'space-between',
     width: '100%',
-    marginBottom: 100, // Add some margin to prevent the buttons from being hidden by the keyboard
-  },
-  loaderContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    marginBottom: 100,
   },
 });

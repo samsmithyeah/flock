@@ -78,4 +78,21 @@ const pokeCrew = (crewId: string, date: string, userId: string) => {
   return pokeCrewCallable({ crewId, date, userId });
 };
 
-export { auth, db, functions, storage, deleteCrew, pokeCrew, firebaseConfig };
+const deleteAccount = (targetUserId?: string) => {
+  if (!auth.currentUser) {
+    throw new Error('User is not authenticated');
+  }
+  const deleteAccountCallable = httpsCallable(functions, 'deleteAccount');
+  return deleteAccountCallable({ targetUserId });
+};
+
+export {
+  auth,
+  db,
+  functions,
+  storage,
+  deleteCrew,
+  pokeCrew,
+  deleteAccount,
+  firebaseConfig,
+};

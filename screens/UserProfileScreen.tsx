@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
@@ -106,7 +107,19 @@ const UserProfileScreen: React.FC<Props> = ({ navigation }) => {
 
   const handleLogout = async () => {
     try {
-      await logout();
+      Alert.alert('Log out', 'Are you sure you want to log out?', [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Log out',
+          style: 'destructive',
+          onPress: async () => {
+            await logout();
+          },
+        },
+      ]);
     } catch (error) {
       console.error('Error logging out: ', error);
       Toast.show({
