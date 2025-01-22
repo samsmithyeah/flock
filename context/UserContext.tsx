@@ -15,6 +15,7 @@ import { Alert } from 'react-native';
 import { doc, getDoc, updateDoc } from 'firebase/firestore'; // Firestore functions
 import Toast from 'react-native-toast-message';
 import * as Notifications from 'expo-notifications';
+import { getIdTokenResult } from 'firebase/auth';
 
 interface UserContextType {
   user: User | null;
@@ -23,7 +24,8 @@ interface UserContextType {
   activeChats: Set<string>; // Using Set for efficient lookups
   addActiveChat: (chatId: string) => void;
   removeActiveChat: (chatId: string) => void;
-  setBadgeCount: (count: number) => Promise<void>; // Added setBadgeCount
+  setBadgeCount: (count: number) => Promise<void>;
+  isAdmin: boolean;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -35,6 +37,7 @@ type UserProviderProps = {
 export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [activeChats, setActiveChats] = useState<Set<string>>(new Set());
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
   const memoizedActiveChats = useMemo(() => activeChats, [activeChats]);
 
@@ -51,6 +54,11 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
             const userData = userDoc.data() as User;
             userData.phoneNumber && setUser(userData);
 
+            // Check custom claims for 'admin'
+            const tokenResult = await getIdTokenResult(firebaseUser);
+            const adminClaim = tokenResult.claims.admin ?? false;
+            setIsAdmin(adminClaim as boolean);
+
             // Initialize activeChats from Firestore
             const activeChatsFromDB = new Set<string>(
               userData.activeChats || [],
@@ -60,6 +68,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
             // Handle case where user document doesn't exist
             console.log('User document does not exist in Firestore.');
             setUser(null);
+            setIsAdmin(false);
             setActiveChats(new Set());
           }
         } catch (error) {
@@ -147,21 +156,9 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
 
   const logout = async () => {
     try {
-      Alert.alert('Log out', 'Are you sure you want to log out?', [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Log out',
-          style: 'destructive',
-          onPress: async () => {
-            setUser(null);
-            await auth.signOut();
-            setActiveChats(new Set());
-          },
-        },
-      ]);
+      setUser(null);
+      await auth.signOut();
+      setActiveChats(new Set());
     } catch (error) {
       console.error('Logout Error:', error);
       throw error; // Re-throw the error to handle it in the calling component
@@ -177,7 +174,8 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         activeChats: memoizedActiveChats,
         addActiveChat,
         removeActiveChat,
-        setBadgeCount, // Expose setBadgeCount
+        setBadgeCount,
+        isAdmin,
       }}
     >
       {children}

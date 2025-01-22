@@ -53,6 +53,7 @@
     "expo-system-ui": "~3.0.7",
     "expo-web-browser": "~13.0.3",
     "firebase": "^10.14.1",
+    "firebase-admin": "^13.0.2",
     "libphonenumber-js": "^1.11.16",
     "lodash": "^4.17.21",
     "moment": "^2.30.1",

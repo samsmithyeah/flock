@@ -420,10 +420,9 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
       const messageUser = otherMembers.find(
         (member) => member.uid === messageUserId,
       );
-      if (!messageUser) return null;
       return (
         <ProfilePicturePicker
-          imageUrl={messageUser.photoURL || null}
+          imageUrl={messageUser?.photoURL || null}
           onImageUpdate={() => {}}
           editable={false}
           size={36}

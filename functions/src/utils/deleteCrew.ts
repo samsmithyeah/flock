@@ -1,4 +1,4 @@
-// functions/src/crews/deleteCrew.ts
+// functions/src/utils/deleteCrew.ts
 
 import { https } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
