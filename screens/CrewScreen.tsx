@@ -419,11 +419,11 @@ const CrewScreen: React.FC = () => {
 
               {/* Toggle for the current user */}
               <CustomButton
-                title={userIsUp ? 'You are in' : 'Count me in'}
-                variant={userIsUp ? 'danger' : 'primary'}
+                title={userIsUp ? "You're in" : 'Count me in'}
+                variant={userIsUp ? 'secondary' : 'primary'}
                 onPress={() => toggleDayStatus(day)}
                 icon={{
-                  name: userIsUp ? 'remove-circle-outline' : 'star-outline',
+                  name: userIsUp ? 'star' : 'star-outline',
                   size: 18,
                 }}
               />
@@ -463,7 +463,7 @@ const CrewScreen: React.FC = () => {
                         variant="secondary"
                         onPress={() => handlePokeCrew(day)}
                         icon={{
-                          name: 'beer-outline',
+                          name: 'notifications-outline',
                           size: 18,
                         }}
                       />
