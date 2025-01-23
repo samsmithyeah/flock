@@ -61,7 +61,7 @@ const CustomModal: React.FC<CustomModalProps> = ({
             </View>
 
             {/* Loading overlay (absolute positioning) */}
-            {!loading && (
+            {loading && (
               <View style={styles.loadingOverlay}>
                 <SpinLoader text="Processing..." />
               </View>

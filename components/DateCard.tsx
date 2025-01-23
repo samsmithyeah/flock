@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import moment from 'moment';
+import { getFormattedDate } from '@/utils/dateHelpers';
 import AvailabilityModal from '@/components/AvailabilityModal';
 
 interface DateCardProps {
@@ -38,16 +38,6 @@ const DateCard: React.FC<DateCardProps> = ({
   const handleToggle = (toggleTo: boolean) => {
     onToggle(date, toggleTo);
     // No need to handle Alert here as it's now managed in AvailabilityModal
-  };
-
-  const getFormattedDate = (date: string) => {
-    if (date === moment().format('YYYY-MM-DD')) {
-      return 'Today';
-    } else if (date === moment().add(1, 'days').format('YYYY-MM-DD')) {
-      return 'Tomorrow';
-    } else {
-      return moment(date).format('dddd, MMMM Do');
-    }
   };
 
   return (

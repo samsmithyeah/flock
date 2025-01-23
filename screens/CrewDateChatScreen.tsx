@@ -34,7 +34,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/firebase';
-import { MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import {
   useIsFocused,
   useNavigation,
@@ -463,9 +463,14 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
         renderSend={(props: SendProps<IMessage>) => (
           <Send
             {...props}
-            containerStyle={{ justifyContent: 'center', paddingHorizontal: 10 }}
+            containerStyle={{
+              justifyContent: 'center',
+              paddingHorizontal: 10,
+              opacity: props.text ? 1 : 0.5,
+            }}
+            alwaysShowSend
           >
-            <MaterialIcons size={30} color={'#1E90FF'} name={'send'} />
+            <Ionicons size={30} color={'#1E90FF'} name={'send'} />
           </Send>
         )}
         renderFooter={() =>
