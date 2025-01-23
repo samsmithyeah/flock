@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useLayoutEffect } from 'react';
+// screens/CrewScreen.tsx
+
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -37,9 +39,14 @@ import { getFormattedDate } from '@/utils/dateHelpers';
 
 type CrewScreenRouteProp = RouteProp<NavParamList, 'Crew'>;
 
+const { width } = Dimensions.get('window');
+const CARD_WIDTH = width * 0.7;
+const CARD_MARGIN = 16;
+const TOTAL_CARD_WIDTH = CARD_WIDTH + CARD_MARGIN;
+
 const CrewScreen: React.FC = () => {
   const route = useRoute<CrewScreenRouteProp>();
-  const { crewId } = route.params;
+  const { crewId, date } = route.params;
   const navigation = useNavigation<NavigationProp<NavParamList>>();
   const { user } = useUser();
   const { toggleStatusForCrew } = useCrews();
@@ -62,6 +69,7 @@ const CrewScreen: React.FC = () => {
 
   // --- For detecting scroll end ---
   const [scrolledToEnd, setScrolledToEnd] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
 
   // 1) Generate the dates array whenever startDate changes
   useEffect(() => {
@@ -202,6 +210,24 @@ const CrewScreen: React.FC = () => {
       unsubscribes.forEach((fn) => fn());
     };
   }, [crewId, user, weekDates]);
+
+  useEffect(() => {
+    const scrollToDate = (dateIndex: number) => {
+      if (scrollViewRef.current && dateIndex >= 0) {
+        const scrollAmount = dateIndex * TOTAL_CARD_WIDTH;
+        console.log('scrollAmount:', scrollAmount);
+        scrollViewRef.current.scrollTo({
+          x: scrollAmount,
+          animated: true,
+        });
+      }
+    };
+
+    if (date) {
+      const dateIndex = weekDates.indexOf(date);
+      scrollToDate(dateIndex);
+    }
+  }, [date, weekDates]);
 
   // Utilities
   const getCrewActivity = () =>
@@ -400,6 +426,7 @@ const CrewScreen: React.FC = () => {
       </View>
 
       <ScrollView
+        ref={scrollViewRef}
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.weekScrollContainer}
@@ -491,7 +518,6 @@ const CrewScreen: React.FC = () => {
 
 export default CrewScreen;
 
-const { width } = Dimensions.get('window');
 const styles = StyleSheet.create({
   navButtonsContainer: {
     flexDirection: 'row',
@@ -506,8 +532,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   dayContainer: {
-    width: width * 0.7,
-    marginRight: 16,
+    width: CARD_WIDTH,
+    marginRight: CARD_MARGIN,
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
