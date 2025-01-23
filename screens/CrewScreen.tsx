@@ -1,6 +1,6 @@
 // screens/CrewScreen.tsx
 
-import React, { useEffect, useState, useLayoutEffect, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,9 @@ import {
   Alert,
   StyleSheet,
   Dimensions,
+  ScrollView,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import {
   useRoute,
@@ -15,21 +18,14 @@ import {
   useNavigation,
   NavigationProp,
 } from '@react-navigation/native';
-import {
-  doc,
-  getDoc,
-  collection,
-  onSnapshot,
-  Timestamp,
-} from 'firebase/firestore';
+import { doc, getDoc, collection, onSnapshot } from 'firebase/firestore';
+import moment, { Moment } from 'moment';
 import { db, pokeCrew } from '@/firebase';
 import { useUser } from '@/context/UserContext';
 import { User } from '@/types/User';
-import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { NavParamList } from '@/navigation/AppNavigator';
 import MemberList from '@/components/MemberList';
-import DateTimePickerModal from 'react-native-modal-datetime-picker';
-import moment from 'moment';
 import { Crew } from '@/types/Crew';
 import CustomButton from '@/components/CustomButton';
 import CrewHeader from '@/components/CrewHeader';
@@ -39,48 +35,53 @@ import Toast from 'react-native-toast-message';
 import { useCrewDateChat } from '@/context/CrewDateChatContext';
 import useglobalStyles from '@/styles/globalStyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getFormattedDate } from '@/utils/dateHelpers';
 
 type CrewScreenRouteProp = RouteProp<NavParamList, 'Crew'>;
 
-interface Status {
-  date: string; // Format: 'YYYY-MM-DD'
-  upForGoingOutTonight: boolean;
-  timestamp: Timestamp;
-}
+const { width } = Dimensions.get('window');
+const CARD_WIDTH = width * 0.7;
+const CARD_MARGIN = 16;
+const TOTAL_CARD_WIDTH = CARD_WIDTH + CARD_MARGIN;
 
 const CrewScreen: React.FC = () => {
-  const { user } = useUser();
-  const { toggleStatusForCrew } = useCrews();
-  const globalStyles = useglobalStyles();
-  const insets = useSafeAreaInsets();
   const route = useRoute<CrewScreenRouteProp>();
   const { crewId, date } = route.params;
   const navigation = useNavigation<NavigationProp<NavParamList>>();
+  const { user } = useUser();
+  const { toggleStatusForCrew } = useCrews();
+  const { addMemberToChat, removeMemberFromChat } = useCrewDateChat();
   const [crew, setCrew] = useState<Crew | null>(null);
   const [members, setMembers] = useState<User[]>([]);
-  const [statusesForSelectedDate, setStatusesForSelectedDate] = useState<{
-    [userId: string]: boolean;
-  }>({});
   const [loading, setLoading] = useState(true);
-  const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<string>(
-    date || getTodayDateString(),
-  );
-  const { addMemberToChat, removeMemberFromChat } = useCrewDateChat();
 
+  // --- Dynamic Window State ---
+  const [startDate, setStartDate] = useState<Moment>(moment().startOf('day'));
+  const [weekDates, setWeekDates] = useState<string[]>([]);
+
+  // statusesForWeek[date][userId] => boolean
+  const [statusesForWeek, setStatusesForWeek] = useState<{
+    [date: string]: { [userId: string]: boolean };
+  }>({});
+
+  const globalStyles = useglobalStyles();
+  const insets = useSafeAreaInsets();
+
+  // --- For detecting scroll end ---
+  const [scrolledToEnd, setScrolledToEnd] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  // 1) Generate the dates array whenever startDate changes
   useEffect(() => {
-    if (date) {
-      console.log('Updating selectedDate to:', date);
-      setSelectedDate(date);
+    const days: string[] = [];
+    const numberOfDays = 7;
+    for (let i = 0; i < numberOfDays; i++) {
+      days.push(moment(startDate).add(i, 'days').format('YYYY-MM-DD'));
     }
-  }, [date]);
+    setWeekDates(days);
+  }, [startDate]);
 
-  // Utility function to get today's date in 'YYYY-MM-DD' format
-  function getTodayDateString(): string {
-    return moment().format('YYYY-MM-DD');
-  }
-
-  // Fetch crew data
+  // 2) Fetch crew data
   useEffect(() => {
     if (!crewId) {
       Toast.show({
@@ -93,8 +94,6 @@ const CrewScreen: React.FC = () => {
     }
 
     const crewRef = doc(db, 'crews', crewId);
-
-    // Listener for the crew document
     const unsubscribeCrew = onSnapshot(
       crewRef,
       (docSnap) => {
@@ -107,9 +106,7 @@ const CrewScreen: React.FC = () => {
           };
           setCrew(crewData);
           navigation.setOptions({ title: crewData.name });
-          console.log('Crew Data:', crewData);
         } else {
-          console.warn('Crew not found');
           navigation.navigate('CrewsList');
         }
         setLoading(false);
@@ -132,15 +129,16 @@ const CrewScreen: React.FC = () => {
     };
   }, [crewId, user, navigation]);
 
-  // Fetch member profiles
+  // 3) Fetch members of the crew
   useEffect(() => {
     const fetchMembers = async () => {
-      if (crew && crew.memberIds.length > 0) {
+      if (crew && crew.memberIds && crew.memberIds.length > 0) {
         try {
-          const memberDocsPromises = crew.memberIds.map((memberId) =>
-            getDoc(doc(db, 'users', memberId)),
+          const memberDocs = await Promise.all(
+            crew.memberIds.map((memberId) =>
+              getDoc(doc(db, 'users', memberId)),
+            ),
           );
-          const memberDocs = await Promise.all(memberDocsPromises);
 
           const membersList: User[] = memberDocs
             .filter((docSnap) => docSnap.exists())
@@ -149,7 +147,6 @@ const CrewScreen: React.FC = () => {
               ...(docSnap.data() as Omit<User, 'uid'>),
             }));
 
-          console.log('Fetched Members:', membersList);
           setMembers(membersList);
         } catch (error) {
           console.error('Error fetching members:', error);
@@ -167,51 +164,86 @@ const CrewScreen: React.FC = () => {
     fetchMembers();
   }, [crew]);
 
-  // Listener for the userStatuses subcollection based on selectedDate
+  // 4) Firestore listeners for each day in "weekDates"
   useEffect(() => {
-    if (!crewId || !user) return;
+    if (!crewId || !user || !weekDates.length) return;
 
-    const userStatusesRef = collection(
-      db,
-      'crews',
-      crewId,
-      'statuses',
-      selectedDate,
-      'userStatuses',
-    );
+    const unsubscribes: (() => void)[] = [];
 
-    const unsubscribeUserStatuses = onSnapshot(
-      userStatusesRef,
-      (snapshot) => {
-        const newStatuses: { [userId: string]: boolean } = {};
-        for (const docSnap of snapshot.docs) {
-          const statusData = docSnap.data() as Status;
-          const userId = docSnap.id;
-          newStatuses[userId] = statusData.upForGoingOutTonight || false;
-          console.log(`User ID: ${userId}, Status: ${newStatuses[userId]}`);
-        }
-        console.log(`All Statuses for ${selectedDate}:`, newStatuses);
-        setStatusesForSelectedDate(newStatuses);
-      },
-      (error) => {
-        if (user) {
-          console.error('Error fetching userStatuses:', error);
+    weekDates.forEach((day) => {
+      const userStatusesRef = collection(
+        db,
+        'crews',
+        crewId,
+        'statuses',
+        day,
+        'userStatuses',
+      );
+
+      const unsub = onSnapshot(
+        userStatusesRef,
+        (snapshot) => {
+          setStatusesForWeek((prev) => {
+            const newStatusesForDay: { [userId: string]: boolean } = {};
+            snapshot.forEach((docSnap) => {
+              const data = docSnap.data() as { upForGoingOutTonight: boolean };
+              newStatusesForDay[docSnap.id] =
+                data.upForGoingOutTonight || false;
+            });
+            return { ...prev, [day]: newStatusesForDay };
+          });
+        },
+        (error) => {
+          console.error('Error fetching statuses for', day, error);
           Toast.show({
             type: 'error',
             text1: 'Error',
-            text2: 'Could not fetch user statuses',
+            text2: `Could not fetch user statuses for ${day}`,
           });
-        }
-      },
-    );
+        },
+      );
+
+      unsubscribes.push(unsub);
+    });
 
     return () => {
-      unsubscribeUserStatuses();
+      unsubscribes.forEach((fn) => fn());
     };
-  }, [crewId, user, selectedDate]);
+  }, [crewId, user, weekDates]);
 
-  // Function to toggle user's status for the selected date
-  const toggleStatus = async () => {
+  useEffect(() => {
+    const scrollToDate = (dateIndex: number) => {
+      if (scrollViewRef.current && dateIndex >= 0) {
+        const scrollAmount = dateIndex * TOTAL_CARD_WIDTH;
+        console.log('scrollAmount:', scrollAmount);
+        scrollViewRef.current.scrollTo({
+          x: scrollAmount,
+          animated: true,
+        });
+      }
+    };
+
+    if (date) {
+      const dateIndex = weekDates.indexOf(date);
+      scrollToDate(dateIndex);
+    }
+  }, [date, weekDates]);
+
+  // Utilities
+  const getCrewActivity = () =>
+    crew?.activity ? crew.activity.toLowerCase() : 'meeting up';
+
+  const isUserUpForDay = (day: string) => {
+    if (!user) return false;
+    return statusesForWeek[day]?.[user.uid] || false;
+  };
+
+  const getUpForItMembers = (day: string) => {
+    return members.filter((member) => statusesForWeek[day]?.[member.uid]);
+  };
+
+  // Toggling user status
+  const toggleDayStatus = (day: string) => {
     if (!user?.uid || !crew) {
       Toast.show({
         type: 'error',
@@ -220,11 +252,12 @@ const CrewScreen: React.FC = () => {
       });
       return;
     }
+    const currentStatus = isUserUpForDay(day);
+    const newStatus = !currentStatus;
+    const chatId = `${crewId}_${day}`;
 
     const confirmToggle = async () => {
-      const newStatus = !currentUserStatus;
-      toggleStatusForCrew(crewId, selectedDate, newStatus);
-      const chatId = `${crewId}_${selectedDate}`;
+      toggleStatusForCrew(crewId, day, newStatus);
       if (newStatus) {
         await addMemberToChat(chatId, user.uid);
       } else {
@@ -234,47 +267,116 @@ const CrewScreen: React.FC = () => {
 
     Alert.alert(
       'Confirm status change',
-      currentUserStatus
-        ? `Are you sure you want to mark yourself as not up for ${getCrewActivity()}?`
-        : `Are you sure you want to mark yourself as up for ${getCrewActivity()}?`,
+      currentStatus
+        ? `Are you sure you want to mark yourself as not up for ${getCrewActivity()} on this day?`
+        : `Are you sure you want to mark yourself as up for ${getCrewActivity()} on this day?`,
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Confirm',
-          onPress: confirmToggle,
-        },
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Confirm', onPress: confirmToggle },
       ],
     );
   };
 
-  // Derive current user's status for the selected date
-  const currentUserStatus = user?.uid
-    ? statusesForSelectedDate[user.uid] || false
-    : false;
-
-  const membersUpForGoingOut = useMemo(
-    () => members.filter((member) => statusesForSelectedDate[member.uid]),
-    [members, statusesForSelectedDate],
-  );
-
-  const getCrewActivity = () => {
-    if (crew?.activity) {
-      return crew.activity.toLowerCase();
+  // Poke crew
+  const handlePokeCrew = async (day: string) => {
+    if (!crewId || !day || !user?.uid) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Missing required info to poke the crew.',
+      });
+      return;
     }
-    return 'meeting up';
+
+    Alert.alert(
+      'Poke the others?',
+      `Send a poke to members not up for it on this day?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Poke',
+          onPress: async () => {
+            try {
+              const poke = await pokeCrew(crewId, day, user.uid);
+              Toast.show({
+                type: 'success',
+                text1: 'Poke Sent',
+                text2: (poke.data as { message: string }).message,
+              });
+            } catch (error) {
+              console.error('Error sending poke:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'Failed to send poke.',
+              });
+            }
+          },
+        },
+      ],
+      { cancelable: true },
+    );
   };
 
+  const navigateToDayChat = (day: string) => {
+    navigation.navigate('ChatsStack', {
+      screen: 'CrewDateChat',
+      params: { crewId, date: day },
+      initial: false,
+    });
+  };
+
+  // Navigate to user’s profile
+  const navigateToUserProfile = (selectedUser: User) => {
+    if (!user) return;
+    if (selectedUser.uid === user.uid) {
+      navigation.navigate('UserProfileStack', {
+        screen: 'UserProfile',
+        params: { userId: user.uid },
+        initial: false,
+      });
+    } else {
+      navigation.navigate('OtherUserProfile', { userId: selectedUser.uid });
+    }
+  };
+
+  // Show/hide the "Prev 7 Days" button if moving earlier would go before today
+  const canGoPrevWeek = startDate.isAfter(moment().startOf('day'), 'day');
+
+  // Move forward/back
+  const goNextWeek = () => {
+    setStartDate((prev) => moment(prev).add(7, 'days'));
+  };
+  const goPrevWeek = () => {
+    // Only allow if we won't cross "today"
+    if (!canGoPrevWeek) return;
+    setStartDate((prev) => moment(prev).subtract(7, 'days'));
+  };
+
+  // Listen to scroll events and see if user is near the right edge
+  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+    const x = contentOffset.x;
+    const visibleWidth = layoutMeasurement.width;
+    const totalWidth = contentSize.width;
+
+    // The threshold can be a few pixels to allow for floating point offsets
+    const nearEndThreshold = 20;
+    const isNearEnd = x + visibleWidth >= totalWidth - nearEndThreshold;
+
+    setScrolledToEnd(isNearEnd);
+  };
+
+  // Only render Next 7 Days if user has scrolled to the end
+  const showNextWeekButton = scrolledToEnd;
+
+  // Update header
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
         <TouchableOpacity
           style={{ marginRight: 16 }}
           onPress={() => navigation.navigate('CrewSettings', { crewId })}
-          accessibilityLabel="Crew Settings"
-          accessibilityHint="Navigate to crew settings"
         >
           <MaterialIcons name="settings" size={24} color="black" />
         </TouchableOpacity>
@@ -292,329 +394,183 @@ const CrewScreen: React.FC = () => {
     });
   }, [navigation, crew, crewId]);
 
-  // Date Picker Handlers
-  const showDatePicker = () => {
-    setDatePickerVisibility(true);
-  };
-
-  const hideDatePicker = () => {
-    setDatePickerVisibility(false);
-  };
-
-  const handleConfirmDate = (date: Date) => {
-    const formattedDate = moment(date).format('YYYY-MM-DD');
-    setSelectedDate(formattedDate);
-    hideDatePicker();
-  };
-
-  // Function to increment the selected date by one day
-  const incrementDate = () => {
-    const newDate = moment(selectedDate).add(1, 'days').format('YYYY-MM-DD');
-    setSelectedDate(newDate);
-  };
-
-  // Function to decrement the selected date by one day
-  const decrementDate = () => {
-    const today = moment().startOf('day');
-    const current = moment(selectedDate, 'YYYY-MM-DD').startOf('day');
-
-    if (current.isAfter(today)) {
-      const newDate = current.subtract(1, 'days').format('YYYY-MM-DD');
-      setSelectedDate(newDate);
-    } else {
-      Toast.show({
-        type: 'info',
-        text1: 'Info',
-        text2: 'Cannot select a past date',
-      });
-    }
-  };
-
-  // Function to navigate to OtherUserProfileScreen
-  const navigateToUserProfile = (selectedUser: User) => {
-    if (selectedUser.uid === user?.uid) {
-      navigation.navigate('UserProfileStack', {
-        screen: 'UserProfile',
-        params: { userId: user.uid },
-        initial: false,
-      });
-      return;
-    }
-    navigation.navigate('OtherUserProfile', { userId: selectedUser.uid });
-  };
-
-  const handlePokeCrew = async () => {
-    if (!crewId || !selectedDate || !user?.uid) {
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Missing required information to poke the crew.',
-      });
-      return;
-    }
-
-    try {
-      // Confirm the poke action with the user
-      Alert.alert(
-        'Poke the others?',
-        'This will send a notification to members who are not marked as up for it on this date.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Poke',
-            onPress: async () => {
-              try {
-                const poke = await pokeCrew(crewId, selectedDate, user.uid);
-                Toast.show({
-                  type: 'success',
-                  text1: 'Poke Sent',
-                  text2: (poke.data as { message: string }).message,
-                });
-              } catch (error) {
-                console.error('Error sending poke:', error);
-                Toast.show({
-                  type: 'error',
-                  text1: 'Error',
-                  text2: 'Failed to send poke.',
-                });
-              }
-            },
-          },
-        ],
-        { cancelable: true },
-      );
-    } catch (error) {
-      console.error('Error poking crew:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Failed to poke the crew.',
-      });
-    }
-  };
+  if (loading || !crew) {
+    return <LoadingOverlay />;
+  }
 
   return (
-    <>
-      {(loading || !crew) && <LoadingOverlay />}
-      <View style={globalStyles.containerWithHeader}>
-        {/* Date Picker with Arrow Buttons */}
-        <View style={styles.datePickerContainer}>
-          {/* Left Arrow Button */}
-          <TouchableOpacity
-            onPress={decrementDate}
-            disabled={selectedDate === getTodayDateString()}
-            accessibilityLabel="Previous Date"
-            accessibilityHint="Select the previous date"
-          >
-            <Ionicons
-              name="arrow-back"
-              size={24}
-              color={selectedDate === getTodayDateString() ? '#ccc' : '#1e90ff'}
-            />
-          </TouchableOpacity>
-
-          {/* Date Picker Button */}
-          <TouchableOpacity
-            style={styles.datePickerButton}
-            onPress={showDatePicker}
-            accessibilityLabel="Select Date"
-            accessibilityHint="Open date picker to select a date"
-          >
-            <Ionicons name="calendar-outline" size={20} color="#1e90ff" />
-            <Text style={styles.datePickerText}>
-              {selectedDate === getTodayDateString()
-                ? 'Today'
-                : moment(selectedDate).format('MMMM Do, YYYY')}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Right Arrow Button */}
-          <TouchableOpacity
-            onPress={incrementDate}
-            accessibilityLabel="Next Date"
-            accessibilityHint="Select the next date"
-          >
-            <Ionicons name="arrow-forward" size={24} color="#1e90ff" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Date Picker Modal */}
-        <DateTimePickerModal
-          isVisible={isDatePickerVisible}
-          mode="date"
-          onConfirm={handleConfirmDate}
-          onCancel={hideDatePicker}
-          minimumDate={new Date()}
-          date={new Date(selectedDate)}
-        />
-
-        {/* Members up for it on selected date */}
-        <Text style={styles.listTitle}>{`Up for ${getCrewActivity()}:`}</Text>
-        {currentUserStatus ? (
-          <MemberList
-            members={membersUpForGoingOut}
-            currentUserId={user?.uid || null}
-            emptyMessage={"No one's up for it on this date"}
-            onMemberPress={navigateToUserProfile}
-          />
-        ) : (
-          <View style={styles.skeletonContainer}>
-            {/* Render Skeleton User Items */}
-            <MemberList members={[]} currentUserId={null} isLoading={true} />
-
-            {/* Overlaid Message */}
-            <View style={styles.overlay}>
-              <Text style={styles.overlayText}>
-                You can only see who's up for {getCrewActivity()} on this date
-                if you're up for it too!
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Button to navigate to crew date chat */}
-        {currentUserStatus && (
-          <View>
-            <View style={styles.chatButton}>
-              <CustomButton
-                title="Message the up-for-it crew"
-                variant="primary"
-                onPress={() =>
-                  navigation.navigate('CrewDateChat', {
-                    crewId,
-                    date: selectedDate,
-                  })
-                }
-                icon={{
-                  name: 'chatbubble-ellipses-outline',
-                  size: 24,
-                }}
-                accessibilityLabel="Open Chat"
-                accessibilityHint="Navigate to crew date chat"
-              />
-            </View>
-            {membersUpForGoingOut.length < members.length ? (
-              <View style={styles.chatButton}>
-                <CustomButton
-                  title="Poke the others"
-                  onPress={handlePokeCrew}
-                  loading={false}
-                  variant="secondary"
-                  icon={{
-                    name: 'beer-outline',
-                    size: 24,
-                  }}
-                  accessibilityLabel="Poke Crew"
-                  accessibilityHint="Send a poke to crew members who are not up for it"
-                />
-              </View>
-            ) : (
-              <Text style={styles.upForItText}>
-                The whole crew is up for it today! 🎉
-              </Text>
-            )}
-          </View>
-        )}
-
-        {/* Toggle Status Button */}
-        <View style={styles.statusButton}>
-          <CustomButton
-            title={
-              currentUserStatus ? "I'm no longer up for it" : 'Count me in'
-            }
-            onPress={toggleStatus}
-            loading={false} // Set to true if there's a loading state during toggle
-            variant={currentUserStatus ? 'danger' : 'primary'} // Red for active, Green for inactive
-            icon={{
-              name: currentUserStatus
-                ? 'remove-circle-outline'
-                : 'star-outline',
-              size: 24,
-            }}
-            accessibilityLabel="Toggle Status"
-            accessibilityHint={
-              currentUserStatus
-                ? `Mark yourself as not up for ${getCrewActivity()} on ${selectedDate}`
-                : `Mark yourself as up for ${getCrewActivity()} on ${selectedDate}`
-            }
-          />
-        </View>
+    <View style={globalStyles.containerWithHeader}>
+      <View style={styles.navButtonsContainer}>
+        <TouchableOpacity
+          onPress={goPrevWeek}
+          accessibilityLabel="Previous Date"
+          accessibilityHint="Select the previous date"
+          disabled={!canGoPrevWeek}
+          style={!canGoPrevWeek ? { opacity: 0 } : {}}
+        >
+          <Ionicons name="arrow-back" size={24} color="#1e90ff" />
+        </TouchableOpacity>
+        <Text style={styles.weekTitle}>
+          {moment(startDate).format('MMM Do')} →{' '}
+          {moment(startDate).add(6, 'days').format('MMM Do')}
+        </Text>
+        <TouchableOpacity
+          onPress={goNextWeek}
+          accessibilityLabel="Next Date"
+          accessibilityHint="Select the next date"
+          disabled={!showNextWeekButton}
+          style={!showNextWeekButton ? { opacity: 0 } : {}}
+        >
+          <Ionicons name="arrow-forward" size={24} color="#1e90ff" />
+        </TouchableOpacity>
       </View>
-    </>
+
+      <ScrollView
+        ref={scrollViewRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.weekScrollContainer}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+      >
+        {weekDates.map((day) => {
+          const userIsUp = isUserUpForDay(day);
+          const upForItMembers = getUpForItMembers(day);
+          const totalUp = upForItMembers.length;
+          const totalMembers = members.length;
+
+          return (
+            <View key={day} style={styles.dayContainer}>
+              {/* Day label */}
+              <Text style={styles.dayHeader}>{getFormattedDate(day)}</Text>
+
+              {/* Toggle for the current user */}
+              <CustomButton
+                title={userIsUp ? "You're in" : 'Count me in'}
+                variant={userIsUp ? 'secondary' : 'primary'}
+                onPress={() => toggleDayStatus(day)}
+                icon={{
+                  name: userIsUp ? 'star' : 'star-outline',
+                  size: 18,
+                }}
+              />
+
+              {/* If user is in, we show who else is in */}
+              {userIsUp ? (
+                <>
+                  <Text style={styles.countText}>
+                    {totalUp} of {totalMembers} up for {getCrewActivity()}
+                  </Text>
+                  <View style={styles.memberListContainer}>
+                    <MemberList
+                      members={upForItMembers}
+                      currentUserId={user?.uid || ''}
+                      emptyMessage="No one's up yet"
+                      onMemberPress={navigateToUserProfile}
+                      scrollEnabled={true}
+                    />
+                  </View>
+
+                  {totalUp > 1 && (
+                    <CustomButton
+                      title="Group chat"
+                      variant="secondary"
+                      onPress={() => navigateToDayChat(day)}
+                      icon={{
+                        name: 'chatbubble-ellipses-outline',
+                        size: 18,
+                      }}
+                    />
+                  )}
+
+                  {totalUp < totalMembers && (
+                    <View style={styles.actionButton}>
+                      <CustomButton
+                        title="Poke the others"
+                        variant="secondary"
+                        onPress={() => handlePokeCrew(day)}
+                        icon={{
+                          name: 'notifications-outline',
+                          size: 18,
+                        }}
+                      />
+                    </View>
+                  )}
+
+                  {totalUp === totalMembers && (
+                    <Text style={styles.everyoneInText}>
+                      Everyone is up for it!
+                    </Text>
+                  )}
+                </>
+              ) : (
+                <Text style={styles.joinPrompt}>
+                  Join to see who’s up for {getCrewActivity()}.
+                </Text>
+              )}
+            </View>
+          );
+        })}
+      </ScrollView>
+    </View>
   );
 };
 
 export default CrewScreen;
 
-const { width } = Dimensions.get('window');
-
 const styles = StyleSheet.create({
-  statusButton: {
-    position: 'absolute',
-    bottom: 20,
-    alignSelf: 'center',
+  navButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
-  skeletonContainer: {
-    position: 'relative',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-  },
-  overlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: width - 32,
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0)',
-  },
-  overlayText: {
-    color: '#333',
-    fontSize: 16,
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  listTitle: {
-    fontSize: 20,
-    marginBottom: 10,
+  weekTitle: {
+    fontSize: 18,
     fontWeight: 'bold',
+    marginBottom: 8,
   },
-  datePickerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 15,
-  },
-  datePickerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
+  weekScrollContainer: {
     paddingVertical: 10,
-    paddingHorizontal: 15,
-    borderRadius: 25,
-    marginHorizontal: 10,
+  },
+  dayContainer: {
+    width: CARD_WIDTH,
+    marginRight: CARD_MARGIN,
+    padding: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#ddd',
-    justifyContent: 'center',
+    backgroundColor: '#fff',
+    justifyContent: 'flex-start',
+    height: '100%',
+    flex: 1,
   },
-  datePickerText: {
-    marginLeft: 8,
-    fontSize: 16,
-    color: '#333',
-  },
-  chatButton: {
-    marginBottom: 10,
-  },
-  upForItText: {
+  dayHeader: {
     fontSize: 16,
     fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  countText: {
+    marginVertical: 8,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  joinPrompt: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  everyoneInText: {
+    marginTop: 8,
+    fontSize: 15,
     color: '#333',
-    marginBottom: 10,
-    alignSelf: 'center',
-    marginTop: 10,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  actionButton: {
+    marginTop: 8,
+  },
+  memberListContainer: {
+    flex: 1,
+    marginVertical: 8,
   },
 });

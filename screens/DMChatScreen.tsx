@@ -32,7 +32,7 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 import { db } from '@/firebase';
-import { MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import {
   useIsFocused,
   useNavigation,
@@ -388,9 +388,11 @@ const DMChatScreen: React.FC<DMChatScreenProps> = ({ route }) => {
             containerStyle={{
               justifyContent: 'center',
               paddingHorizontal: 10,
+              opacity: props.text ? 1 : 0.5,
             }}
+            alwaysShowSend
           >
-            <MaterialIcons size={30} color={'#1E90FF'} name={'send'} />
+            <Ionicons size={30} color={'#1E90FF'} name={'send'} />
           </Send>
         )}
         renderFooter={() =>

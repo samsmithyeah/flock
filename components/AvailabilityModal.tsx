@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import moment from 'moment';
 import { Ionicons } from '@expo/vector-icons';
+import { getFormattedDate } from '@/utils/dateHelpers';
 
 interface AvailabilityModalProps {
   visible: boolean;
@@ -53,16 +54,6 @@ const AvailabilityModal: React.FC<AvailabilityModalProps> = ({
       ],
       { cancelable: false },
     );
-  };
-
-  const getFormattedDate = (date: string) => {
-    if (date === moment().format('YYYY-MM-DD')) {
-      return 'Today';
-    } else if (date === moment().add(1, 'days').format('YYYY-MM-DD')) {
-      return 'Tomorrow';
-    } else {
-      return moment(date).format('dddd, MMMM Do');
-    }
   };
 
   return (
