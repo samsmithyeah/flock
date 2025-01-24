@@ -404,12 +404,9 @@ const ChatsListScreen: React.FC = () => {
     [navigation, user?.uid],
   );
 
-  // Re-fetch chats whenever screen is focused to ensure unread counts are correct
   useEffect(() => {
-    if (isFocused) {
-      combineChats();
-    }
-  }, [isFocused, combineChats]);
+    combineChats();
+  }, [isFocused, dms, groupChats, combineChats]);
 
   if (loading) {
     return (
@@ -446,7 +443,7 @@ const ChatsListScreen: React.FC = () => {
             </Text>
           )}
         </View>
-        <Text style={styles.chatLastMessage} numberOfLines={1}>
+        <Text style={styles.chatLastMessage} numberOfLines={2}>
           {item.lastMessage ? (
             item.lastMessageSenderName ? (
               <>
@@ -530,9 +527,11 @@ const styles = StyleSheet.create({
     color: '#555',
     marginTop: 4,
     flexDirection: 'row',
+    flex: 1,
   },
   senderName: {
     color: '#555',
+    fontWeight: '500',
   },
   separator: {
     height: 1,

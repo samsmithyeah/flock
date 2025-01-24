@@ -27,6 +27,8 @@ expo-env.d.ts
 # Android
 /android
 *.aab
+*.apk
+*.tar.gz
 android/sentry.properties
 google-services.json
 

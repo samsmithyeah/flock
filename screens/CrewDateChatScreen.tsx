@@ -470,7 +470,7 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
             }}
             alwaysShowSend
           >
-            <Ionicons size={30} color={'#1E90FF'} name={'send'} />
+            <Ionicons size={30} color={'#1E90FF'} name={'arrow-up-circle'} />
           </Send>
         )}
         renderFooter={() =>
