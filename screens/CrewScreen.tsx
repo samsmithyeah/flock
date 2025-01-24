@@ -277,29 +277,6 @@ const CrewScreen: React.FC = () => {
     }, 100);
   };
 
-  const getMarkedDates = () => {
-    const markedDates: {
-      [date: string]: { marked?: boolean; selected?: boolean };
-    } = {};
-
-    // Mark dates where at least one person is up for it
-    Object.entries(statusesForWeek).forEach(([date, statuses]) => {
-      if (Object.values(statuses).some((status) => status)) {
-        markedDates[date] = { marked: true };
-      }
-    });
-
-    // Mark the selected date if there is one
-    if (selectedDate) {
-      markedDates[selectedDate] = {
-        ...markedDates[selectedDate],
-        selected: true,
-      };
-    }
-
-    return markedDates;
-  };
-
   const getCrewActivity = () =>
     crew?.activity ? crew.activity.toLowerCase() : 'meeting up';
 
@@ -503,7 +480,6 @@ const CrewScreen: React.FC = () => {
               current={startDate.format('YYYY-MM-DD')}
               onDayPress={handleCalendarDayPress}
               minDate={moment().format('YYYY-MM-DD')}
-              markedDates={getMarkedDates()}
             />
           </View>
         </View>
