@@ -55,19 +55,14 @@ const CrewScreen: React.FC = () => {
   const [members, setMembers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // --- Dynamic Window State ---
   const [startDate, setStartDate] = useState<Moment>(moment().startOf('day'));
   const [weekDates, setWeekDates] = useState<string[]>([]);
-
-  // statusesForWeek[date][userId] => boolean
   const [statusesForWeek, setStatusesForWeek] = useState<{
     [date: string]: { [userId: string]: boolean };
   }>({});
 
   const globalStyles = useglobalStyles();
   const insets = useSafeAreaInsets();
-
-  // --- For detecting scroll end ---
   const [scrolledToEnd, setScrolledToEnd] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -79,6 +74,8 @@ const CrewScreen: React.FC = () => {
       days.push(moment(startDate).add(i, 'days').format('YYYY-MM-DD'));
     }
     setWeekDates(days);
+    console.log('startDate:', startDate.format('YYYY-MM-DD'));
+    console.log('weekDates:', days);
   }, [startDate]);
 
   // 2) Fetch crew data
@@ -212,24 +209,59 @@ const CrewScreen: React.FC = () => {
   }, [crewId, user, weekDates]);
 
   useEffect(() => {
-    const scrollToDate = (dateIndex: number) => {
-      if (scrollViewRef.current && dateIndex >= 0) {
-        const scrollAmount = dateIndex * TOTAL_CARD_WIDTH;
-        console.log('scrollAmount:', scrollAmount);
-        scrollViewRef.current.scrollTo({
-          x: scrollAmount,
-          animated: true,
-        });
-      }
-    };
-
-    if (date) {
+    // console.log('date:', date);
+    // console.log('weekDates:', weekDates);
+    // console.log('startDate:', startDate.format('YYYY-MM-DD'));
+    if (date && weekDates.length > 0) {
       const dateIndex = weekDates.indexOf(date);
+      console.log('date:', date);
+      console.log('weekDates:', weekDates);
+      console.log('dateIndex:', dateIndex);
+      if (dateIndex === -1) {
+        const newStartDate = moment(date).startOf('week');
+        console.log(
+          'Setting new start date:',
+          newStartDate.format('YYYY-MM-DD'),
+        );
+        setStartDate(newStartDate);
+        return;
+      }
       scrollToDate(dateIndex);
     }
-  }, [date, weekDates]);
+  }, [date, weekDates, startDate]);
+
+  useEffect(() => {
+    if (scrollViewRef.current) {
+      console.log('ScrollView ref mounted');
+    }
+  }, [scrollViewRef.current]);
 
   // Utilities
+  const scrollToDate = (dateIndex: number) => {
+    console.log('scrollToDate called with index:', dateIndex);
+
+    // Add timeout to ensure layout is complete
+    setTimeout(() => {
+      if (!scrollViewRef.current) {
+        console.warn('ScrollView ref not available');
+        return;
+      }
+
+      if (dateIndex < 0) {
+        console.warn('Invalid date index:', dateIndex);
+        return;
+      }
+
+      const scrollAmount = dateIndex * TOTAL_CARD_WIDTH;
+      console.log('Scrolling to:', scrollAmount);
+
+      scrollViewRef.current.scrollTo({
+        x: scrollAmount,
+        animated: true,
+      });
+    }, 100);
+  };
+
   const getCrewActivity = () =>
     crew?.activity ? crew.activity.toLowerCase() : 'meeting up';
 
