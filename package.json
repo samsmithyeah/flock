@@ -61,6 +61,7 @@
     "react-dom": "18.2.0",
     "react-native": "0.74.5",
     "react-native-animatable": "^1.4.0",
+    "react-native-calendars": "^1.1308.1",
     "react-native-confirmation-code-field": "^7.4.0",
     "react-native-country-codes-picker": "^2.3.5",
     "react-native-fast-image": "^8.6.3",

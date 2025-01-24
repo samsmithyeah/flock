@@ -11,6 +11,7 @@ import {
   ScrollView,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  Modal,
 } from 'react-native';
 import {
   useRoute,
@@ -36,11 +37,12 @@ import { useCrewDateChat } from '@/context/CrewDateChatContext';
 import useglobalStyles from '@/styles/globalStyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getFormattedDate } from '@/utils/dateHelpers';
+import { Calendar } from 'react-native-calendars';
 
 type CrewScreenRouteProp = RouteProp<NavParamList, 'Crew'>;
 
 const { width } = Dimensions.get('window');
-const CARD_WIDTH = width * 0.7;
+const CARD_WIDTH = width * 0.75;
 const CARD_MARGIN = 16;
 const TOTAL_CARD_WIDTH = CARD_WIDTH + CARD_MARGIN;
 
@@ -51,6 +53,7 @@ const CrewScreen: React.FC = () => {
   const { user } = useUser();
   const { toggleStatusForCrew } = useCrews();
   const { addMemberToChat, removeMemberFromChat } = useCrewDateChat();
+
   const [crew, setCrew] = useState<Crew | null>(null);
   const [members, setMembers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,9 +67,20 @@ const CrewScreen: React.FC = () => {
   const globalStyles = useglobalStyles();
   const insets = useSafeAreaInsets();
   const [scrolledToEnd, setScrolledToEnd] = useState(false);
+  const [scrolledToStart, setScrolledToStart] = useState<boolean | undefined>(
+    undefined,
+  );
   const scrollViewRef = useRef<ScrollView>(null);
+  const [calendarVisible, setCalendarVisible] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-  // 1) Generate the dates array whenever startDate changes
+  useEffect(() => {
+    if (date) {
+      setSelectedDate(date);
+    }
+  }, [date]);
+
+  // Generate the 7-day window from startDate
   useEffect(() => {
     const days: string[] = [];
     const numberOfDays = 7;
@@ -208,17 +222,18 @@ const CrewScreen: React.FC = () => {
     };
   }, [crewId, user, weekDates]);
 
+  // Handle a `date` param passed in route.params
   useEffect(() => {
     // console.log('date:', date);
     // console.log('weekDates:', weekDates);
     // console.log('startDate:', startDate.format('YYYY-MM-DD'));
-    if (date && weekDates.length > 0) {
-      const dateIndex = weekDates.indexOf(date);
-      console.log('date:', date);
+    if (selectedDate && weekDates.length > 0) {
+      const dateIndex = weekDates.indexOf(selectedDate);
+      console.log('selectedDate:', selectedDate);
       console.log('weekDates:', weekDates);
       console.log('dateIndex:', dateIndex);
       if (dateIndex === -1) {
-        const newStartDate = moment(date).startOf('week');
+        const newStartDate = moment(selectedDate).startOf('week');
         console.log(
           'Setting new start date:',
           newStartDate.format('YYYY-MM-DD'),
@@ -228,7 +243,7 @@ const CrewScreen: React.FC = () => {
       }
       scrollToDate(dateIndex);
     }
-  }, [date, weekDates, startDate]);
+  }, [selectedDate, weekDates, startDate]);
 
   useEffect(() => {
     if (scrollViewRef.current) {
@@ -260,6 +275,29 @@ const CrewScreen: React.FC = () => {
         animated: true,
       });
     }, 100);
+  };
+
+  const getMarkedDates = () => {
+    const markedDates: {
+      [date: string]: { marked?: boolean; selected?: boolean };
+    } = {};
+
+    // Mark dates where at least one person is up for it
+    Object.entries(statusesForWeek).forEach(([date, statuses]) => {
+      if (Object.values(statuses).some((status) => status)) {
+        markedDates[date] = { marked: true };
+      }
+    });
+
+    // Mark the selected date if there is one
+    if (selectedDate) {
+      markedDates[selectedDate] = {
+        ...markedDates[selectedDate],
+        selected: true,
+      };
+    }
+
+    return markedDates;
   };
 
   const getCrewActivity = () =>
@@ -373,15 +411,18 @@ const CrewScreen: React.FC = () => {
   };
 
   // Show/hide the "Prev 7 Days" button if moving earlier would go before today
-  const canGoPrevWeek = startDate.isAfter(moment().startOf('day'), 'day');
+  const canGoPrevWeek =
+    startDate.isAfter(moment().startOf('day'), 'day') && scrolledToStart;
 
   // Move forward/back
   const goNextWeek = () => {
+    setSelectedDate(null);
     setStartDate((prev) => moment(prev).add(7, 'days'));
   };
   const goPrevWeek = () => {
     // Only allow if we won't cross "today"
     if (!canGoPrevWeek) return;
+    setSelectedDate(null);
     setStartDate((prev) => moment(prev).subtract(7, 'days'));
   };
 
@@ -396,13 +437,23 @@ const CrewScreen: React.FC = () => {
     const nearEndThreshold = 20;
     const isNearEnd = x + visibleWidth >= totalWidth - nearEndThreshold;
 
+    const isNearStart = x <= nearEndThreshold;
+
     setScrolledToEnd(isNearEnd);
+    setScrolledToStart(isNearStart);
   };
 
   // Only render Next 7 Days if user has scrolled to the end
   const showNextWeekButton = scrolledToEnd;
 
-  // Update header
+  // When user presses a day in the month calendar
+  const handleCalendarDayPress = (dayObj: { dateString: string }) => {
+    setCalendarVisible(false);
+    const chosenDate = dayObj.dateString;
+    setSelectedDate(chosenDate);
+  };
+
+  // Custom header with gear icon
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
@@ -432,24 +483,60 @@ const CrewScreen: React.FC = () => {
 
   return (
     <View style={globalStyles.containerWithHeader}>
+      {/* Calendar as a Modal Overlay */}
+      <Modal
+        visible={calendarVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCalendarVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          {/* A background that closes modal when tapped */}
+          <TouchableOpacity
+            style={styles.modalBackground}
+            activeOpacity={1}
+            onPress={() => setCalendarVisible(false)}
+          />
+          {/* The calendar card itself */}
+          <View style={styles.modalContent}>
+            <Calendar
+              current={startDate.format('YYYY-MM-DD')}
+              onDayPress={handleCalendarDayPress}
+              minDate={moment().format('YYYY-MM-DD')}
+              markedDates={getMarkedDates()}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Header with prev arrow, title, next arrow */}
       <View style={styles.navButtonsContainer}>
         <TouchableOpacity
           onPress={goPrevWeek}
-          accessibilityLabel="Previous Date"
-          accessibilityHint="Select the previous date"
           disabled={!canGoPrevWeek}
           style={!canGoPrevWeek ? { opacity: 0 } : {}}
         >
           <Ionicons name="arrow-back" size={24} color="#1e90ff" />
         </TouchableOpacity>
-        <Text style={styles.weekTitle}>
-          {moment(startDate).format('MMM Do')} →{' '}
-          {moment(startDate).add(6, 'days').format('MMM Do')}
-        </Text>
+
+        <TouchableOpacity
+          style={styles.weekTitleContainer}
+          onPress={() => setCalendarVisible(true)}
+        >
+          <Text style={styles.weekTitle}>
+            {moment(startDate).format('MMM Do')} →{' '}
+            {moment(startDate).add(6, 'days').format('MMM Do')}
+          </Text>
+          <Ionicons
+            name="calendar-outline"
+            size={24}
+            color="#1e90ff"
+            style={styles.calendarIcon}
+          />
+        </TouchableOpacity>
+
         <TouchableOpacity
           onPress={goNextWeek}
-          accessibilityLabel="Next Date"
-          accessibilityHint="Select the next date"
           disabled={!showNextWeekButton}
           style={!showNextWeekButton ? { opacity: 0 } : {}}
         >
@@ -457,6 +544,7 @@ const CrewScreen: React.FC = () => {
         </TouchableOpacity>
       </View>
 
+      {/* Horizontal scroll of the 7 days */}
       <ScrollView
         ref={scrollViewRef}
         horizontal
@@ -473,10 +561,8 @@ const CrewScreen: React.FC = () => {
 
           return (
             <View key={day} style={styles.dayContainer}>
-              {/* Day label */}
               <Text style={styles.dayHeader}>{getFormattedDate(day)}</Text>
 
-              {/* Toggle for the current user */}
               <CustomButton
                 title={userIsUp ? "You're in" : 'Count me in'}
                 variant={userIsUp ? 'secondary' : 'primary'}
@@ -487,7 +573,6 @@ const CrewScreen: React.FC = () => {
                 }}
               />
 
-              {/* If user is in, we show who else is in */}
               {userIsUp ? (
                 <>
                   <Text style={styles.countText}>
@@ -499,7 +584,7 @@ const CrewScreen: React.FC = () => {
                       currentUserId={user?.uid || ''}
                       emptyMessage="No one's up yet"
                       onMemberPress={navigateToUserProfile}
-                      scrollEnabled={true}
+                      scrollEnabled
                     />
                   </View>
 
@@ -554,11 +639,18 @@ const styles = StyleSheet.create({
   navButtonsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  weekTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   weekTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 8,
+  },
+  calendarIcon: {
+    marginLeft: 8,
   },
   weekScrollContainer: {
     paddingVertical: 10,
@@ -604,5 +696,23 @@ const styles = StyleSheet.create({
   memberListContainer: {
     flex: 1,
     marginVertical: 8,
+  },
+
+  // -- MODAL OVERLAY STYLES --
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    // The child can be pressed, so we also have a background for closing the modal
+  },
+  modalBackground: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)', // dark overlay
+  },
+  modalContent: {
+    width: '90%',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 16,
   },
 });
