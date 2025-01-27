@@ -1,12 +1,6 @@
 // screens/CrewScreen.tsx
 
-import React, {
-  useState,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useCallback,
-} from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   View,
   TouchableOpacity,
@@ -23,7 +17,6 @@ import {
   RouteProp,
   useNavigation,
   NavigationProp,
-  useFocusEffect,
   useIsFocused,
 } from '@react-navigation/native';
 import { doc, getDoc, collection, onSnapshot } from 'firebase/firestore';
