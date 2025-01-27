@@ -44,6 +44,14 @@ service cloud.firestore {
           allow create, update, delete: if isCrewMember(crewId) && request.auth.uid == userId;
         }
       }
+
+      // Subcollection: events
+      match /events/{eventId} {
+        // Temporary rule to allow all authenticated users to read all events
+        allow read: if request.auth != null;
+        
+        // Allow create, update, delete if the user is a crew member
+        allow create, update, delete: if isCrewMember(crewId);
     }
     
     // Invitations Collection

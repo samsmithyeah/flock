@@ -37,6 +37,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Calendar } from 'react-native-calendars';
 import WeekNavButtons from '@/components/WeekNavButtons';
 import DayContainer from '@/components/DayContainer';
+import AddEventModal from '@/components/AddEventModal';
+import { addEventToCrew } from '@/utils/addEventToCrew';
 
 type CrewScreenRouteProp = RouteProp<NavParamList, 'Crew'>;
 
@@ -71,6 +73,8 @@ const CrewScreen: React.FC = () => {
   const scrollViewRef = useRef<ScrollView>(null);
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [addEventVisible, setAddEventVisible] = useState(false);
+  const [isAddingEvent, setIsAddingEvent] = useState(false);
 
   useEffect(() => {
     if (!isFocused) {
@@ -300,6 +304,40 @@ const CrewScreen: React.FC = () => {
     );
   };
 
+  const handleAddEventToCrew = async (
+    title: string,
+    start: string,
+    end: string,
+  ) => {
+    if (!crewId || !user?.uid) {
+      return;
+    }
+    try {
+      setIsAddingEvent(true);
+      await addEventToCrew(
+        crewId,
+        { title, startDate: start, endDate: end },
+        user.uid,
+      );
+      Toast.show({
+        type: 'success',
+        text1: 'Event Added',
+        text2: 'Event added to crew calendar.',
+      });
+      setAddEventVisible(false);
+      setIsAddingEvent(false);
+    } catch (error) {
+      console.error('Error adding event:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to add event.',
+      });
+      setAddEventVisible(false);
+      setIsAddingEvent(false);
+    }
+  };
+
   // Poke crew
   const handlePokeCrew = async (day: string) => {
     if (!crewId || !day || !user?.uid) {
@@ -362,6 +400,10 @@ const CrewScreen: React.FC = () => {
     } else {
       navigation.navigate('OtherUserProfile', { userId: selectedUser.uid });
     }
+  };
+
+  const handleAddEvent = () => {
+    setAddEventVisible(true);
   };
 
   // Next & previous weeks
@@ -452,7 +494,17 @@ const CrewScreen: React.FC = () => {
         </View>
       </Modal>
 
-      {/* -- Extracted into WeekNavButtons -- */}
+      <AddEventModal
+        isVisible={addEventVisible}
+        onClose={() => setAddEventVisible(false)}
+        onSubmit={(title, start, end) => {
+          console.log('Adding event:', title, start, end);
+          setAddEventVisible(false);
+          handleAddEventToCrew(title, start, end);
+        }}
+        loading={isAddingEvent}
+      />
+
       <WeekNavButtons
         onPrevWeek={goPrevWeek}
         onNextWeek={goNextWeek}
@@ -494,6 +546,7 @@ const CrewScreen: React.FC = () => {
                 navigateToDayChat={navigateToDayChat}
                 handlePokeCrew={handlePokeCrew}
                 navigateToUserProfile={navigateToUserProfile}
+                onAddEvent={handleAddEvent}
               />
             </View>
           );
