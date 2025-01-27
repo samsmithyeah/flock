@@ -249,7 +249,7 @@ const CrewScreen: React.FC = () => {
     }
   }, [selectedDate, weekDates, startDate]);
 
-  const scrollToDate = (dateIndex: number) => {
+  const scrollToDate = (dateIndex: number, animated: boolean = true) => {
     setTimeout(() => {
       if (!scrollViewRef.current) {
         console.log('No scrollViewRef, returning');
@@ -260,7 +260,7 @@ const CrewScreen: React.FC = () => {
         return;
       }
       const scrollAmount = dateIndex * TOTAL_CARD_WIDTH;
-      scrollViewRef.current.scrollTo({ x: scrollAmount, animated: true });
+      scrollViewRef.current.scrollTo({ x: scrollAmount, animated });
     }, 150);
   };
 
@@ -377,11 +377,13 @@ const CrewScreen: React.FC = () => {
   const goNextWeek = () => {
     setSelectedDate(null);
     setStartDate((prev) => moment(prev).add(7, 'days'));
+    scrollToDate(0, false);
   };
   const goPrevWeek = () => {
     if (!canGoPrevWeek) return;
     setSelectedDate(null);
     setStartDate((prev) => moment(prev).subtract(7, 'days'));
+    scrollToDate(6, false);
   };
 
   // Scroll tracking
@@ -474,6 +476,9 @@ const CrewScreen: React.FC = () => {
         contentContainerStyle={styles.weekScrollContainer}
         onScroll={handleScroll}
         scrollEventThrottle={16}
+        snapToInterval={TOTAL_CARD_WIDTH}
+        snapToAlignment="start"
+        decelerationRate="fast"
       >
         {weekDates.map((day) => {
           const userIsUp = isUserUpForDay(day);
@@ -484,9 +489,8 @@ const CrewScreen: React.FC = () => {
           const totalMembers = members.length;
 
           return (
-            <View style={styles.dayContainer}>
+            <View key={day} style={styles.dayContainer}>
               <DayContainer
-                key={day}
                 day={day}
                 userIsUp={userIsUp}
                 upForItMembers={upForItMembers}
