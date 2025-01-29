@@ -594,6 +594,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
       const unsubscribe = onSnapshot(
         msgQuery,
         async (querySnapshot) => {
+          if (!user?.uid) return;
           try {
             const fetchedMessages: Message[] = await Promise.all(
               querySnapshot.docs.map(async (docSnap) => {
