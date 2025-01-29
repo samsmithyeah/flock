@@ -1,10 +1,7 @@
 // components/GoogleLoginButton.tsx
 
 import React, { useState } from 'react';
-import {
-  GoogleSignin,
-  SignInResponse,
-} from '@react-native-google-signin/google-signin';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { auth, db } from '@/firebase';
 import {
   addUserToFirestore,
@@ -20,7 +17,6 @@ import { User } from '@/types/User';
 import { doc, getDoc } from 'firebase/firestore';
 import { useUser } from '@/context/UserContext';
 
-// Call configure once in your app, typically early in startup
 GoogleSignin.configure({
   webClientId:
     '814136772684-8bgo4g20f9q1p4g532kvqhj7lt497v7e.apps.googleusercontent.com',
@@ -38,7 +34,6 @@ const GoogleLoginButton: React.FC = () => {
     try {
       await GoogleSignin.hasPlayServices();
       const userInfo = await GoogleSignin.signIn();
-      console.log('userInfo:', userInfo);
       if (userInfo.data?.idToken) {
         const credential = GoogleAuthProvider.credential(userInfo.data.idToken);
         const userCredential = await signInWithCredential(auth, credential);
