@@ -1,7 +1,10 @@
 // components/GoogleLoginButton.tsx
 
-import React, { useEffect, useState } from 'react';
-import * as Google from 'expo-auth-session/providers/google';
+import React, { useState } from 'react';
+import {
+  GoogleSignin,
+  SignInResponse,
+} from '@react-native-google-signin/google-signin';
 import { auth, db } from '@/firebase';
 import {
   addUserToFirestore,
@@ -17,95 +20,86 @@ import { User } from '@/types/User';
 import { doc, getDoc } from 'firebase/firestore';
 import { useUser } from '@/context/UserContext';
 
+// Call configure once in your app, typically early in startup
+GoogleSignin.configure({
+  webClientId:
+    '814136772684-8bgo4g20f9q1p4g532kvqhj7lt497v7e.apps.googleusercontent.com',
+  offlineAccess: true,
+});
+
 const GoogleLoginButton: React.FC = () => {
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState(false);
   const { setUser } = useUser();
-
-  // Configure Google Auth request
-  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-    clientId:
-      '814136772684-024bdeavoudavtj3qosdj9b7o8unsium.apps.googleusercontent.com',
-  });
-
   const navigation = useNavigation<NativeStackNavigationProp<NavParamList>>();
 
-  useEffect(() => {
-    const handleSignIn = async () => {
-      if (response?.type === 'success') {
-        setLoading(true);
-        const { id_token } = response.params;
-        const credential = GoogleAuthProvider.credential(id_token);
-        try {
-          const userCredential = await signInWithCredential(auth, credential);
-          const firebaseUser = userCredential.user;
+  const handleGoogleSignIn = async () => {
+    console.log('Google Sign In');
+    setLoading(true);
+    try {
+      await GoogleSignin.hasPlayServices();
+      const userInfo = await GoogleSignin.signIn();
+      console.log('userInfo:', userInfo);
+      if (userInfo.data?.idToken) {
+        const credential = GoogleAuthProvider.credential(userInfo.data.idToken);
+        const userCredential = await signInWithCredential(auth, credential);
+        const firebaseUser = userCredential.user;
 
-          // Fetch user data from Firestore
-          const userDocRef = doc(db, 'users', firebaseUser.uid);
-          const userDoc = await getDoc(userDocRef);
+        const userDocRef = doc(db, 'users', firebaseUser.uid);
+        const userDoc = await getDoc(userDocRef);
 
-          if (userDoc.exists()) {
-            const userData = userDoc.data() as User;
+        if (userDoc.exists()) {
+          const userData = userDoc.data() as User;
+          await registerForPushNotificationsAsync(userData);
 
-            await registerForPushNotificationsAsync(userData);
-
-            if (!userData.phoneNumber) {
-              // Redirect to PhoneVerificationScreen
-              navigation.replace('PhoneVerification', {
-                uid: firebaseUser.uid,
-              });
-            } else {
-              // User already has a verified phone number
-              setUser(userData);
-            }
-          } else {
-            // User document does not exist, create one
-            const firestoreUser: User = {
+          if (!userData.phoneNumber) {
+            navigation.replace('PhoneVerification', {
               uid: firebaseUser.uid,
-              email: firebaseUser.email || '',
-              displayName: firebaseUser.displayName || '',
-              firstName: firebaseUser.displayName?.split(' ')[0] || '',
-              lastName: firebaseUser.displayName?.split(' ')[1] || '',
-              photoURL: firebaseUser.photoURL || '',
-              badgeCount: 0,
-              // phoneNumber is optional and not set here
-            };
-            await addUserToFirestore(firestoreUser);
-            await registerForPushNotificationsAsync(firestoreUser);
-            Toast.show({
-              type: 'success',
-              text1: 'Success',
-              text2: 'Account created and logged in successfully!',
             });
-            // Redirect to PhoneVerificationScreen
-            navigation.replace('PhoneVerification', { uid: firebaseUser.uid });
+          } else {
+            setUser(userData);
           }
-        } catch (error: unknown) {
-          console.error('Login Error:', error);
-          if (error instanceof Error) {
-            Toast.show({
-              type: 'error',
-              text1: 'Error',
-              text2: `Could not sign in with Google: ${error.message}`,
-            });
-          }
-        } finally {
-          setLoading(false);
+        } else {
+          const firestoreUser: User = {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email || '',
+            displayName: firebaseUser.displayName || '',
+            firstName: firebaseUser.displayName?.split(' ')[0] || '',
+            lastName: firebaseUser.displayName?.split(' ')[1] || '',
+            photoURL: firebaseUser.photoURL || '',
+            badgeCount: 0,
+          };
+          await addUserToFirestore(firestoreUser);
+          await registerForPushNotificationsAsync(firestoreUser);
+
+          Toast.show({
+            type: 'success',
+            text1: 'Success',
+            text2: 'Account created and logged in successfully!',
+          });
+          navigation.replace('PhoneVerification', {
+            uid: firebaseUser.uid,
+          });
         }
       }
-    };
-
-    handleSignIn();
-  }, [response, navigation, setUser]);
-
-  const handleGoogleSignIn = async () => {
-    promptAsync();
+    } catch (error) {
+      console.error('Login Error:', error);
+      if (error instanceof Error) {
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: `Could not sign in with Google: ${error.message}`,
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <CustomButton
       title="Login with Google"
       onPress={handleGoogleSignIn}
-      variant="danger" // Assuming 'danger' is styled for Google
+      variant="danger"
       accessibilityLabel="Login with Google"
       accessibilityHint="Authenticate using your Google account"
       icon={{
@@ -113,8 +107,8 @@ const GoogleLoginButton: React.FC = () => {
         size: 24,
         color: '#fff',
       }}
-      loading={loading} // Show loading indicator when signing in
-      disabled={!request || loading}
+      loading={loading}
+      disabled={loading}
     />
   );
 };
