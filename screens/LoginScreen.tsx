@@ -5,9 +5,10 @@ import {
   StyleSheet,
   View,
   Text,
+  TouchableOpacity,
+  Dimensions,
   TouchableWithoutFeedback,
   Keyboard,
-  TouchableOpacity,
 } from 'react-native';
 import { auth, db } from '@/firebase';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -28,6 +29,10 @@ import { registerForPushNotificationsAsync } from '@/utils/AddUserToFirestore';
 type LoginScreenProps = NativeStackScreenProps<NavParamList, 'Login'>;
 
 WebBrowser.maybeCompleteAuthSession();
+
+const { height } = Dimensions.get('window');
+const BASE_HEIGHT = 852;
+const vs = (size: number) => (height / BASE_HEIGHT) * size;
 
 const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const [email, setEmail] = useState<string>('');
@@ -188,38 +193,38 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.flock,
-    paddingTop: 60,
+    paddingTop: vs(60),
   },
   logoContainer: {
-    marginTop: 10,
+    marginTop: vs(10),
     alignItems: 'center',
   },
   logo: {
-    width: 200,
-    height: 200,
+    width: vs(200),
+    height: vs(200),
   },
   formContainer: {
     backgroundColor: 'rgba(255, 255, 255, 0.9)',
     borderRadius: 15,
-    padding: 20,
+    padding: vs(20),
     marginHorizontal: 20,
-    marginTop: 30,
+    marginTop: vs(30),
   },
   forgotPasswordContainer: {
-    alignItems: 'flex-end',
-    marginBottom: 15,
+    marginBottom: vs(15),
     paddingRight: 10,
+    alignItems: 'flex-end',
   },
   forgotPasswordText: {
     color: '#ff6b6b',
     fontSize: 14,
     fontWeight: '500',
-    marginTop: -7,
+    marginTop: vs(-7),
   },
   separatorContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 20,
+    marginVertical: vs(20),
   },
   separatorLine: {
     flex: 1,
@@ -234,7 +239,7 @@ const styles = StyleSheet.create({
   signupContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 20,
+    marginTop: vs(20),
   },
   signupText: {
     color: '#333',
@@ -247,7 +252,7 @@ const styles = StyleSheet.create({
   },
   error: {
     color: '#ff6b6b',
-    marginBottom: 12,
+    marginBottom: vs(12),
     textAlign: 'center',
   },
 });
