@@ -47,11 +47,19 @@ service cloud.firestore {
 
       // Subcollection: events
       match /events/{eventId} {
-        // Temporary rule to allow all authenticated users to read all events
         allow read: if request.auth != null;
         
-        // Allow create, update, delete if the user is a crew member
-        allow create, update, delete: if isCrewMember(crewId);
+        // Allow create if the user is a crew member
+        allow create: if isCrewMember(crewId);
+        
+        // Allow update if the user is the event creator or the crew owner
+        allow update: if request.auth != null
+                      && (request.auth.uid == resource.data.createdBy || isCrewOwner(crewId));
+        
+        // Allow delete if the user is the event creator or the crew owner
+        allow delete: if request.auth != null
+                      && (request.auth.uid == resource.data.createdBy || isCrewOwner(crewId));
+      }
     }
     
     // Invitations Collection

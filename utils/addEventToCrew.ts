@@ -1,10 +1,12 @@
+// utils/addEventToCrew.ts
+
 import { collection, addDoc, Timestamp } from 'firebase/firestore';
 import { db } from '@/firebase';
 
 export type NewCrewEvent = {
   title: string;
-  startDate: string; // or Firestore.Timestamp
-  endDate: string; // or Firestore.Timestamp
+  startDate: string;
+  endDate: string;
   description?: string;
 };
 

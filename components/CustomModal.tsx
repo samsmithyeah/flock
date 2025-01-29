@@ -27,6 +27,7 @@ type CustomModalProps = {
   children?: ReactNode;
   buttons: ButtonProps[];
   loading?: boolean;
+  animationType?: 'none' | 'slide' | 'fade';
 };
 
 const CustomModal: React.FC<CustomModalProps> = ({
@@ -36,9 +37,10 @@ const CustomModal: React.FC<CustomModalProps> = ({
   children,
   buttons,
   loading = false,
+  animationType = 'fade',
 }) => {
   return (
-    <Modal visible={isVisible} animationType="fade" transparent>
+    <Modal visible={isVisible} animationType={animationType} transparent>
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>

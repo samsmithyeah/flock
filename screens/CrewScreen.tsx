@@ -19,7 +19,15 @@ import {
   NavigationProp,
   useIsFocused,
 } from '@react-navigation/native';
-import { doc, getDoc, collection, onSnapshot } from 'firebase/firestore';
+import {
+  doc,
+  getDoc,
+  collection,
+  onSnapshot,
+  query,
+  orderBy,
+  Timestamp,
+} from 'firebase/firestore';
 import moment, { Moment } from 'moment';
 import { db, pokeCrew } from '@/firebase';
 import { useUser } from '@/context/UserContext';
@@ -41,6 +49,16 @@ import AddEventModal from '@/components/AddEventModal';
 import { addEventToCrew } from '@/utils/addEventToCrew';
 
 type CrewScreenRouteProp = RouteProp<NavParamList, 'Crew'>;
+
+type CrewEvent = {
+  id: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  description?: string;
+  createdBy: string;
+  createdAt: Timestamp;
+};
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.75;
@@ -75,6 +93,10 @@ const CrewScreen: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [addEventVisible, setAddEventVisible] = useState(false);
   const [isAddingEvent, setIsAddingEvent] = useState(false);
+
+  const [eventsForWeek, setEventsForWeek] = useState<{
+    [day: string]: CrewEvent[];
+  }>({});
 
   useEffect(() => {
     if (!isFocused) {
@@ -177,6 +199,59 @@ const CrewScreen: React.FC = () => {
 
     fetchMembers();
   }, [crew]);
+
+  useEffect(() => {
+    if (!crewId || !weekDates.length) return;
+
+    const eventsRef = collection(db, 'crews', crewId, 'events');
+    const q = query(eventsRef, orderBy('startDate')); // Could add filters if needed
+
+    const unsub = onSnapshot(
+      q,
+      (snapshot) => {
+        const allEvents = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data() as Omit<CrewEvent, 'id'>;
+          return { ...data, id: docSnap.id };
+        });
+
+        // Group events by each day in the current week
+        const groupedByDay: { [day: string]: CrewEvent[] } = {};
+        weekDates.forEach((day) => {
+          groupedByDay[day] = [];
+        });
+
+        // Helper to check if a day is within the event’s start/end
+        const isDayWithinEvent = (day: string, event: CrewEvent) => {
+          const d = moment(day, 'YYYY-MM-DD');
+          const start = moment(event.startDate, 'YYYY-MM-DD');
+          const end = moment(event.endDate, 'YYYY-MM-DD');
+          // Include start/end themselves => pass '[]' as the last arg
+          return d.isBetween(start, end, 'day', '[]');
+        };
+
+        for (const event of allEvents) {
+          // For each day in this week, push events that span/include that day
+          for (const day of weekDates) {
+            if (isDayWithinEvent(day, event)) {
+              groupedByDay[day].push(event);
+            }
+          }
+        }
+
+        setEventsForWeek(groupedByDay);
+      },
+      (error) => {
+        console.error('Error fetching events:', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Could not fetch events.',
+        });
+      },
+    );
+
+    return () => unsub();
+  }, [crewId, weekDates]);
 
   // Firestore listeners for each day in "weekDates"
   useEffect(() => {
@@ -322,10 +397,8 @@ const CrewScreen: React.FC = () => {
       Toast.show({
         type: 'success',
         text1: 'Event Added',
-        text2: 'Event added to crew calendar.',
+        text2: 'Event successfully added.',
       });
-      setAddEventVisible(false);
-      setIsAddingEvent(false);
     } catch (error) {
       console.error('Error adding event:', error);
       Toast.show({
@@ -333,9 +406,9 @@ const CrewScreen: React.FC = () => {
         text1: 'Error',
         text2: 'Failed to add event.',
       });
-      setAddEventVisible(false);
-      setIsAddingEvent(false);
     }
+    setAddEventVisible(false);
+    setIsAddingEvent(false);
   };
 
   // Poke crew
@@ -498,8 +571,6 @@ const CrewScreen: React.FC = () => {
         isVisible={addEventVisible}
         onClose={() => setAddEventVisible(false)}
         onSubmit={(title, start, end) => {
-          console.log('Adding event:', title, start, end);
-          setAddEventVisible(false);
           handleAddEventToCrew(title, start, end);
         }}
         loading={isAddingEvent}
@@ -532,6 +603,7 @@ const CrewScreen: React.FC = () => {
           );
           const totalUp = upForItMembers.length;
           const totalMembers = members.length;
+          const dayEvents = eventsForWeek[day] || [];
 
           return (
             <View key={day} style={styles.dayContainer}>
@@ -547,6 +619,7 @@ const CrewScreen: React.FC = () => {
                 handlePokeCrew={handlePokeCrew}
                 navigateToUserProfile={navigateToUserProfile}
                 onAddEvent={handleAddEvent}
+                events={dayEvents}
               />
             </View>
           );
