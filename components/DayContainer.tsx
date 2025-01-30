@@ -100,30 +100,43 @@ const DayContainer: React.FC<DayContainerProps> = ({
         >
           {events.map((evt) => {
             const pillColor = getEventColor(evt.id);
+
+            // If it's unconfirmed, we’ll reduce opacity and show an icon
+            const eventPillStyles = [
+              styles.eventPill,
+              { backgroundColor: pillColor },
+              evt.unconfirmed && {
+                opacity: 0.5,
+                borderWidth: 1,
+                borderStyle: 'dashed' as const,
+                borderColor: '#fff',
+              },
+            ];
+
             return (
-              <View
-                key={evt.id}
-                style={[styles.eventPill, { backgroundColor: pillColor }]}
-              >
-                {isEventCreator(evt) ? (
-                  <TouchableOpacity
-                    style={styles.eventRow}
-                    onPress={() => onEditEvent?.(day, evt)}
-                  >
-                    <Text style={styles.eventPillText}>{evt.title}</Text>
-                    <View style={{ flex: 1 }} />
+              <View key={evt.id} style={eventPillStyles}>
+                <TouchableOpacity
+                  style={styles.eventRow}
+                  onPress={() => isEventCreator(evt) && onEditEvent?.(day, evt)}
+                  disabled={!isEventCreator(evt)}
+                >
+                  <Text style={styles.eventPillText}>{evt.title}</Text>
+
+                  <View style={{ flex: 1 }} />
+                  {evt.unconfirmed && (
+                    <Text style={styles.unconfirmedText}>unconfirmed</Text>
+                  )}
+
+                  {/* Editing icon if user is the event creator */}
+                  {isEventCreator(evt) && (
                     <Ionicons
                       name="create-outline"
                       size={16}
                       color="#fff"
                       style={styles.editIcon}
                     />
-                  </TouchableOpacity>
-                ) : (
-                  <View style={styles.eventRow}>
-                    <Text style={styles.eventPillText}>{evt.title}</Text>
-                  </View>
-                )}
+                  )}
+                </TouchableOpacity>
               </View>
             );
           })}
@@ -141,10 +154,7 @@ const DayContainer: React.FC<DayContainerProps> = ({
           title={userIsUp ? "You're in" : 'Count me in'}
           variant={userIsUp ? 'secondary' : 'primary'}
           onPress={() => toggleDayStatus(day)}
-          icon={{
-            name: userIsUp ? 'star' : 'star-outline',
-            size: 18,
-          }}
+          icon={{ name: userIsUp ? 'star' : 'star-outline', size: 18 }}
         />
 
         {!userIsUp && (
@@ -242,6 +252,12 @@ const styles = StyleSheet.create({
   },
   editIcon: {
     marginLeft: 6,
+  },
+  unconfirmedText: {
+    fontSize: 12,
+    color: '#fff',
+    marginLeft: 8,
+    fontStyle: 'italic',
   },
   eventPillText: {
     color: '#fff',

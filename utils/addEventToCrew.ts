@@ -15,6 +15,7 @@ export type NewCrewEvent = {
   startDate: string;
   endDate: string;
   description?: string;
+  unconfirmed?: boolean;
 };
 
 export async function addEventToCrew(
@@ -34,7 +35,12 @@ export async function updateEventInCrew(
   crewId: string,
   eventId: string,
   userId: string,
-  updates: { title: string; startDate: string; endDate: string },
+  updates: {
+    title: string;
+    startDate: string;
+    endDate: string;
+    unconfirmed?: boolean;
+  },
 ) {
   const eventRef = doc(db, 'crews', crewId, 'events', eventId);
   await updateDoc(eventRef, {

@@ -1,3 +1,5 @@
+// types/CrewEvent.ts
+
 import { Timestamp } from 'firebase/firestore';
 
 export type CrewEvent = {
@@ -9,4 +11,5 @@ export type CrewEvent = {
   createdBy: string;
   createdAt: Timestamp;
   updatedBy?: string;
+  unconfirmed?: boolean;
 };

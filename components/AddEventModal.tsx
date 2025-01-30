@@ -1,7 +1,15 @@
-// AddEventModal.tsx
+// /components/AddEventModal.tsx
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Modal,
+  // Add this:
+  Switch,
+} from 'react-native';
 import moment from 'moment';
 import { Calendar } from 'react-native-calendars';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -13,13 +21,19 @@ import { getFormattedDate } from '@/utils/dateHelpers';
 type AddEventModalProps = {
   isVisible: boolean;
   onClose: () => void;
-  onSubmit: (title: string, start: string, end: string) => void;
+  onSubmit: (
+    title: string,
+    start: string,
+    end: string,
+    unconfirmed: boolean,
+  ) => void;
   onDelete?: () => void;
   defaultStart?: string;
   defaultEnd?: string;
   defaultTitle?: string;
   isEditing?: boolean;
   loading?: boolean;
+  defaultUnconfirmed?: boolean;
 };
 
 const AddEventModal: React.FC<AddEventModalProps> = ({
@@ -32,40 +46,35 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
   defaultTitle = '',
   isEditing = false,
   loading = false,
+  defaultUnconfirmed = false,
 }) => {
   const initialDate = defaultStart || moment().format('YYYY-MM-DD');
   const initialEndDate = defaultEnd || initialDate;
 
   const [title, setTitle] = useState(defaultTitle);
   const [titleError, setTitleError] = useState(false);
-
-  const [selectedDates, setSelectedDates] = useState<{
-    start: string;
-    end: string;
-  }>({
+  const [selectedDates, setSelectedDates] = useState({
     start: initialDate,
     end: initialEndDate,
   });
-
-  // Temporary selection while the calendar is open
-  const [tempSelectedDates, setTempSelectedDates] = useState<{
-    start: string;
-    end: string;
-  }>({
+  const [tempSelectedDates, setTempSelectedDates] = useState({
     start: initialDate,
     end: initialEndDate,
   });
-
   const [isCalendarVisible, setIsCalendarVisible] = useState(false);
 
-  // Reset state whenever props change (e.g. new event defaults or editing a new event).
+  // New state for unconfirmed
+  const [isUnconfirmed, setIsUnconfirmed] = useState(defaultUnconfirmed);
+
+  // Reset state whenever props change
   useEffect(() => {
     setTitle(defaultTitle);
     setTitleError(false);
     setSelectedDates({ start: initialDate, end: initialEndDate });
     setTempSelectedDates({ start: initialDate, end: initialEndDate });
     setIsCalendarVisible(false);
-  }, [defaultTitle, defaultStart, defaultEnd]);
+    setIsUnconfirmed(defaultUnconfirmed);
+  }, [defaultTitle, defaultStart, defaultEnd, defaultUnconfirmed]);
 
   const handleSave = () => {
     if (!title.trim()) {
@@ -73,33 +82,26 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
       return;
     }
     setTitleError(false);
-    onSubmit(title, selectedDates.start, selectedDates.end);
+    onSubmit(title, selectedDates.start, selectedDates.end, isUnconfirmed);
   };
 
-  // Handle the Delete tap
   const handleDelete = () => {
-    if (onDelete) {
-      onDelete();
-    }
+    if (onDelete) onDelete();
     onClose();
   };
 
-  // Calendar logic
   const openCalendar = () => {
     setTempSelectedDates(selectedDates);
     setIsCalendarVisible(true);
   };
-
   const discardCalendar = () => {
     setTempSelectedDates(selectedDates);
     setIsCalendarVisible(false);
   };
-
   const saveCalendar = () => {
     setSelectedDates(tempSelectedDates);
     setIsCalendarVisible(false);
   };
-
   const handleDayPress = (day: { dateString: string }) => {
     const { start, end } = tempSelectedDates;
     if (!start || end) {
@@ -113,7 +115,6 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
       });
     }
   };
-
   const getMarkedDates = () => {
     const { start, end } = tempSelectedDates;
     const marked: Record<string, any> = {};
@@ -148,13 +149,10 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
     }
     return marked;
   };
-
   const handleClose = () => {
     onClose();
-    // Not strictly necessary to reset state here if we're re-running useEffect on props changes
   };
 
-  // Basic buttons: Cancel + Save/Add
   const buttons = [
     {
       label: 'Cancel',
@@ -236,7 +234,7 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
               setTitle(txt);
             }}
             autoCapitalize="sentences"
-            hasBorder={true}
+            hasBorder
           />
           {titleError && (
             <Text style={{ color: 'red', marginTop: 4 }}>
@@ -251,7 +249,6 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
                 <Text style={styles.dateText}>
                   {getFormattedDate(selectedDates.start, true)}
                 </Text>
-
                 <Text style={styles.dateText}>
                   {' '}
                   - {getFormattedDate(selectedDates.end, true)}
@@ -266,6 +263,17 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
             <TouchableOpacity style={styles.iconWrapper} onPress={openCalendar}>
               <Ionicons name="calendar-outline" size={20} color="#1e90ff" />
             </TouchableOpacity>
+          </View>
+
+          {/* New checkbox/toggle for "unconfirmed" */}
+          <View style={styles.switchContainer}>
+            <Text style={styles.label}>Is this event unconfirmed?</Text>
+            <Switch
+              onValueChange={setIsUnconfirmed}
+              value={isUnconfirmed}
+              trackColor={{ false: '#767577', true: '#81b0ff' }}
+              thumbColor={isUnconfirmed ? '#f5dd4b' : '#f4f3f4'}
+            />
           </View>
 
           {/* If editing, show delete button */}
@@ -308,6 +316,12 @@ const styles = StyleSheet.create({
   },
   iconWrapper: {
     marginLeft: 8,
+  },
+  switchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 10,
+    justifyContent: 'space-between',
   },
   modalOverlay: {
     flex: 1,

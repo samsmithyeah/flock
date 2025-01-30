@@ -1,3 +1,5 @@
+// screens/CrewScreen.tsx
+
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   View,
@@ -15,7 +17,6 @@ import {
   RouteProp,
   useNavigation,
   NavigationProp,
-  useIsFocused,
 } from '@react-navigation/native';
 import {
   doc,
@@ -66,7 +67,6 @@ const CrewScreen: React.FC = () => {
   const { addMemberToChat, removeMemberFromChat } = useCrewDateChat();
   const globalStyles = useglobalStyles();
   const insets = useSafeAreaInsets();
-  const isFocused = useIsFocused();
 
   const [crew, setCrew] = useState<Crew | null>(null);
   const [members, setMembers] = useState<User[]>([]);
@@ -394,7 +394,12 @@ const CrewScreen: React.FC = () => {
   };
 
   // Create/update event
-  const handleSaveEvent = async (title: string, start: string, end: string) => {
+  const handleSaveEvent = async (
+    title: string,
+    start: string,
+    end: string,
+    unconfirmed?: boolean,
+  ) => {
     if (!crewId || !user?.uid) return;
     setIsAddingEvent(true);
     try {
@@ -404,6 +409,7 @@ const CrewScreen: React.FC = () => {
           title,
           startDate: start,
           endDate: end,
+          unconfirmed,
         });
         Toast.show({
           type: 'success',
@@ -414,7 +420,7 @@ const CrewScreen: React.FC = () => {
         // Create new
         await addEventToCrew(
           crewId,
-          { title, startDate: start, endDate: end },
+          { title, startDate: start, endDate: end, unconfirmed },
           user.uid,
         );
         Toast.show({
@@ -617,6 +623,7 @@ const CrewScreen: React.FC = () => {
         defaultTitle={editingEvent?.title}
         defaultStart={editingEvent?.startDate || selectedDate || undefined}
         defaultEnd={editingEvent?.endDate || selectedDate || undefined}
+        defaultUnconfirmed={editingEvent?.unconfirmed}
         isEditing={!!editingEvent}
         onDelete={() => editingEvent?.id && handleDeleteEvent(editingEvent.id)}
       />
