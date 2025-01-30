@@ -129,7 +129,7 @@ const DayContainer: React.FC<DayContainerProps> = ({
           })}
           {onAddEvent && (
             <TouchableOpacity
-              style={[styles.eventPill, styles.addPill]}
+              style={[styles.addEventPill, styles.addPill]}
               onPress={() => onAddEvent(day)}
             >
               <Text style={styles.eventPillText}>+ add an event</Text>
@@ -220,6 +220,15 @@ const styles = StyleSheet.create({
   },
   eventPill: {
     width: '100%',
+    borderRadius: 6,
+    paddingVertical: 1,
+    paddingHorizontal: 10,
+    marginBottom: 2,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+  },
+  addEventPill: {
+    width: '50%',
     borderRadius: 6,
     paddingVertical: 1,
     paddingHorizontal: 10,
