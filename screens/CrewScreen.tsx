@@ -95,16 +95,12 @@ const CrewScreen: React.FC = () => {
   }>({});
 
   useEffect(() => {
-    if (!isFocused) {
-      setSelectedDate(null);
-    }
-  }, [isFocused]);
-
-  useEffect(() => {
-    if (date && !selectedDate) {
+    console.log('date:', date);
+    if (date) {
+      console.log('Setting selected date:', date);
       setSelectedDate(date);
     }
-  }, [date, selectedDate]);
+  }, [date]);
 
   useEffect(() => {
     const days: string[] = [];
