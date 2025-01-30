@@ -273,6 +273,7 @@ const ChatsListScreen: React.FC = () => {
   );
 
   const combineChats = useCallback(async () => {
+    if (!user) return;
     // Attempt immediate load from cache (for UI snappiness)
     const cachedCombined = loadCachedChatData();
     if (cachedCombined.length > 0 && !isFocused) {

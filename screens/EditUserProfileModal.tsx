@@ -17,6 +17,7 @@ import ProfilePicturePicker from '@/components/ProfilePicturePicker';
 import CustomButton from '@/components/CustomButton';
 import CustomTextInput from '@/components/CustomTextInput';
 import Toast from 'react-native-toast-message';
+import LoadingOverlay from '@/components/LoadingOverlay';
 
 const EditUserProfileModal: React.FC = () => {
   const { user, setUser, logout, isAdmin } = useUser();
@@ -27,6 +28,7 @@ const EditUserProfileModal: React.FC = () => {
   );
   const [photoURL, setPhotoURL] = useState<string>(user?.photoURL || '');
   const [saving, setSaving] = useState<boolean>(false);
+  const [deleting, setDeleting] = useState<boolean>(false);
 
   // NEW: Field for admin to delete other users
   const [adminTargetUserId, setAdminTargetUserId] = useState<string>('');
@@ -125,10 +127,13 @@ const EditUserProfileModal: React.FC = () => {
           style: 'destructive',
           onPress: async () => {
             try {
+              setDeleting(true);
               await deleteAccount();
+              setDeleting(false);
               await logout();
               Toast.show({ type: 'success', text1: 'Account deleted' });
             } catch (error) {
+              setDeleting(false);
               console.error('Error deleting account:', error);
               Toast.show({
                 type: 'error',
@@ -154,7 +159,7 @@ const EditUserProfileModal: React.FC = () => {
     }
 
     Alert.alert(
-      'Delete Another User',
+      'Delete another user',
       `Are you sure you want to delete the user with UID "${adminTargetUserId}"? This action cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -163,7 +168,9 @@ const EditUserProfileModal: React.FC = () => {
           style: 'destructive',
           onPress: async () => {
             try {
+              setSaving(true);
               await deleteAccount(adminTargetUserId); // admin usage
+              setSaving(false);
               Toast.show({
                 type: 'success',
                 text1: 'User Deleted',
@@ -171,6 +178,7 @@ const EditUserProfileModal: React.FC = () => {
               });
               setAdminTargetUserId('');
             } catch (error) {
+              setSaving(false);
               console.error('Error deleting other user account:', error);
               Toast.show({
                 type: 'error',
@@ -185,147 +193,153 @@ const EditUserProfileModal: React.FC = () => {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scrollContainer}
-        keyboardShouldPersistTaps="handled"
+    <>
+      {deleting && <LoadingOverlay text="Deleting account..." />}
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <ProfilePicturePicker
-          imageUrl={photoURL || null}
-          onImageUpdate={async (newUrl) => {
-            setPhotoURL(newUrl);
-            try {
-              const userRef = doc(db, 'users', user.uid);
-              await updateDoc(userRef, {
-                photoURL: newUrl,
-              });
-              console.log('photoURL updated successfully in Firestore', newUrl);
-            } catch (error) {
-              console.error('Error updating profile picture URL:', error);
-              Toast.show({
-                type: 'error',
-                text1: 'Error',
-                text2: 'Failed to update profile picture',
-              });
-            }
-          }}
-          editable={true}
-          storagePath={`users/${user.uid}/profile.jpg`}
-          size={150}
-        />
-
-        <View style={styles.formContainer}>
-          <CustomTextInput
-            value={firstName}
-            onChangeText={setFirstName}
-            placeholder="Enter your first name"
-            autoCapitalize="words"
-            returnKeyType="next"
-            hasBorder
-            labelText="First name"
-          />
-
-          <CustomTextInput
-            value={lastName}
-            onChangeText={setLastName}
-            placeholder="Enter your last name"
-            autoCapitalize="words"
-            returnKeyType="next"
-            hasBorder
-            labelText="Last name"
-          />
-
-          <CustomTextInput
-            value={displayName}
-            onChangeText={setDisplayName}
-            placeholder="Enter your display name"
-            autoCapitalize="words"
-            returnKeyType="done"
-            hasBorder
-            labelText="Display name"
-          />
-        </View>
-
-        <View style={styles.actionButtonsContainer}>
-          <CustomButton
-            title="Save"
-            onPress={handleSave}
-            loading={saving}
-            variant="primary"
-            icon={{
-              name: 'save-outline',
-              size: 24,
-              color: '#FFFFFF',
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
+          keyboardShouldPersistTaps="handled"
+        >
+          <ProfilePicturePicker
+            imageUrl={photoURL || null}
+            onImageUpdate={async (newUrl) => {
+              setPhotoURL(newUrl);
+              try {
+                const userRef = doc(db, 'users', user.uid);
+                await updateDoc(userRef, {
+                  photoURL: newUrl,
+                });
+                console.log(
+                  'photoURL updated successfully in Firestore',
+                  newUrl,
+                );
+              } catch (error) {
+                console.error('Error updating profile picture URL:', error);
+                Toast.show({
+                  type: 'error',
+                  text1: 'Error',
+                  text2: 'Failed to update profile picture',
+                });
+              }
             }}
-            disabled={
-              saving ||
-              !firstName.trim() ||
-              !lastName.trim() ||
-              !displayName.trim()
-            }
-            accessibilityLabel="Save Profile"
-            accessibilityHint="Save your updated profile information"
+            editable={true}
+            storagePath={`users/${user.uid}/profile.jpg`}
+            size={150}
           />
 
-          <CustomButton
-            title="Cancel"
-            onPress={handleCancel}
-            loading={saving}
-            variant="secondary"
-            icon={{
-              name: 'close-outline',
-              size: 24,
-            }}
-            accessibilityLabel="Cancel Editing"
-            accessibilityHint="Discard changes and close the edit screen"
-          />
-        </View>
-
-        {/* DELETE OWN ACCOUNT BUTTON */}
-        <View style={{ marginTop: 20, width: '100%' }}>
-          <CustomButton
-            title="Delete account"
-            onPress={handleDeleteOwnAccount}
-            loading={saving}
-            variant="danger"
-            icon={{
-              name: 'trash-outline',
-              size: 24,
-            }}
-            accessibilityLabel="Delete your account"
-            accessibilityHint="Permanently delete your account"
-          />
-        </View>
-
-        {/* ADMIN-ONLY: DELETE ANOTHER USER */}
-        {isAdmin && (
-          <View style={{ marginTop: 30, width: '100%' }}>
+          <View style={styles.formContainer}>
             <CustomTextInput
-              value={adminTargetUserId}
-              onChangeText={setAdminTargetUserId}
-              placeholder="Enter target user UID"
-              labelText="Delete Another User (Admin)"
+              value={firstName}
+              onChangeText={setFirstName}
+              placeholder="Enter your first name"
+              autoCapitalize="words"
+              returnKeyType="next"
               hasBorder
+              labelText="First name"
             />
+
+            <CustomTextInput
+              value={lastName}
+              onChangeText={setLastName}
+              placeholder="Enter your last name"
+              autoCapitalize="words"
+              returnKeyType="next"
+              hasBorder
+              labelText="Last name"
+            />
+
+            <CustomTextInput
+              value={displayName}
+              onChangeText={setDisplayName}
+              placeholder="Enter your display name"
+              autoCapitalize="words"
+              returnKeyType="done"
+              hasBorder
+              labelText="Display name"
+            />
+          </View>
+
+          <View style={styles.actionButtonsContainer}>
             <CustomButton
-              title="Delete Another User"
-              onPress={handleDeleteOtherUser}
+              title="Save"
+              onPress={handleSave}
+              loading={saving}
+              variant="primary"
+              icon={{
+                name: 'save-outline',
+                size: 24,
+                color: '#FFFFFF',
+              }}
+              disabled={
+                saving ||
+                !firstName.trim() ||
+                !lastName.trim() ||
+                !displayName.trim()
+              }
+              accessibilityLabel="Save Profile"
+              accessibilityHint="Save your updated profile information"
+            />
+
+            <CustomButton
+              title="Cancel"
+              onPress={handleCancel}
+              loading={saving}
+              variant="secondary"
+              icon={{
+                name: 'close-outline',
+                size: 24,
+              }}
+              accessibilityLabel="Cancel Editing"
+              accessibilityHint="Discard changes and close the edit screen"
+            />
+          </View>
+
+          {/* DELETE OWN ACCOUNT BUTTON */}
+          <View style={{ marginTop: 20, width: '100%' }}>
+            <CustomButton
+              title="Delete account"
+              onPress={handleDeleteOwnAccount}
               loading={saving}
               variant="danger"
               icon={{
-                name: 'person-remove-outline',
+                name: 'trash-outline',
                 size: 24,
               }}
-              accessibilityLabel="Delete another user's account"
-              accessibilityHint="Permanently delete the specified user"
+              accessibilityLabel="Delete your account"
+              accessibilityHint="Permanently delete your account"
             />
           </View>
-        )}
-      </ScrollView>
-    </KeyboardAvoidingView>
+
+          {/* ADMIN-ONLY: DELETE ANOTHER USER */}
+          {isAdmin && (
+            <View style={{ marginTop: 30, width: '100%' }}>
+              <CustomTextInput
+                value={adminTargetUserId}
+                onChangeText={setAdminTargetUserId}
+                placeholder="Enter target user UID"
+                labelText="Delete Another User (Admin)"
+                hasBorder
+              />
+              <CustomButton
+                title="Delete Another User"
+                onPress={handleDeleteOtherUser}
+                loading={saving}
+                variant="danger"
+                icon={{
+                  name: 'person-remove-outline',
+                  size: 24,
+                }}
+                accessibilityLabel="Delete another user's account"
+                accessibilityHint="Permanently delete the specified user"
+              />
+            </View>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </>
   );
 };
 
