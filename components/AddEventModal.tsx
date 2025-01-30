@@ -201,6 +201,7 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
               markedDates={getMarkedDates()}
               onDayPress={handleDayPress}
               markingType="period"
+              current={tempSelectedDates.start}
               theme={{
                 selectedDayBackgroundColor: '#5f9ea0',
                 selectedDayTextColor: '#ffffff',
