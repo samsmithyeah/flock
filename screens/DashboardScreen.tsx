@@ -35,6 +35,7 @@ const DashboardScreen: React.FC = () => {
     crewIds,
     dateCounts,
     dateMatches,
+    dateEvents, // <-- bring in dateEvents
     toggleStatusForDateAllCrews,
     loadingCrews,
     loadingStatuses,
@@ -46,30 +47,17 @@ const DashboardScreen: React.FC = () => {
   const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(false);
   const [isCreateModalVisible, setIsCreateModalVisible] =
     useState<boolean>(false);
-  const [today, setToday] = useState<string>(moment().format('YYYY-MM-DD'));
+  const [weekDates, setWeekDates] = useState<string[]>([]);
 
   const navigation = useNavigation<DashboardScreenNavigationProp>();
 
-  // Update "today" at midnight
   useEffect(() => {
-    const now = moment();
-    const midnight = moment().endOf('day').add(1, 'millisecond');
-    const timeoutMs = midnight.diff(now);
-
-    const timeoutId = setTimeout(() => {
-      setToday(moment().format('YYYY-MM-DD'));
-    }, timeoutMs);
-
-    return () => clearTimeout(timeoutId);
-  }, [today]);
-
-  const weekDates = useMemo(() => {
-    const dates: string[] = [];
+    const days: string[] = [];
     for (let i = 0; i < 7; i++) {
-      dates.push(moment(today).add(i, 'days').format('YYYY-MM-DD'));
+      days.push(moment().add(i, 'days').format('YYYY-MM-DD'));
     }
-    return dates;
-  }, [today]);
+    setWeekDates(days);
+  }, []);
 
   const isLoading = loadingCrews || loadingStatuses || isLoadingUsers;
 
@@ -89,8 +77,14 @@ const DashboardScreen: React.FC = () => {
     }
   };
 
+  // Opens MatchesList screen
   const handlePressMatches = (date: string) => {
     navigation.navigate('MatchesList', { date });
+  };
+
+  // NEW: Opens EventCrewsList screen for that date
+  const handlePressEvents = (date: string) => {
+    navigation.navigate('EventCrewsList', { date });
   };
 
   const openCreateCrewModal = () => {
@@ -118,6 +112,7 @@ const DashboardScreen: React.FC = () => {
   const renderDayItem = ({ item }: { item: string }) => {
     const count = dateCounts[item] || 0;
     const matches = dateMatches[item] || 0;
+    const events = dateEvents[item] || 0; // <-- get number of events for this date
     const total = crewIds.length;
     const isDisabled = moment(item).isBefore(moment(), 'day');
     const statusColor = getDotColor(count, total);
@@ -127,12 +122,14 @@ const DashboardScreen: React.FC = () => {
         date={item}
         count={count}
         matches={matches}
+        events={events}
         total={total}
         isDisabled={isDisabled}
         statusColor={statusColor}
         isLoading={loadingMatches}
         onToggle={handleToggle}
         onPressMatches={handlePressMatches}
+        onPressEvents={handlePressEvents} // <-- pass the new onPressEvents callback
       />
     );
   };

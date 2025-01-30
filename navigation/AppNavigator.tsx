@@ -36,6 +36,7 @@ export type NavParamList = {
   AddMembers: { crewId: string };
   OtherUserProfile: { userId: string };
   MatchesList: { date: string };
+  EventCrewsList: { date: string };
   ChatsStack:
     | {
         screen: string;

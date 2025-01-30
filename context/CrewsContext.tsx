@@ -1,5 +1,3 @@
-// context/CrewsContext.tsx
-
 import React, {
   createContext,
   useState,
@@ -22,6 +20,7 @@ import {
   Unsubscribe,
   setDoc,
   updateDoc,
+  orderBy,
 } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
@@ -38,6 +37,10 @@ interface CrewsContextProps {
   dateCounts: { [key: string]: number };
   dateMatches: { [key: string]: number };
   dateMatchingCrews: { [key: string]: string[] };
+  // NEW: events totals and events crews
+  dateEvents: { [key: string]: number };
+  dateEventCrews: { [key: string]: string[] };
+
   usersCache: { [key: string]: User };
   toggleStatusForCrew: (
     crewId: string,
@@ -52,6 +55,9 @@ interface CrewsContextProps {
   loadingCrews: boolean;
   loadingStatuses: boolean;
   loadingMatches: boolean;
+  // NEW: loading for events
+  loadingEvents: boolean;
+
   fetchCrew: (crewId: string) => Promise<Crew | null>;
 }
 
@@ -68,11 +74,19 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
   const [dateMatchingCrews, setDateMatchingCrews] = useState<{
     [key: string]: string[];
   }>({});
+  // New states for events
+  const [dateEvents, setDateEvents] = useState<{ [key: string]: number }>({});
+  const [dateEventCrews, setDateEventCrews] = useState<{
+    [key: string]: string[];
+  }>({});
+
   const [usersCache, setUsersCache] = useState<{ [key: string]: User }>({});
 
   const [loadingCrews, setLoadingCrews] = useState<boolean>(true);
   const [loadingStatuses, setLoadingStatuses] = useState<boolean>(true);
   const [loadingMatches, setLoadingMatches] = useState<boolean>(true);
+  // New loading state for events
+  const [loadingEvents, setLoadingEvents] = useState<boolean>(true);
 
   const [matchesNeedsRefresh, setMatchesNeedsRefresh] = useState(false);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -207,7 +221,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       const allStatusResults = await Promise.all(allStatusPromises);
 
       allStatusResults.forEach(({ crewId, date, snapshot }) => {
-        // If user is up for going out
+        // If the user is up for going out
         const userStatus = snapshot.docs.find(
           (docSnap) => docSnap.id === user?.uid,
         );
@@ -235,6 +249,66 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     } finally {
       setLoadingMatches(false);
       setMatchesNeedsRefresh(false);
+    }
+  };
+
+  /**
+   * NEW: Fetch the total number of events on each date across all user crews,
+   * along with which crews have events that day.
+   */
+  const fetchDateEvents = async (fetchedCrewIds: string[]) => {
+    setLoadingEvents(true);
+
+    // Initialize counters
+    const tempDateEvents: { [day: string]: number } = {};
+    const tempDateEventCrews: { [day: string]: string[] } = {};
+
+    weekDates.forEach((day) => {
+      tempDateEvents[day] = 0;
+      tempDateEventCrews[day] = [];
+    });
+
+    try {
+      // For each crew, fetch its events and see which days in the week are covered
+      const eventPromises = fetchedCrewIds.map(async (crewId) => {
+        const eventsRef = collection(db, 'crews', crewId, 'events');
+        const crewQuery = query(eventsRef, orderBy('startDate'));
+        const snapshot = await getDocs(crewQuery);
+
+        const allEvents = snapshot.docs.map((docSnap) => {
+          return { id: docSnap.id, ...(docSnap.data() as any) };
+        });
+
+        // Check which days in weekDates each event covers
+        allEvents.forEach((event) => {
+          const start = moment(event.startDate, 'YYYY-MM-DD');
+          const end = moment(event.endDate, 'YYYY-MM-DD');
+          for (const day of weekDates) {
+            const d = moment(day, 'YYYY-MM-DD');
+            if (d.isBetween(start, end, 'day', '[]')) {
+              tempDateEvents[day] += 1;
+              if (!tempDateEventCrews[day].includes(crewId)) {
+                tempDateEventCrews[day].push(crewId);
+              }
+            }
+          }
+        });
+      });
+
+      await Promise.all(eventPromises);
+
+      // After collecting data for all crews, store it
+      setDateEvents(tempDateEvents);
+      setDateEventCrews(tempDateEventCrews);
+    } catch (error: any) {
+      console.error('Error fetching date events:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Could not fetch events.',
+      });
+    } finally {
+      setLoadingEvents(false);
     }
   };
 
@@ -392,9 +466,9 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       Toast.show({
         type: 'success',
         text1: 'Success',
-        text2: `You have been marked as ${newStatus ? 'up' : 'not up'} for it on ${moment(
-          selectedDateStr,
-        ).format('MMMM Do, YYYY')}.`,
+        text2: `You have been marked as ${
+          newStatus ? 'up' : 'not up'
+        } for it on ${moment(selectedDateStr).format('MMMM Do, YYYY')}.`,
       });
 
       setDateCounts((prev) => ({
@@ -426,9 +500,12 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       setDateCounts({});
       setDateMatches({});
       setDateMatchingCrews({});
+      setDateEvents({});
+      setDateEventCrews({});
       setLoadingCrews(false);
       setLoadingStatuses(false);
       setLoadingMatches(false);
+      setLoadingEvents(false);
       return;
     }
 
@@ -484,6 +561,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         setLoadingCrews(false);
         setLoadingStatuses(false);
         setLoadingMatches(false);
+        setLoadingEvents(false);
         return;
       }
 
@@ -495,10 +573,10 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         if (fetchedCrewIds.length > 0 && weekDates.length > 0) {
           const fetchedCrews = await fetchCrewDetails(fetchedCrewIds);
           setCrews(fetchedCrews);
-          await fetchUpStatuses(fetchedCrewIds);
 
-          // Fetch matches once after statuses are ready
+          await fetchUpStatuses(fetchedCrewIds);
           await fetchMatches(fetchedCrewIds);
+          await fetchDateEvents(fetchedCrewIds); // NEW: fetch events across crews
 
           setupCrewListeners(fetchedCrewIds);
         } else {
@@ -506,8 +584,11 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
           setDateCounts({});
           setDateMatches({});
           setDateMatchingCrews({});
+          setDateEvents({});
+          setDateEventCrews({});
           setLoadingStatuses(false);
           setLoadingMatches(false);
+          setLoadingEvents(false);
         }
       } catch (error: any) {
         console.error('Error initializing CrewsContext:', error);
@@ -519,6 +600,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         setLoadingCrews(false);
         setLoadingStatuses(false);
         setLoadingMatches(false);
+        setLoadingEvents(false);
       }
     };
 
@@ -542,6 +624,10 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         dateCounts,
         dateMatches,
         dateMatchingCrews,
+        // Expose the new values
+        dateEvents,
+        dateEventCrews,
+
         usersCache: memoizedUsersCache,
         toggleStatusForCrew,
         toggleStatusForDateAllCrews,
@@ -549,6 +635,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         loadingCrews,
         loadingStatuses,
         loadingMatches,
+        loadingEvents, // Expose loading
         fetchCrew,
       }}
     >
