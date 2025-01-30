@@ -1,6 +1,13 @@
 // utils/addEventToCrew.ts
 
-import { collection, addDoc, Timestamp } from 'firebase/firestore';
+import {
+  collection,
+  addDoc,
+  doc,
+  updateDoc,
+  serverTimestamp,
+  deleteDoc,
+} from 'firebase/firestore';
 import { db } from '@/firebase';
 
 export type NewCrewEvent = {
@@ -19,6 +26,24 @@ export async function addEventToCrew(
   await addDoc(eventsRef, {
     ...eventData,
     createdBy: userId,
-    createdAt: Timestamp.now(),
+    createdAt: serverTimestamp(),
   });
+}
+
+export async function updateEventInCrew(
+  crewId: string,
+  eventId: string,
+  userId: string,
+  updates: { title: string; startDate: string; endDate: string },
+) {
+  const eventRef = doc(db, 'crews', crewId, 'events', eventId);
+  await updateDoc(eventRef, {
+    ...updates,
+    updatedAt: serverTimestamp(),
+    updatedBy: userId,
+  });
+}
+
+export async function deleteEventFromCrew(crewId: string, eventId: string) {
+  await deleteDoc(doc(db, 'crews', crewId, 'events', eventId));
 }

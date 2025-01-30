@@ -1,19 +1,18 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+} from 'react-native';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import { User } from '@/types/User';
+import { useUser } from '@/context/UserContext';
 import CustomButton from '@/components/CustomButton';
 import MemberList from '@/components/MemberList';
-import { User } from '@/types/User';
 import { getFormattedDate } from '@/utils/dateHelpers';
-import { useUser } from '@/context/UserContext';
-
-export interface CrewEvent {
-  id: string;
-  title: string;
-  startDate: string;
-  endDate: string;
-  description?: string;
-  createdBy: string;
-}
+import { CrewEvent } from '@/types/CrewEvent';
 
 interface DayContainerProps {
   day: string;
@@ -28,9 +27,49 @@ interface DayContainerProps {
   navigateToUserProfile: (user: User) => void;
   events?: CrewEvent[];
   onAddEvent?: (day: string) => void;
+  onEditEvent?: (day: string, event: CrewEvent) => void;
   width?: string | number;
   margin?: number;
 }
+
+// Your chosen palette
+const eventColors = [
+  '#FFB300',
+  '#F4511E',
+  '#8E24AA',
+  '#3949AB',
+  '#00897B',
+  '#616161',
+  '#EF6C00',
+  '#26A69A',
+  '#7E57C2',
+  '#00ACC1',
+  '#5C6BC0',
+  '#43A047',
+  '#9E9D24',
+  '#D81B60',
+  '#8D6E63',
+  '#78909C',
+  '#1E88E5',
+  '#C0CA33',
+  '#FB8C00',
+  '#4E342E',
+];
+
+// Minimal string hashing function
+const getHash = (str: string): number => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return hash;
+};
+
+// Derive a color index from the event ID’s hash
+const getEventColor = (eventId: string): string => {
+  const hash = Math.abs(getHash(eventId));
+  return eventColors[hash % eventColors.length];
+};
 
 const DayContainer: React.FC<DayContainerProps> = ({
   day,
@@ -44,52 +83,60 @@ const DayContainer: React.FC<DayContainerProps> = ({
   handlePokeCrew,
   navigateToUserProfile,
   onAddEvent,
+  onEditEvent,
   events = [],
 }) => {
   const { user } = useUser();
-
-  const eventColors = [
-    '#FFB300',
-    '#F4511E',
-    '#8E24AA',
-    '#3949AB',
-    '#00897B',
-    '#616161',
-  ];
+  const isEventCreator = (event: CrewEvent) => event.createdBy === user?.uid;
 
   return (
     <View style={styles.dayContainer}>
-      {/* Top Section */}
       <View>
         <Text style={styles.dayHeader}>{getFormattedDate(day)}</Text>
 
         <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.eventsRow}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.eventsContainer}
         >
-          {events.map((evt, index) => (
-            <View
-              key={evt.id}
-              style={[
-                styles.eventPill,
-                { backgroundColor: eventColors[index % eventColors.length] },
-              ]}
-            >
-              <Text style={styles.eventPillText}>{evt.title}</Text>
-            </View>
-          ))}
-          {onAddEvent && (
-            <View style={[styles.eventPill, styles.addPill]}>
-              <Text
-                style={styles.eventPillText}
-                onPress={() => onAddEvent(day)}
+          {events.map((evt) => {
+            const pillColor = getEventColor(evt.id);
+            return (
+              <View
+                key={evt.id}
+                style={[styles.eventPill, { backgroundColor: pillColor }]}
               >
-                + add an event
-              </Text>
-            </View>
+                {isEventCreator(evt) ? (
+                  <TouchableOpacity
+                    style={styles.eventRow}
+                    onPress={() => onEditEvent?.(day, evt)}
+                  >
+                    <Text style={styles.eventPillText}>{evt.title}</Text>
+                    <View style={{ flex: 1 }} />
+                    <Ionicons
+                      name="create-outline"
+                      size={16}
+                      color="#fff"
+                      style={styles.editIcon}
+                    />
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.eventRow}>
+                    <Text style={styles.eventPillText}>{evt.title}</Text>
+                  </View>
+                )}
+              </View>
+            );
+          })}
+          {onAddEvent && (
+            <TouchableOpacity
+              style={[styles.eventPill, styles.addPill]}
+              onPress={() => onAddEvent(day)}
+            >
+              <Text style={styles.eventPillText}>+ add an event</Text>
+            </TouchableOpacity>
           )}
         </ScrollView>
+
         <CustomButton
           title={userIsUp ? "You're in" : 'Count me in'}
           variant={userIsUp ? 'secondary' : 'primary'}
@@ -99,6 +146,7 @@ const DayContainer: React.FC<DayContainerProps> = ({
             size: 18,
           }}
         />
+
         {!userIsUp && (
           <Text style={styles.joinPrompt}>
             Join to see who's up for {getCrewActivity()}.
@@ -123,7 +171,6 @@ const DayContainer: React.FC<DayContainerProps> = ({
         )}
       </View>
 
-      {/* Bottom Section */}
       <View style={styles.bottomSection}>
         {userIsUp && (
           <>
@@ -155,6 +202,8 @@ const DayContainer: React.FC<DayContainerProps> = ({
   );
 };
 
+export default DayContainer;
+
 const styles = StyleSheet.create({
   dayContainer: {
     padding: 16,
@@ -165,23 +214,30 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'column',
   },
-  eventsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  eventsContainer: {
+    flexDirection: 'column',
     paddingVertical: 8,
   },
   eventPill: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    marginRight: 8,
-    minWidth: 40,
+    width: '100%',
+    borderRadius: 6,
+    paddingVertical: 1,
+    paddingHorizontal: 10,
+    marginBottom: 2,
     justifyContent: 'center',
+    alignItems: 'flex-start',
+  },
+  eventRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+  },
+  editIcon: {
+    marginLeft: 6,
   },
   eventPillText: {
     color: '#fff',
     fontWeight: '600',
+    fontSize: 14,
   },
   addPill: {
     backgroundColor: '#90d5ff',
@@ -219,4 +275,3 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
-export default DayContainer;

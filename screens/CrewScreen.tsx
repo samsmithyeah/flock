@@ -1,5 +1,3 @@
-// screens/CrewScreen.tsx
-
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   View,
@@ -26,7 +24,6 @@ import {
   onSnapshot,
   query,
   orderBy,
-  Timestamp,
 } from 'firebase/firestore';
 import moment, { Moment } from 'moment';
 import { db, pokeCrew } from '@/firebase';
@@ -46,19 +43,14 @@ import { Calendar } from 'react-native-calendars';
 import WeekNavButtons from '@/components/WeekNavButtons';
 import DayContainer from '@/components/DayContainer';
 import AddEventModal from '@/components/AddEventModal';
-import { addEventToCrew } from '@/utils/addEventToCrew';
+import {
+  addEventToCrew,
+  deleteEventFromCrew,
+  updateEventInCrew,
+} from '@/utils/addEventToCrew';
+import { CrewEvent } from '@/types/CrewEvent';
 
 type CrewScreenRouteProp = RouteProp<NavParamList, 'Crew'>;
-
-type CrewEvent = {
-  id: string;
-  title: string;
-  startDate: string;
-  endDate: string;
-  description?: string;
-  createdBy: string;
-  createdAt: Timestamp;
-};
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.75;
@@ -91,8 +83,12 @@ const CrewScreen: React.FC = () => {
   const scrollViewRef = useRef<ScrollView>(null);
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  // Controls for AddEventModal
   const [addEventVisible, setAddEventVisible] = useState(false);
   const [isAddingEvent, setIsAddingEvent] = useState(false);
+  // Track which event (if any) is being edited
+  const [editingEvent, setEditingEvent] = useState<CrewEvent | null>(null);
 
   const [eventsForWeek, setEventsForWeek] = useState<{
     [day: string]: CrewEvent[];
@@ -165,7 +161,7 @@ const CrewScreen: React.FC = () => {
     };
   }, [crewId, user, navigation]);
 
-  // Fetch members of the crew
+  // Fetch members
   useEffect(() => {
     const fetchMembers = async () => {
       if (crew && crew.memberIds && crew.memberIds.length > 0) {
@@ -200,11 +196,12 @@ const CrewScreen: React.FC = () => {
     fetchMembers();
   }, [crew]);
 
+  // Fetch events for the current week
   useEffect(() => {
     if (!crewId || !weekDates.length) return;
 
     const eventsRef = collection(db, 'crews', crewId, 'events');
-    const q = query(eventsRef, orderBy('startDate')); // Could add filters if needed
+    const q = query(eventsRef, orderBy('startDate'));
 
     const unsub = onSnapshot(
       q,
@@ -214,30 +211,26 @@ const CrewScreen: React.FC = () => {
           return { ...data, id: docSnap.id };
         });
 
-        // Group events by each day in the current week
         const groupedByDay: { [day: string]: CrewEvent[] } = {};
         weekDates.forEach((day) => {
           groupedByDay[day] = [];
         });
 
-        // Helper to check if a day is within the event’s start/end
+        // Helper: check if day is within event’s start/end
         const isDayWithinEvent = (day: string, event: CrewEvent) => {
           const d = moment(day, 'YYYY-MM-DD');
           const start = moment(event.startDate, 'YYYY-MM-DD');
           const end = moment(event.endDate, 'YYYY-MM-DD');
-          // Include start/end themselves => pass '[]' as the last arg
           return d.isBetween(start, end, 'day', '[]');
         };
 
         for (const event of allEvents) {
-          // For each day in this week, push events that span/include that day
           for (const day of weekDates) {
             if (isDayWithinEvent(day, event)) {
               groupedByDay[day].push(event);
             }
           }
         }
-
         setEventsForWeek(groupedByDay);
       },
       (error) => {
@@ -253,7 +246,7 @@ const CrewScreen: React.FC = () => {
     return () => unsub();
   }, [crewId, weekDates]);
 
-  // Firestore listeners for each day in "weekDates"
+  // Firestore listeners for each day in "weekDates" => user statuses
   useEffect(() => {
     if (!crewId || !user || !weekDates.length) return;
 
@@ -300,37 +293,29 @@ const CrewScreen: React.FC = () => {
     };
   }, [crewId, user, weekDates]);
 
+  // Scroll to selected date if it's in the current week
   useEffect(() => {
     if (selectedDate && weekDates.length > 0) {
-      console.log('selectedDate:', selectedDate);
-      console.log('weekDates:', weekDates);
       const dateIndex = weekDates.indexOf(selectedDate);
-      console.log('dateIndex:', dateIndex);
       if (dateIndex === -1) {
+        // If the selected date isn't in this week, jump to that week
         const newStartDate = moment(selectedDate).startOf('week');
         const today = moment().startOf('day');
         if (newStartDate.isBefore(today)) {
           setStartDate(today);
-          return;
+        } else {
+          setStartDate(newStartDate);
         }
-        setStartDate(newStartDate);
-        return;
+      } else {
+        scrollToDate(dateIndex);
       }
-      console.log('Scrolling to dateIndex:', dateIndex);
-      scrollToDate(dateIndex);
     }
   }, [selectedDate, weekDates, startDate]);
 
   const scrollToDate = (dateIndex: number, animated: boolean = true) => {
     setTimeout(() => {
-      if (!scrollViewRef.current) {
-        console.log('No scrollViewRef, returning');
-        return;
-      }
-      if (dateIndex < 0) {
-        console.log(`Invalid dateIndex: ${dateIndex}`);
-        return;
-      }
+      if (!scrollViewRef.current) return;
+      if (dateIndex < 0) return;
       const scrollAmount = dateIndex * TOTAL_CARD_WIDTH;
       scrollViewRef.current.scrollTo({ x: scrollAmount, animated });
     }, 150);
@@ -370,8 +355,8 @@ const CrewScreen: React.FC = () => {
     Alert.alert(
       'Confirm status change',
       currentStatus
-        ? `Are you sure you want to mark yourself as not up for ${getCrewActivity()} on this day?`
-        : `Are you sure you want to mark yourself as up for ${getCrewActivity()} on this day?`,
+        ? `Are you sure you want to mark yourself as not up for ${getCrewActivity()}?`
+        : `Are you sure you want to mark yourself as up for ${getCrewActivity()}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Confirm', onPress: confirmToggle },
@@ -379,36 +364,81 @@ const CrewScreen: React.FC = () => {
     );
   };
 
-  const handleAddEventToCrew = async (
-    title: string,
-    start: string,
-    end: string,
-  ) => {
-    if (!crewId || !user?.uid) {
-      return;
-    }
+  const handleDeleteEvent = async (eventId: string) => {
+    if (!crewId || !eventId) return;
+    Alert.alert(
+      'Delete event?',
+      'Are you sure you want to delete this event?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteEventFromCrew(crewId, eventId);
+              Toast.show({
+                type: 'success',
+                text1: 'Deleted',
+                text2: 'Event was removed successfully.',
+              });
+            } catch (err) {
+              console.error('Error deleting event:', err);
+              Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'Could not delete event.',
+              });
+            }
+          },
+        },
+      ],
+      { cancelable: true },
+    );
+  };
+
+  // Create/update event
+  const handleSaveEvent = async (title: string, start: string, end: string) => {
+    if (!crewId || !user?.uid) return;
+    setIsAddingEvent(true);
     try {
-      setIsAddingEvent(true);
-      await addEventToCrew(
-        crewId,
-        { title, startDate: start, endDate: end },
-        user.uid,
-      );
-      Toast.show({
-        type: 'success',
-        text1: 'Event Added',
-        text2: 'Event successfully added.',
-      });
+      if (editingEvent) {
+        // Update existing
+        await updateEventInCrew(crewId, editingEvent.id, user.uid, {
+          title,
+          startDate: start,
+          endDate: end,
+        });
+        Toast.show({
+          type: 'success',
+          text1: 'Event Updated',
+          text2: 'Event successfully updated.',
+        });
+      } else {
+        // Create new
+        await addEventToCrew(
+          crewId,
+          { title, startDate: start, endDate: end },
+          user.uid,
+        );
+        Toast.show({
+          type: 'success',
+          text1: 'Event Added',
+          text2: 'Event successfully added.',
+        });
+      }
     } catch (error) {
-      console.error('Error adding event:', error);
+      console.error('Error saving event:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',
-        text2: 'Failed to add event.',
+        text2: 'Failed to save event.',
       });
+    } finally {
+      setIsAddingEvent(false);
+      setAddEventVisible(false);
+      setEditingEvent(null);
     }
-    setAddEventVisible(false);
-    setIsAddingEvent(false);
   };
 
   // Poke crew
@@ -475,11 +505,21 @@ const CrewScreen: React.FC = () => {
     }
   };
 
-  const handleAddEvent = () => {
+  // Called from the "+ add event" pill
+  const handleAddEvent = (day: string) => {
+    setSelectedDate(day);
+    setEditingEvent(null); // No event => we’re adding
     setAddEventVisible(true);
   };
 
-  // Next & previous weeks
+  // Called from the pencil icon
+  const handleEditEvent = (day: string, evt: CrewEvent) => {
+    setSelectedDate(day);
+    setEditingEvent(evt);
+    setAddEventVisible(true);
+  };
+
+  // Next/prev weeks
   const canGoPrevWeek =
     startDate.isAfter(moment().startOf('day'), 'day') && scrolledToStart;
   const goNextWeek = () => {
@@ -508,7 +548,7 @@ const CrewScreen: React.FC = () => {
   };
   const showNextWeekButton = scrolledToEnd;
 
-  // When user presses a day in the month calendar
+  // Calendar day selection
   const handleCalendarDayPress = (dayObj: { dateString: string }) => {
     setCalendarVisible(false);
     const chosenDate = dayObj.dateString;
@@ -537,7 +577,7 @@ const CrewScreen: React.FC = () => {
       headerTitleAlign: 'left',
       headerStatusBarHeight: insets.top,
     });
-  }, [navigation, crew, crewId]);
+  }, [navigation, crew, crewId, insets.top]);
 
   if (loading || !crew) {
     return <LoadingOverlay />;
@@ -545,6 +585,7 @@ const CrewScreen: React.FC = () => {
 
   return (
     <View style={globalStyles.containerWithHeader}>
+      {/* Full-screen calendar modal */}
       <Modal
         visible={calendarVisible}
         transparent
@@ -567,13 +608,21 @@ const CrewScreen: React.FC = () => {
         </View>
       </Modal>
 
+      {/* Create/Edit Event Modal */}
       <AddEventModal
         isVisible={addEventVisible}
-        onClose={() => setAddEventVisible(false)}
-        onSubmit={(title, start, end) => {
-          handleAddEventToCrew(title, start, end);
+        onClose={() => {
+          setAddEventVisible(false);
+          setEditingEvent(null);
         }}
+        onSubmit={handleSaveEvent}
         loading={isAddingEvent}
+        // If editing an event, fill fields
+        defaultTitle={editingEvent?.title}
+        defaultStart={editingEvent?.startDate || selectedDate || undefined}
+        defaultEnd={editingEvent?.endDate || selectedDate || undefined}
+        isEditing={!!editingEvent}
+        onDelete={() => editingEvent?.id && handleDeleteEvent(editingEvent.id)}
       />
 
       <WeekNavButtons
@@ -619,6 +668,8 @@ const CrewScreen: React.FC = () => {
                 handlePokeCrew={handlePokeCrew}
                 navigateToUserProfile={navigateToUserProfile}
                 onAddEvent={handleAddEvent}
+                // Pass our new edit callback
+                onEditEvent={handleEditEvent}
                 events={dayEvents}
               />
             </View>

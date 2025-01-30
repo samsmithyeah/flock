@@ -1,25 +1,24 @@
+// AddEventModal.tsx
+
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  StyleSheet,
-  TouchableOpacity,
-  Modal,
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
 import moment from 'moment';
 import { Calendar } from 'react-native-calendars';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import CustomModal from '@/components/CustomModal';
 import CustomTextInput from './CustomTextInput';
+import CustomButton from './CustomButton';
 import { getFormattedDate } from '@/utils/dateHelpers';
 
 type AddEventModalProps = {
   isVisible: boolean;
   onClose: () => void;
   onSubmit: (title: string, start: string, end: string) => void;
+  onDelete?: () => void;
   defaultStart?: string;
   defaultEnd?: string;
+  defaultTitle?: string;
+  isEditing?: boolean;
   loading?: boolean;
 };
 
@@ -27,14 +26,17 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
   isVisible,
   onClose,
   onSubmit,
+  onDelete,
   defaultStart,
   defaultEnd,
+  defaultTitle = '',
+  isEditing = false,
   loading = false,
 }) => {
   const initialDate = defaultStart || moment().format('YYYY-MM-DD');
   const initialEndDate = defaultEnd || initialDate;
 
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(defaultTitle);
   const [titleError, setTitleError] = useState(false);
 
   const [selectedDates, setSelectedDates] = useState<{
@@ -45,7 +47,7 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
     end: initialEndDate,
   });
 
-  // Temporary selection used only while calendar is open
+  // Temporary selection while the calendar is open
   const [tempSelectedDates, setTempSelectedDates] = useState<{
     start: string;
     end: string;
@@ -56,50 +58,52 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
 
   const [isCalendarVisible, setIsCalendarVisible] = useState(false);
 
+  // Reset state whenever props change (e.g. new event defaults or editing a new event).
   useEffect(() => {
-    if (defaultStart) {
-      setSelectedDates({
-        start: defaultStart,
-        end: defaultEnd || defaultStart,
-      });
-    }
-  }, [defaultStart, defaultEnd]);
+    setTitle(defaultTitle);
+    setTitleError(false);
+    setSelectedDates({ start: initialDate, end: initialEndDate });
+    setTempSelectedDates({ start: initialDate, end: initialEndDate });
+    setIsCalendarVisible(false);
+  }, [defaultTitle, defaultStart, defaultEnd]);
 
-  function handleAddEvent() {
+  const handleSave = () => {
     if (!title.trim()) {
       setTitleError(true);
       return;
     }
     setTitleError(false);
     onSubmit(title, selectedDates.start, selectedDates.end);
-    setTitle('');
-    setSelectedDates({ start: initialDate, end: initialEndDate });
-    setIsCalendarVisible(false);
-    onClose();
-  }
+  };
 
-  // When the calendar opens, copy current selection into tempSelectedDates
+  // Handle the Delete tap
+  const handleDelete = () => {
+    if (onDelete) {
+      onDelete();
+    }
+    onClose();
+  };
+
+  // Calendar logic
   const openCalendar = () => {
     setTempSelectedDates(selectedDates);
     setIsCalendarVisible(true);
   };
 
-  // Discard changes and close
   const discardCalendar = () => {
     setTempSelectedDates(selectedDates);
     setIsCalendarVisible(false);
   };
 
-  // Save changes from temp to actual selection and close
   const saveCalendar = () => {
     setSelectedDates(tempSelectedDates);
     setIsCalendarVisible(false);
   };
 
-  // Called when a day on the calendar is pressed; modifies temp selections
   const handleDayPress = (day: { dateString: string }) => {
     const { start, end } = tempSelectedDates;
     if (!start || end) {
+      // reset range
       setTempSelectedDates({ start: day.dateString, end: '' });
     } else {
       const isEndValid = moment(day.dateString).isSameOrAfter(start);
@@ -110,7 +114,6 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
     }
   };
 
-  // Use tempSelectedDates for highlighting while the calendar is open
   const getMarkedDates = () => {
     const { start, end } = tempSelectedDates;
     const marked: Record<string, any> = {};
@@ -122,13 +125,11 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
           color: '#5f9ea0',
           textColor: 'white',
         };
-
         marked[end] = {
           endingDay: true,
           color: '#5f9ea0',
           textColor: 'white',
         };
-
         let current = moment(start).add(1, 'day');
         while (current.isBefore(end)) {
           const dateString = current.format('YYYY-MM-DD');
@@ -136,6 +137,7 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
           current = current.add(1, 'day');
         }
       } else {
+        // single-day selection
         marked[start] = {
           startingDay: true,
           endingDay: true,
@@ -148,18 +150,20 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
   };
 
   const handleClose = () => {
-    setTitle('');
-    setTitleError(false);
-    setSelectedDates({ start: initialDate, end: initialEndDate });
-    setIsCalendarVisible(false);
     onClose();
+    // Not strictly necessary to reset state here if we're re-running useEffect on props changes
   };
 
+  // Basic buttons: Cancel + Save/Add
   const buttons = [
-    { label: 'Cancel', onPress: handleClose, variant: 'secondary' as const },
     {
-      label: 'Add Event',
-      onPress: handleAddEvent,
+      label: 'Cancel',
+      onPress: handleClose,
+      variant: 'secondary' as const,
+    },
+    {
+      label: isEditing ? 'Save Event' : 'Add Event',
+      onPress: handleSave,
       variant: 'primary' as const,
       disabled: loading || !title.trim(),
     },
@@ -167,7 +171,7 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
 
   return (
     <>
-      {/* Calendar Modal */}
+      {/* Full-screen calendar modal */}
       <Modal
         visible={isCalendarVisible}
         animationType="none"
@@ -211,42 +215,69 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
         </View>
       </Modal>
 
-      {/* Add Event Modal */}
+      {/* Main Add/Edit Event Modal */}
       <CustomModal
         isVisible={isVisible && !isCalendarVisible}
         onClose={handleClose}
-        title="Add an event"
+        title={isEditing ? 'Edit event' : 'Add a new event'}
         buttons={buttons}
         loading={loading}
         animationType="none"
       >
         <View style={styles.content}>
+          <Text style={styles.label}>Event name:</Text>
           <CustomTextInput
-            placeholder="Event name"
+            placeholder="Your event name"
             placeholderTextColor="#666"
             value={title}
-            onChangeText={setTitle}
+            onChangeText={(txt) => {
+              setTitleError(false);
+              setTitle(txt);
+            }}
             autoCapitalize="sentences"
             hasBorder={true}
           />
+          {titleError && (
+            <Text style={{ color: 'red', marginTop: 4 }}>
+              Please enter an event name
+            </Text>
+          )}
 
           <Text style={styles.label}>Event date:</Text>
           <View style={styles.dateContainer}>
-            <Text style={styles.dateText}>
-              {moment(selectedDates.start).format('MMM DD, YYYY')}
-            </Text>
-            {selectedDates.start !== selectedDates.end && (
+            {selectedDates.start !== selectedDates.end ? (
+              <>
+                <Text style={styles.dateText}>
+                  {getFormattedDate(selectedDates.start, true)}
+                </Text>
+
+                <Text style={styles.dateText}>
+                  {' '}
+                  - {getFormattedDate(selectedDates.end, true)}
+                </Text>
+              </>
+            ) : (
               <Text style={styles.dateText}>
-                {' '}
-                - {moment(selectedDates.end).format('MMM DD, YYYY')}
+                {getFormattedDate(selectedDates.start)}
               </Text>
             )}
 
-            {/* Pencil icon next to the dates */}
             <TouchableOpacity style={styles.iconWrapper} onPress={openCalendar}>
-              <Ionicons name="calendar" size={20} color="#5f9ea0" />
+              <Ionicons name="calendar-outline" size={20} color="#1e90ff" />
             </TouchableOpacity>
           </View>
+
+          {/* If editing, show delete button */}
+          {isEditing && onDelete && (
+            <CustomButton
+              title="Delete Event"
+              onPress={handleDelete}
+              variant="secondaryDanger"
+              accessibilityLabel="Delete Event"
+              accessibilityHint="Delete the current event"
+              icon={{ name: 'trash-outline' }}
+            />
+          )}
         </View>
       </CustomModal>
     </>
@@ -304,9 +335,6 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOffset: { width: 0, height: 2 },
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
   },
   saveButton: {
     position: 'absolute',
@@ -319,8 +347,5 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOffset: { width: 0, height: 2 },
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
   },
 });
