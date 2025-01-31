@@ -47,7 +47,7 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
   defaultTitle = '',
   isEditing = false,
   loading = false,
-  defaultUnconfirmed = false,
+  defaultUnconfirmed = true,
   defaultLocation = '',
 }) => {
   const initialDate = defaultStart || moment().format('YYYY-MM-DD');
@@ -307,12 +307,12 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
           />
 
           <View style={styles.switchContainer}>
-            <Text style={styles.label}>Is this event unconfirmed?</Text>
+            <Text style={styles.label}>Is this event confirmed?</Text>
             <Switch
-              onValueChange={setIsUnconfirmed}
-              value={isUnconfirmed}
+              onValueChange={() => setIsUnconfirmed(!isUnconfirmed)}
+              value={!isUnconfirmed}
               trackColor={{ false: '#767577', true: '#81b0ff' }}
-              thumbColor={isUnconfirmed ? '#f5dd4b' : '#f4f3f4'}
+              thumbColor={!isUnconfirmed ? '#f5dd4b' : '#f4f3f4'}
             />
           </View>
 
