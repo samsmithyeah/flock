@@ -7,7 +7,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   Modal,
-  // Add this:
   Switch,
 } from 'react-native';
 import moment from 'moment';
@@ -26,6 +25,7 @@ type AddEventModalProps = {
     start: string,
     end: string,
     unconfirmed: boolean,
+    location: string,
   ) => void;
   onDelete?: () => void;
   defaultStart?: string;
@@ -34,6 +34,7 @@ type AddEventModalProps = {
   isEditing?: boolean;
   loading?: boolean;
   defaultUnconfirmed?: boolean;
+  defaultLocation?: string;
 };
 
 const AddEventModal: React.FC<AddEventModalProps> = ({
@@ -47,6 +48,7 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
   isEditing = false,
   loading = false,
   defaultUnconfirmed = false,
+  defaultLocation = '',
 }) => {
   const initialDate = defaultStart || moment().format('YYYY-MM-DD');
   const initialEndDate = defaultEnd || initialDate;
@@ -66,6 +68,9 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
   // New state for unconfirmed
   const [isUnconfirmed, setIsUnconfirmed] = useState(defaultUnconfirmed);
 
+  // New state for location
+  const [location, setLocation] = useState(defaultLocation);
+
   // Reset state whenever props change
   useEffect(() => {
     setTitle(defaultTitle);
@@ -74,7 +79,16 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
     setTempSelectedDates({ start: initialDate, end: initialEndDate });
     setIsCalendarVisible(false);
     setIsUnconfirmed(defaultUnconfirmed);
-  }, [defaultTitle, defaultStart, defaultEnd, defaultUnconfirmed]);
+    setLocation(defaultLocation);
+  }, [
+    defaultTitle,
+    defaultStart,
+    defaultEnd,
+    defaultUnconfirmed,
+    defaultLocation,
+    initialDate,
+    initialEndDate,
+  ]);
 
   const handleSave = () => {
     if (!title.trim()) {
@@ -82,7 +96,13 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
       return;
     }
     setTitleError(false);
-    onSubmit(title, selectedDates.start, selectedDates.end, isUnconfirmed);
+    onSubmit(
+      title,
+      selectedDates.start,
+      selectedDates.end,
+      isUnconfirmed,
+      location,
+    );
   };
 
   const handleDelete = () => {
@@ -94,27 +114,36 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
     setTempSelectedDates(selectedDates);
     setIsCalendarVisible(true);
   };
+
   const discardCalendar = () => {
     setTempSelectedDates(selectedDates);
     setIsCalendarVisible(false);
   };
+
   const saveCalendar = () => {
-    setSelectedDates(tempSelectedDates);
+    const { start, end } = tempSelectedDates;
+    setSelectedDates({
+      start,
+      end: end && moment(end).isValid() ? end : start,
+    });
     setIsCalendarVisible(false);
   };
+
   const handleDayPress = (day: { dateString: string }) => {
     const { start, end } = tempSelectedDates;
+
     if (!start || end) {
-      // reset range
+      // If no start is set or both start and end are already set, start a new selection
       setTempSelectedDates({ start: day.dateString, end: '' });
+    } else if (moment(day.dateString).isAfter(start)) {
+      // If the selected date is after the start date, set it as the end date
+      setTempSelectedDates({ start, end: day.dateString });
     } else {
-      const isEndValid = moment(day.dateString).isSameOrAfter(start);
-      setTempSelectedDates({
-        start,
-        end: isEndValid ? day.dateString : start,
-      });
+      // If the selected date is before the start date, reset the start date
+      setTempSelectedDates({ start: day.dateString, end: '' });
     }
   };
+
   const getMarkedDates = () => {
     const { start, end } = tempSelectedDates;
     const marked: Record<string, any> = {};
@@ -149,6 +178,7 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
     }
     return marked;
   };
+
   const handleClose = () => {
     onClose();
   };
@@ -224,9 +254,9 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
         animationType="none"
       >
         <View style={styles.content}>
-          <Text style={styles.label}>Event name:</Text>
           <CustomTextInput
-            placeholder="Your event name"
+            labelText="Event name"
+            placeholder="Enter a name for the event"
             placeholderTextColor="#666"
             value={title}
             onChangeText={(txt) => {
@@ -241,17 +271,18 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
               Please enter an event name
             </Text>
           )}
-
-          <Text style={styles.label}>Event date:</Text>
+          <Text style={styles.label}>Event date</Text>
           <View style={styles.dateContainer}>
             {selectedDates.start !== selectedDates.end ? (
               <>
                 <Text style={styles.dateText}>
                   {getFormattedDate(selectedDates.start, true)}
                 </Text>
+                <View style={styles.arrowIcon}>
+                  <Ionicons name="arrow-forward" size={16} color="#333" />
+                </View>
                 <Text style={styles.dateText}>
-                  {' '}
-                  - {getFormattedDate(selectedDates.end, true)}
+                  {getFormattedDate(selectedDates.end, true)}
                 </Text>
               </>
             ) : (
@@ -259,13 +290,22 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
                 {getFormattedDate(selectedDates.start)}
               </Text>
             )}
-
             <TouchableOpacity style={styles.iconWrapper} onPress={openCalendar}>
               <Ionicons name="calendar-outline" size={20} color="#1e90ff" />
             </TouchableOpacity>
           </View>
 
-          {/* New checkbox/toggle for "unconfirmed" */}
+          {/* Location input */}
+          <CustomTextInput
+            labelText="Location"
+            placeholder="Enter a location"
+            placeholderTextColor="#666"
+            value={location}
+            onChangeText={setLocation}
+            autoCapitalize="words"
+            hasBorder
+          />
+
           <View style={styles.switchContainer}>
             <Text style={styles.label}>Is this event unconfirmed?</Text>
             <Switch
@@ -276,10 +316,9 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
             />
           </View>
 
-          {/* If editing, show delete button */}
           {isEditing && onDelete && (
             <CustomButton
-              title="Delete Event"
+              title="Delete event"
               onPress={handleDelete}
               variant="secondaryDanger"
               accessibilityLabel="Delete Event"
@@ -301,18 +340,19 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 4,
-    marginTop: 10,
+    fontWeight: '500',
+    color: '#333',
   },
   dateContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 10,
   },
   dateText: {
     fontSize: 16,
     color: '#333',
+    fontStyle: 'italic',
+    fontWeight: '300',
   },
   iconWrapper: {
     marginLeft: 8,
@@ -320,7 +360,7 @@ const styles = StyleSheet.create({
   switchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 10,
+    marginBottom: 10,
     justifyContent: 'space-between',
   },
   modalOverlay: {
@@ -362,5 +402,8 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  arrowIcon: {
+    marginHorizontal: 4,
   },
 });
