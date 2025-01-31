@@ -10,24 +10,28 @@ interface DateCardProps {
   date: string;
   count: number;
   matches: number;
+  events: number;
   total: number;
   isDisabled: boolean;
   statusColor: string;
   isLoading: boolean;
   onToggle: (date: string, toggleTo: boolean) => void;
-  onPressMatches: (date: string) => void; // New Prop
+  onPressMatches: (date: string) => void;
+  onPressEvents: (date: string) => void;
 }
 
 const DateCard: React.FC<DateCardProps> = ({
   date,
   count,
   matches,
+  events,
   total,
   isDisabled,
   statusColor,
   isLoading,
   onToggle,
-  onPressMatches, // Destructure the new prop
+  onPressMatches,
+  onPressEvents,
 }) => {
   const [isModalVisible, setModalVisible] = useState(false);
 
@@ -69,21 +73,34 @@ const DateCard: React.FC<DateCardProps> = ({
           </TouchableOpacity>
         )}
       </View>
-      {/* Display Matches */}
-      {matches > 0 && (
-        <TouchableOpacity
-          style={styles.matchesContainer}
-          onPress={() => onPressMatches(date)} // Handle press
-          accessibilityLabel={`${matches} matches`}
-          accessibilityHint={`Tap to view your matching crews on ${getFormattedDate(date)}`}
-        >
-          <Text style={styles.matchesText}>
-            {matches === 1 ? '🎉 1 match' : `🎉 ${matches} matches`}
-          </Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Availability Modal */}
+      <View style={styles.actionsRow}>
+        {/* Display Matches */}
+        {matches > 0 && (
+          <TouchableOpacity
+            style={styles.matchesContainer}
+            onPress={() => onPressMatches(date)}
+            accessibilityLabel={`${matches} matches`}
+            accessibilityHint={`Tap to view your matching crews on ${getFormattedDate(date)}`}
+          >
+            <Text style={styles.matchesText}>
+              {matches === 1 ? '🎉 1 match' : `🎉 ${matches} matches`}
+            </Text>
+          </TouchableOpacity>
+        )}
+        {/* Display Events */}
+        {events > 0 && (
+          <TouchableOpacity
+            style={styles.eventsContainer}
+            onPress={() => onPressEvents(date)}
+            accessibilityLabel={`${events} events`}
+            accessibilityHint={`Tap to view events on ${getFormattedDate(date)}`}
+          >
+            <Text style={styles.matchesText}>
+              {events === 1 ? '📅 1 event' : `📅 ${events} events`}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
       <AvailabilityModal
         visible={isModalVisible}
         onClose={() => setModalVisible(false)}
@@ -138,10 +155,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#333333',
   },
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   matchesContainer: {
     paddingVertical: 4,
     paddingHorizontal: 8,
     backgroundColor: '#1E90FF',
+    borderRadius: 5,
+    alignSelf: 'flex-start',
+    marginRight: 4,
+  },
+  eventsContainer: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    backgroundColor: '#66c9de',
     borderRadius: 5,
     alignSelf: 'flex-start',
   },

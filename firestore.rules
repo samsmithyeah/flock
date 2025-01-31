@@ -44,6 +44,22 @@ service cloud.firestore {
           allow create, update, delete: if isCrewMember(crewId) && request.auth.uid == userId;
         }
       }
+
+      // Subcollection: events
+      match /events/{eventId} {
+        allow read: if request.auth != null;
+        
+        // Allow create if the user is a crew member
+        allow create: if isCrewMember(crewId);
+        
+        // Allow update if the user is the event creator or the crew owner
+        allow update: if request.auth != null
+                      && (request.auth.uid == resource.data.createdBy || isCrewOwner(crewId));
+        
+        // Allow delete if the user is the event creator or the crew owner
+        allow delete: if request.auth != null
+                      && (request.auth.uid == resource.data.createdBy || isCrewOwner(crewId));
+      }
     }
     
     // Invitations Collection

@@ -4,10 +4,12 @@ import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import DashboardScreen from '@/screens/DashboardScreen';
 import MatchesListScreen from '@/screens/MatchesListScreen';
+import EventCrewsListScreen from '@/screens/EventsCrewsListScreen';
 
 export type DashboardStackParamList = {
   Dashboard: undefined;
   MatchesList: { date: string };
+  EventCrewsList: { date: string };
   Crew: { crewId: string };
 };
 
@@ -24,6 +26,13 @@ const DashboardStackNavigator: React.FC = () => {
       <Stack.Screen
         name="MatchesList"
         component={MatchesListScreen}
+        options={{
+          headerBackTitleVisible: false,
+        }}
+      />
+      <Stack.Screen
+        name="EventCrewsList"
+        component={EventCrewsListScreen}
         options={{
           headerBackTitleVisible: false,
         }}

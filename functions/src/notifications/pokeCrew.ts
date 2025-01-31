@@ -4,8 +4,8 @@ import * as functions from 'firebase-functions/v2';
 import { CallableRequest } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
-import { sendExpoNotifications } from '../utils/sendExpoNotifications'; // Adjust the path as necessary
-import { getDateDescription } from './notifyCrewOnStatusChange'; // Adjust the path as necessary
+import { sendExpoNotifications } from '../utils/sendExpoNotifications';
+import { getDateDescription } from '../utils/dateHelpers';
 
 // Define the type for the data expected from the client
 interface PokeCrewData {

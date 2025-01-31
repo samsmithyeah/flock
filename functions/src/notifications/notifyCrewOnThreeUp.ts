@@ -4,7 +4,7 @@ import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
-import { getDateDescription } from './notifyCrewOnStatusChange';
+import { getDateDescription } from '../utils/dateHelpers';
 
 export const notifyCrewOnThreeUp = onDocumentWritten(
   'crews/{crewId}/statuses/{date}/userStatuses/{userId}',

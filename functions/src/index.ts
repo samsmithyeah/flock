@@ -11,8 +11,10 @@ import { notifyUsersOnNewGroupMessage } from './notifications/notifyUsersOnNewGr
 import { pokeCrew } from './notifications/pokeCrew';
 import { sendCode, verifyCode } from './utils/phoneVerification';
 import { deleteAccount } from './utils/deleteAccount';
+import { notifyCrewMembersOnEventWrite } from './notifications/notifyCrewMembersOnEventWrite';
 
 export {
+  notifyCrewMembersOnEventWrite,
   notifyCrewMembersOnCrewDeletion,
   notifyCrewMembersOnNewJoin,
   notifyCrewMembersOnMemberLeave,
