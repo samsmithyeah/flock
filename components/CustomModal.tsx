@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Modal,
   TouchableWithoutFeedback,
-  Keyboard,
 } from 'react-native';
 import CustomButton from './CustomButton';
 import Colors from '@/styles/colors';
