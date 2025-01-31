@@ -190,7 +190,7 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
       variant: 'secondary' as const,
     },
     {
-      label: isEditing ? 'Save Event' : 'Add Event',
+      label: isEditing ? 'Save' : 'Add event',
       onPress: handleSave,
       variant: 'primary' as const,
       disabled: loading || !title.trim(),

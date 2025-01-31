@@ -4,33 +4,7 @@ import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
-
-export const getDateDescription = (dateStr: string): string => {
-  const today = new Date();
-  const targetDate = new Date(`${dateStr}T00:00:00Z`);
-
-  // Get today's date in UTC
-  const currentUTC = new Date(
-    Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
-  );
-
-  // Calculate difference in days
-  const diffTime = targetDate.getTime() - currentUTC.getTime();
-  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) {
-    return 'today';
-  } else if (diffDays === 1) {
-    return 'tomorrow';
-  } else if (diffDays >= 2 && diffDays <= 6) {
-    // Get the day of the week, e.g., "Friday"
-    const options: Intl.DateTimeFormatOptions = { weekday: 'long' };
-    const dayOfWeek = targetDate.toLocaleDateString('en-US', options);
-    return `on ${dayOfWeek}`;
-  } else {
-    return `on ${dateStr}`;
-  }
-};
+import { getDateDescription } from '../utils/dateHelpers';
 
 /**
  * Cloud Function to notify crew members when a user's status changes.

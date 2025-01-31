@@ -5,15 +5,17 @@ import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
 import { getFormattedDate } from '../utils/dateHelpers';
+
 const getEventDateRangeString = (startDate: string, endDate: string): string => {
   if (!startDate || !endDate) return '';
 
-  const startString = getFormattedDate(startDate);
-  const endString = getFormattedDate(endDate);
-
-  // Single day vs. multiple days
-  return startDate === endDate ? startString :
-    `${startString} - ${endString}`;
+  if (startDate === endDate) {
+    return getFormattedDate(startDate);
+  } else {
+    const start = getFormattedDate(startDate, true);
+    const end = getFormattedDate(endDate, true);
+    return `${start} - ${end}`;
+  }
 };
 
 export const notifyCrewMembersOnEventWrite = onDocumentWritten(
@@ -73,7 +75,7 @@ export const notifyCrewMembersOnEventWrite = onDocumentWritten(
     }
 
     const crewName = crewData.name || 'Your Crew';
-    const memberIds: string[] = crewData.memberIds;
+    const memberIds = crewData.memberIds;
 
     // Fetch the user who performed this action
     const userRef = admin.firestore().collection('users').doc(actorUserId);
@@ -101,8 +103,8 @@ export const notifyCrewMembersOnEventWrite = onDocumentWritten(
 
     let notificationBody = '';
     if (isCreated) {
-      // e.g. "Sam added 'Birthday Bash' (Jan 5 - Jan 8)."
-      notificationBody = `${actorName} created a new event "${eventTitle}" (${dateRangeStr}).`;
+      // e.g. "Sam added 'Birthday Bash' on Jan 5 - Jan 8."
+      notificationBody = `${actorName} created a new event "${eventTitle}"`;
     } else if (isUpdated) {
       // e.g. "Sam updated 'Birthday Bash'."
       notificationBody = `${actorName} updated the event "${eventTitle}".`;
@@ -111,9 +113,8 @@ export const notifyCrewMembersOnEventWrite = onDocumentWritten(
       notificationBody = `${actorName} deleted the event "${eventTitle}".`;
     }
 
-    // (Optional) Exclude the actor from receiving the notification
-    // const memberIdsToNotify = memberIds.filter(id => id !== actorUserId);
-    const memberIdsToNotify = memberIds; // If you want them to get the push, keep them in
+    // Exclude the actor from receiving the notification
+    const memberIdsToNotify = memberIds.filter((id: string) => id !== actorUserId);
 
     if (memberIdsToNotify.length === 0) {
       console.log('No members to notify.');
@@ -156,12 +157,11 @@ export const notifyCrewMembersOnEventWrite = onDocumentWritten(
       return null;
     }
 
-    // Build the messages
-    // Include the startDate in the data object, as requested
     const messages: ExpoPushMessage[] = expoPushTokens.map((token) => ({
       to: token,
       sound: 'default',
       title: crewName,
+      subtitle: dateRangeStr,
       body: notificationBody,
       data: {
         crewId,
@@ -171,7 +171,6 @@ export const notifyCrewMembersOnEventWrite = onDocumentWritten(
       },
     }));
 
-    // Send
     await sendExpoNotifications(messages);
 
     console.log(
