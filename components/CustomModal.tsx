@@ -43,12 +43,17 @@ const CustomModal: React.FC<CustomModalProps> = ({
     <Modal visible={isVisible} animationType={animationType} transparent>
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            {/* Main content (opacity 0 if loading, but still takes up space) */}
+          <View style={styles.modalBackdrop}>
             <View style={{ opacity: loading ? 0 : 1 }}>
               <Text style={styles.modalTitle}>{title}</Text>
-              {children}
-              <View style={styles.buttonContainer}>
+              <View style={styles.modalContent}>{children}</View>
+              <View
+                style={
+                  buttons.length > 1
+                    ? styles.buttonContainer
+                    : styles.singleButtonContainer
+                }
+              >
                 {buttons.map((button, index) => (
                   <CustomButton
                     key={index}
@@ -84,19 +89,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
-  modalContent: {
+  modalBackdrop: {
     position: 'relative',
     backgroundColor: Colors.background,
     borderRadius: 10,
     padding: 25,
     width: '85%',
-    alignItems: 'center',
     shadowColor: '#000',
     elevation: 5,
   },
+  modalContent: {
+    alignContent: 'flex-start',
+  },
   modalTitle: {
     fontSize: 20,
-    marginBottom: 15,
+    marginBottom: 10,
     textAlign: 'center',
     fontWeight: '600',
     color: '#333',
@@ -104,6 +111,10 @@ const styles = StyleSheet.create({
   buttonContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    width: '100%',
+    marginTop: 10,
+  },
+  singleButtonContainer: {
     width: '100%',
     marginTop: 10,
   },

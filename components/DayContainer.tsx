@@ -28,6 +28,7 @@ interface DayContainerProps {
   events?: CrewEvent[];
   onAddEvent?: (day: string) => void;
   onEditEvent?: (day: string, event: CrewEvent) => void;
+  onViewEvent?: (event: CrewEvent) => void;
   width?: string | number;
   margin?: number;
 }
@@ -84,10 +85,21 @@ const DayContainer: React.FC<DayContainerProps> = ({
   navigateToUserProfile,
   onAddEvent,
   onEditEvent,
+  onViewEvent,
   events = [],
 }) => {
   const { user } = useUser();
   const isEventCreator = (event: CrewEvent) => event.createdBy === user?.uid;
+
+  const handlePillPress = (event: CrewEvent) => {
+    console.log('Pill pressed:', event);
+    if (isEventCreator(event)) {
+      onEditEvent?.(day, event);
+    } else {
+      console.log('Viewing event:', event);
+      onViewEvent?.(event);
+    }
+  };
 
   return (
     <View style={styles.dayContainer}>
@@ -117,8 +129,7 @@ const DayContainer: React.FC<DayContainerProps> = ({
               <View key={evt.id} style={eventPillStyles}>
                 <TouchableOpacity
                   style={styles.eventRow}
-                  onPress={() => isEventCreator(evt) && onEditEvent?.(day, evt)}
-                  disabled={!isEventCreator(evt)}
+                  onPress={() => handlePillPress(evt)}
                 >
                   <Text style={styles.eventPillText}>{evt.title}</Text>
 

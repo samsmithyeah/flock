@@ -44,6 +44,7 @@ import { Calendar } from 'react-native-calendars';
 import WeekNavButtons from '@/components/WeekNavButtons';
 import DayContainer from '@/components/DayContainer';
 import AddEventModal from '@/components/AddEventModal';
+import EventInfoModal from '@/components/EventInfoModal';
 import {
   addEventToCrew,
   deleteEventFromCrew,
@@ -89,6 +90,8 @@ const CrewScreen: React.FC = () => {
   const [isAddingEvent, setIsAddingEvent] = useState(false);
   // Track which event (if any) is being edited
   const [editingEvent, setEditingEvent] = useState<CrewEvent | null>(null);
+  const [viewingEvent, setViewingEvent] = useState<CrewEvent | null>(null);
+  const [viewEventModalVisible, setViewEventModalVisible] = useState(false);
 
   const [eventsForWeek, setEventsForWeek] = useState<{
     [day: string]: CrewEvent[];
@@ -523,6 +526,11 @@ const CrewScreen: React.FC = () => {
     setAddEventVisible(true);
   };
 
+  const handleViewEvent = (evt: CrewEvent) => {
+    setViewingEvent(evt);
+    setViewEventModalVisible(true);
+  };
+
   // Next/prev weeks
   const canGoPrevWeek =
     startDate.isAfter(moment().startOf('day'), 'day') && scrolledToStart;
@@ -631,6 +639,15 @@ const CrewScreen: React.FC = () => {
         onDelete={() => editingEvent?.id && handleDeleteEvent(editingEvent.id)}
       />
 
+      {/* View Event Modal */}
+      {viewingEvent && (
+        <EventInfoModal
+          isVisible={viewEventModalVisible}
+          onClose={() => setViewEventModalVisible(false)}
+          event={viewingEvent}
+        />
+      )}
+
       <WeekNavButtons
         onPrevWeek={goPrevWeek}
         onNextWeek={goNextWeek}
@@ -676,6 +693,7 @@ const CrewScreen: React.FC = () => {
                 onAddEvent={handleAddEvent}
                 // Pass our new edit callback
                 onEditEvent={handleEditEvent}
+                onViewEvent={handleViewEvent}
                 events={dayEvents}
               />
             </View>
