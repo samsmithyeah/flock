@@ -302,7 +302,7 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
             placeholderTextColor="#666"
             value={location}
             onChangeText={setLocation}
-            autoCapitalize="words"
+            autoCapitalize="sentences"
             hasBorder
           />
 

@@ -399,6 +399,7 @@ const CrewScreen: React.FC = () => {
     start: string,
     end: string,
     unconfirmed?: boolean,
+    location?: string,
   ) => {
     if (!crewId || !user?.uid) return;
     setIsAddingEvent(true);
@@ -410,6 +411,7 @@ const CrewScreen: React.FC = () => {
           startDate: start,
           endDate: end,
           unconfirmed,
+          location,
         });
         Toast.show({
           type: 'success',
@@ -420,7 +422,7 @@ const CrewScreen: React.FC = () => {
         // Create new
         await addEventToCrew(
           crewId,
-          { title, startDate: start, endDate: end, unconfirmed },
+          { title, startDate: start, endDate: end, unconfirmed, location },
           user.uid,
         );
         Toast.show({
@@ -624,6 +626,7 @@ const CrewScreen: React.FC = () => {
         defaultStart={editingEvent?.startDate || selectedDate || undefined}
         defaultEnd={editingEvent?.endDate || selectedDate || undefined}
         defaultUnconfirmed={editingEvent?.unconfirmed}
+        defaultLocation={editingEvent?.location}
         isEditing={!!editingEvent}
         onDelete={() => editingEvent?.id && handleDeleteEvent(editingEvent.id)}
       />

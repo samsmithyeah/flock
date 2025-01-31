@@ -16,6 +16,7 @@ export type NewCrewEvent = {
   endDate: string;
   description?: string;
   unconfirmed?: boolean;
+  location?: string;
 };
 
 export async function addEventToCrew(
@@ -40,6 +41,7 @@ export async function updateEventInCrew(
     startDate: string;
     endDate: string;
     unconfirmed?: boolean;
+    location?: string;
   },
 ) {
   const eventRef = doc(db, 'crews', crewId, 'events', eventId);

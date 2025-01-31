@@ -12,4 +12,5 @@ export type CrewEvent = {
   createdAt: Timestamp;
   updatedBy?: string;
   unconfirmed?: boolean;
+  location?: string;
 };
