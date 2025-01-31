@@ -197,7 +197,7 @@ const CrewScreen: React.FC = () => {
 
   // Fetch events for the current week
   useEffect(() => {
-    if (!crewId || !weekDates.length) return;
+    if (!crewId || !weekDates.length || !user) return;
 
     const eventsRef = collection(db, 'crews', crewId, 'events');
     const q = query(eventsRef, orderBy('startDate'));

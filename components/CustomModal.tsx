@@ -41,7 +41,7 @@ const CustomModal: React.FC<CustomModalProps> = ({
 }) => {
   return (
     <Modal visible={isVisible} animationType={animationType} transparent>
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalBackdrop}>
             <View style={{ opacity: loading ? 0 : 1 }}>

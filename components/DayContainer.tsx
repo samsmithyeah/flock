@@ -92,11 +92,9 @@ const DayContainer: React.FC<DayContainerProps> = ({
   const isEventCreator = (event: CrewEvent) => event.createdBy === user?.uid;
 
   const handlePillPress = (event: CrewEvent) => {
-    console.log('Pill pressed:', event);
     if (isEventCreator(event)) {
       onEditEvent?.(day, event);
     } else {
-      console.log('Viewing event:', event);
       onViewEvent?.(event);
     }
   };
