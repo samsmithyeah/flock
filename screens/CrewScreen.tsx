@@ -59,12 +59,24 @@ const CARD_WIDTH = width * 0.75;
 const CARD_MARGIN = 16;
 const TOTAL_CARD_WIDTH = CARD_WIDTH + CARD_MARGIN;
 
+// Helper to get all dates between two dates (inclusive)
+const getDatesBetween = (start: string, end: string): string[] => {
+  const dates: string[] = [];
+  let current = moment(start, 'YYYY-MM-DD');
+  const last = moment(end, 'YYYY-MM-DD');
+  while (current.isSameOrBefore(last, 'day')) {
+    dates.push(current.format('YYYY-MM-DD'));
+    current.add(1, 'day');
+  }
+  return dates;
+};
+
 const CrewScreen: React.FC = () => {
   const route = useRoute<CrewScreenRouteProp>();
   const { crewId, date } = route.params;
   const navigation = useNavigation<NavigationProp<NavParamList>>();
   const { user } = useUser();
-  const { toggleStatusForCrew } = useCrews();
+  const { setStatusForCrew } = useCrews();
   const { addMemberToChat, removeMemberFromChat } = useCrewDateChat();
   const globalStyles = useglobalStyles();
   const insets = useSafeAreaInsets();
@@ -98,9 +110,7 @@ const CrewScreen: React.FC = () => {
   }>({});
 
   useEffect(() => {
-    console.log('date:', date);
     if (date) {
-      console.log('Setting selected date:', date);
       setSelectedDate(date);
     }
   }, [date]);
@@ -215,7 +225,6 @@ const CrewScreen: React.FC = () => {
           groupedByDay[day] = [];
         });
 
-        // Helper: check if day is within event’s start/end
         const isDayWithinEvent = (day: string, event: CrewEvent) => {
           const d = moment(day, 'YYYY-MM-DD');
           const start = moment(event.startDate, 'YYYY-MM-DD');
@@ -243,7 +252,7 @@ const CrewScreen: React.FC = () => {
     );
 
     return () => unsub();
-  }, [crewId, weekDates]);
+  }, [crewId, weekDates, user]);
 
   // Firestore listeners for each day in "weekDates" => user statuses
   useEffect(() => {
@@ -297,7 +306,6 @@ const CrewScreen: React.FC = () => {
     if (selectedDate && weekDates.length > 0) {
       const dateIndex = weekDates.indexOf(selectedDate);
       if (dateIndex === -1) {
-        // If the selected date isn't in this week, jump to that week
         const newStartDate = moment(selectedDate).startOf('week');
         const today = moment().startOf('day');
         if (newStartDate.isBefore(today)) {
@@ -320,7 +328,6 @@ const CrewScreen: React.FC = () => {
     }, 150);
   };
 
-  // Toggling user status
   const isUserUpForDay = (day: string) => {
     if (!user) return false;
     return statusesForWeek[day]?.[user.uid] || false;
@@ -343,7 +350,8 @@ const CrewScreen: React.FC = () => {
     const chatId = `${crewId}_${day}`;
 
     const confirmToggle = async () => {
-      toggleStatusForCrew(crewId, day, newStatus);
+      // Use the explicit set function here as well:
+      await setStatusForCrew(crewId, day, newStatus);
       if (newStatus) {
         await addMemberToChat(chatId, user.uid);
       } else {
@@ -364,7 +372,7 @@ const CrewScreen: React.FC = () => {
   };
 
   const handleDeleteEvent = async (eventId: string) => {
-    if (!crewId || !eventId) return;
+    if (!crewId || !eventId || !editingEvent) return;
     Alert.alert(
       'Delete event?',
       'Are you sure you want to delete this event?',
@@ -375,12 +383,40 @@ const CrewScreen: React.FC = () => {
           style: 'destructive',
           onPress: async () => {
             try {
+              const eventDates = getDatesBetween(
+                editingEvent.startDate,
+                editingEvent.endDate,
+              );
               await deleteEventFromCrew(crewId, eventId);
               Toast.show({
                 type: 'success',
                 text1: 'Deleted',
                 text2: 'Event was removed successfully.',
               });
+              // Only prompt if user is available on any of the event dates
+              const userIsAvailableOnAnyDate = eventDates.some((day) =>
+                isUserUpForDay(day),
+              );
+
+              if (userIsAvailableOnAnyDate) {
+                Alert.alert(
+                  'Update availability',
+                  'Do you want to mark yourself as not available on the event date(s)?',
+                  [
+                    { text: 'No', style: 'cancel' },
+                    {
+                      text: 'Yes',
+                      onPress: () => {
+                        if (!user) return;
+                        eventDates.forEach((day) => {
+                          setStatusForCrew(crewId, day, false);
+                          removeMemberFromChat(`${crewId}_${day}`, user.uid);
+                        });
+                      },
+                    },
+                  ],
+                );
+              }
             } catch (err) {
               console.error('Error deleting event:', err);
               Toast.show({
@@ -396,7 +432,6 @@ const CrewScreen: React.FC = () => {
     );
   };
 
-  // Create/update event
   const handleSaveEvent = async (
     title: string,
     start: string,
@@ -408,7 +443,16 @@ const CrewScreen: React.FC = () => {
     setIsAddingEvent(true);
     try {
       if (editingEvent) {
-        // Update existing
+        // Normalize dates using local time formatting
+        const normalizedOldDates = getDatesBetween(
+          moment(editingEvent.startDate).format('YYYY-MM-DD'),
+          moment(editingEvent.endDate).format('YYYY-MM-DD'),
+        );
+        const normalizedNewDates = getDatesBetween(
+          moment(start).format('YYYY-MM-DD'),
+          moment(end).format('YYYY-MM-DD'),
+        );
+
         await updateEventInCrew(crewId, editingEvent.id, user.uid, {
           title,
           startDate: start,
@@ -416,18 +460,53 @@ const CrewScreen: React.FC = () => {
           unconfirmed,
           location,
         });
+
+        // Explicitly mark user as available for all new dates
+        normalizedNewDates.forEach((day) => {
+          setStatusForCrew(crewId, day, true);
+          addMemberToChat(`${crewId}_${day}`, user.uid);
+        });
+
+        // Determine dates that were removed and where the user is currently marked as available
+        const removedDates = normalizedOldDates.filter(
+          (day) => !normalizedNewDates.includes(day) && isUserUpForDay(day),
+        );
+        if (removedDates.length > 0) {
+          Alert.alert(
+            'Update Availability',
+            'The event dates have changed. Do you want to mark yourself as not available on the removed date(s)?',
+            [
+              { text: 'No', style: 'cancel' },
+              {
+                text: 'Yes',
+                onPress: () => {
+                  removedDates.forEach((day) => {
+                    setStatusForCrew(crewId, day, false);
+                    removeMemberFromChat(`${crewId}_${day}`, user.uid);
+                  });
+                },
+              },
+            ],
+          );
+        }
         Toast.show({
           type: 'success',
           text1: 'Event Updated',
           text2: 'Event successfully updated.',
         });
       } else {
-        // Create new
+        // Create new event
         await addEventToCrew(
           crewId,
           { title, startDate: start, endDate: end, unconfirmed, location },
           user.uid,
         );
+        // Explicitly mark the user as available on all dates in the event range
+        const eventDates = getDatesBetween(start, end);
+        eventDates.forEach((day) => {
+          setStatusForCrew(crewId, day, true);
+          addMemberToChat(`${crewId}_${day}`, user.uid);
+        });
         Toast.show({
           type: 'success',
           text1: 'Event Added',
@@ -512,14 +591,12 @@ const CrewScreen: React.FC = () => {
     }
   };
 
-  // Called from the "+ add event" pill
   const handleAddEvent = (day: string) => {
     setSelectedDate(day);
-    setEditingEvent(null); // No event => we’re adding
+    setEditingEvent(null);
     setAddEventVisible(true);
   };
 
-  // Called from the pencil icon
   const handleEditEvent = (day: string, evt: CrewEvent) => {
     setSelectedDate(day);
     setEditingEvent(evt);
@@ -597,7 +674,6 @@ const CrewScreen: React.FC = () => {
 
   return (
     <View style={globalStyles.containerWithHeader}>
-      {/* Full-screen calendar modal */}
       <Modal
         visible={calendarVisible}
         transparent
@@ -620,7 +696,6 @@ const CrewScreen: React.FC = () => {
         </View>
       </Modal>
 
-      {/* Create/Edit Event Modal */}
       <AddEventModal
         isVisible={addEventVisible}
         onClose={() => {
@@ -629,7 +704,6 @@ const CrewScreen: React.FC = () => {
         }}
         onSubmit={handleSaveEvent}
         loading={isAddingEvent}
-        // If editing an event, fill fields
         defaultTitle={editingEvent?.title}
         defaultStart={editingEvent?.startDate || selectedDate || undefined}
         defaultEnd={editingEvent?.endDate || selectedDate || undefined}
@@ -639,7 +713,6 @@ const CrewScreen: React.FC = () => {
         onDelete={() => editingEvent?.id && handleDeleteEvent(editingEvent.id)}
       />
 
-      {/* View Event Modal */}
       {viewingEvent && (
         <EventInfoModal
           isVisible={viewEventModalVisible}
@@ -691,7 +764,6 @@ const CrewScreen: React.FC = () => {
                 handlePokeCrew={handlePokeCrew}
                 navigateToUserProfile={navigateToUserProfile}
                 onAddEvent={handleAddEvent}
-                // Pass our new edit callback
                 onEditEvent={handleEditEvent}
                 onViewEvent={handleViewEvent}
                 events={dayEvents}

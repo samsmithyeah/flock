@@ -1,5 +1,3 @@
-// components/CustomModal.tsx
-
 import React, { ReactNode } from 'react';
 import {
   View,
@@ -7,6 +5,7 @@ import {
   StyleSheet,
   Modal,
   TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
 import CustomButton from './CustomButton';
 import Colors from '@/styles/colors';
@@ -42,37 +41,38 @@ const CustomModal: React.FC<CustomModalProps> = ({
     <Modal visible={isVisible} animationType={animationType} transparent>
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalBackdrop}>
-            <View style={{ opacity: loading ? 0 : 1 }}>
-              <Text style={styles.modalTitle}>{title}</Text>
-              <View style={styles.modalContent}>{children}</View>
-              <View
-                style={
-                  buttons.length > 1
-                    ? styles.buttonContainer
-                    : styles.singleButtonContainer
-                }
-              >
-                {buttons.map((button, index) => (
-                  <CustomButton
-                    key={index}
-                    title={button.label}
-                    onPress={button.onPress}
-                    variant={button.variant}
-                    disabled={button.disabled}
-                    loading={false}
-                  />
-                ))}
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={styles.modalBackdrop}>
+              <View style={{ opacity: loading ? 0 : 1 }}>
+                <Text style={styles.modalTitle}>{title}</Text>
+                <View style={styles.modalContent}>{children}</View>
+                <View
+                  style={
+                    buttons.length > 1
+                      ? styles.buttonContainer
+                      : styles.singleButtonContainer
+                  }
+                >
+                  {buttons.map((button, index) => (
+                    <CustomButton
+                      key={index}
+                      title={button.label}
+                      onPress={button.onPress}
+                      variant={button.variant}
+                      disabled={button.disabled}
+                      loading={false}
+                    />
+                  ))}
+                </View>
               </View>
-            </View>
 
-            {/* Loading overlay (absolute positioning) */}
-            {loading && (
-              <View style={styles.loadingOverlay}>
-                <SpinLoader text="Processing..." />
-              </View>
-            )}
-          </View>
+              {loading && (
+                <View style={styles.loadingOverlay}>
+                  <SpinLoader text="Processing..." />
+                </View>
+              )}
+            </View>
+          </TouchableWithoutFeedback>
         </View>
       </TouchableWithoutFeedback>
     </Modal>

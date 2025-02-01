@@ -40,6 +40,11 @@ interface CrewsContextProps {
   dateEvents: { [key: string]: number };
   dateEventCrews: { [key: string]: string[] };
   usersCache: { [key: string]: User };
+  setStatusForCrew: (
+    crewId: string,
+    selectedDate: string,
+    status: boolean,
+  ) => Promise<void>;
   toggleStatusForCrew: (
     crewId: string,
     date: string,
@@ -386,6 +391,42 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     };
   }, [matchesNeedsRefresh, crewIds]);
 
+  const setStatusForCrew = async (
+    crewId: string,
+    selectedDate: string,
+    status: boolean,
+  ) => {
+    try {
+      if (!user?.uid) throw new Error('User not authenticated');
+      const userStatusRef = doc(
+        db,
+        'crews',
+        crewId,
+        'statuses',
+        selectedDate,
+        'userStatuses',
+        user.uid,
+      );
+      const statusSnap = await getDoc(userStatusRef);
+      if (statusSnap.exists()) {
+        await updateDoc(userStatusRef, {
+          upForGoingOutTonight: status,
+          timestamp: Timestamp.fromDate(new Date()),
+        });
+      } else {
+        await setDoc(userStatusRef, {
+          date: selectedDate,
+          upForGoingOutTonight: status,
+          timestamp: Timestamp.fromDate(new Date()),
+        });
+      }
+      // (Optionally update local caches such as dateCounts and dateMatchingCrews if needed)
+    } catch (error) {
+      console.error('Error setting status explicitly:', error);
+      throw error;
+    }
+  };
+
   const toggleStatusForCrew = async (
     crewId: string,
     selectedDate: string,
@@ -695,6 +736,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         dateEvents,
         dateEventCrews,
         usersCache: memoizedUsersCache,
+        setStatusForCrew,
         toggleStatusForCrew,
         toggleStatusForDateAllCrews,
         setUsersCache,
