@@ -80,7 +80,6 @@ const ContactsScreen: React.FC = () => {
                 members={filteredUsers}
                 currentUserId={''}
                 onMemberPress={handleContactPress}
-                isLoading={false}
                 emptyMessage="No registered contacts found."
                 scrollEnabled
                 refreshing={!isInitialLoading && loading}

@@ -356,11 +356,6 @@ const ChatsListScreen: React.FC = () => {
       saveCachedChatData(combined);
     } catch (error) {
       console.error('Error combining chats:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Could not combine chats.',
-      });
     } finally {
       setLoading(false);
     }

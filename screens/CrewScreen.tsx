@@ -401,7 +401,7 @@ const CrewScreen: React.FC = () => {
               if (userIsAvailableOnAnyDate) {
                 Alert.alert(
                   'Update availability',
-                  'Do you want to mark yourself as not available on the event date(s)?',
+                  'Do you want to mark yourself as not available on the deleted event date(s)?',
                   [
                     { text: 'No', style: 'cancel' },
                     {
@@ -473,7 +473,7 @@ const CrewScreen: React.FC = () => {
         );
         if (removedDates.length > 0) {
           Alert.alert(
-            'Update Availability',
+            'Update availability',
             'The event dates have changed. Do you want to mark yourself as not available on the removed date(s)?',
             [
               { text: 'No', style: 'cancel' },

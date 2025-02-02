@@ -1,3 +1,5 @@
+// components/CustomModal.tsx
+
 import React, { ReactNode } from 'react';
 import {
   View,
