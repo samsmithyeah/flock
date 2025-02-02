@@ -7,13 +7,13 @@ import {
   FlatList,
   TouchableOpacity,
   StyleSheet,
+  RefreshControl,
 } from 'react-native';
 import ProfilePicturePicker from '@/components/ProfilePicturePicker';
 import SkeletonUserItem from '@/components/SkeletonUserItem';
 import { User } from '@/types/User';
 import { Ionicons } from '@expo/vector-icons';
 
-// Define the extended interface with optional status
 interface MemberWithStatus extends User {
   status?: 'member' | 'invited' | 'available';
 }
@@ -25,9 +25,11 @@ interface MemberListProps {
   isLoading?: boolean;
   emptyMessage?: string;
   adminIds?: string[];
-  selectedMemberIds?: string[]; // For selection
-  onSelectMember?: (memberId: string) => void; // For selection handler
+  selectedMemberIds?: string[];
+  onSelectMember?: (memberId: string) => void;
   scrollEnabled?: boolean;
+  refreshing?: boolean;
+  onRefresh?: () => void;
 }
 
 const MemberList: React.FC<MemberListProps> = ({
@@ -40,30 +42,24 @@ const MemberList: React.FC<MemberListProps> = ({
   selectedMemberIds = [],
   onSelectMember,
   scrollEnabled = false,
+  refreshing = false,
+  onRefresh,
 }) => {
-  // Memoize the sorted members to avoid unnecessary re-sorting on each render
   const sortedMembers = useMemo(() => {
-    // Create a shallow copy to avoid mutating the original array
     const membersCopy = [...members];
-
-    // Sort the members by displayName (case-insensitive)
     membersCopy.sort((a, b) => {
       const nameA = a.displayName ? a.displayName.toLowerCase() : '';
       const nameB = b.displayName ? b.displayName.toLowerCase() : '';
-
       if (nameA < nameB) return -1;
       if (nameA > nameB) return 1;
       return 0;
     });
-
     return membersCopy;
   }, [members]);
 
   const renderItem = ({ item }: { item: User | MemberWithStatus }) => {
-    // Determine if the member has a status
     const memberWithStatus = item as MemberWithStatus;
     const status = memberWithStatus.status;
-
     const isSelected = selectedMemberIds.includes(item.uid);
     const isDisabled = status === 'member' || status === 'invited';
 
@@ -71,15 +67,14 @@ const MemberList: React.FC<MemberListProps> = ({
       <TouchableOpacity
         style={styles.memberItem}
         onPress={() => {
-          if (isDisabled) return; // Prevent interaction
+          if (isDisabled) return;
           if (onMemberPress) {
             onMemberPress(item);
           }
         }}
         activeOpacity={isDisabled ? 1 : onMemberPress ? 0.7 : 1}
-        disabled={isDisabled} // Visually disable the touchable
+        disabled={isDisabled}
       >
-        {/* Display Profile Picture */}
         <ProfilePicturePicker
           imageUrl={item.photoURL || null}
           onImageUpdate={() => {}}
@@ -99,7 +94,6 @@ const MemberList: React.FC<MemberListProps> = ({
               <Text style={styles.adminText}>Admin</Text>
             </View>
           )}
-          {/* Display Status Text if Disabled */}
           {isDisabled && status === 'member' && (
             <Text style={styles.statusText}>Already a member of the crew</Text>
           )}
@@ -107,7 +101,6 @@ const MemberList: React.FC<MemberListProps> = ({
             <Text style={styles.statusText}>Already invited to the crew</Text>
           )}
         </View>
-        {/* Only show selection icon if member is available */}
         {onSelectMember && !isDisabled && (
           <TouchableOpacity
             onPress={() => onSelectMember(item.uid)}
@@ -125,11 +118,9 @@ const MemberList: React.FC<MemberListProps> = ({
   };
 
   if (isLoading) {
-    // Display Skeletons or Loading Indicators
     return (
       <View style={styles.container}>
         {[...Array(6)].map((_, index) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: <explanation>
           <SkeletonUserItem key={index} />
         ))}
       </View>
@@ -147,6 +138,11 @@ const MemberList: React.FC<MemberListProps> = ({
         }
         scrollEnabled={scrollEnabled}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
+        refreshControl={
+          onRefresh ? (
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          ) : undefined
+        }
       />
     </View>
   );
@@ -156,6 +152,7 @@ export default MemberList;
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
     marginVertical: 10,
   },
   memberItem: {
@@ -173,7 +170,7 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   disabledText: {
-    color: '#999', // Darker gray text for disabled members
+    color: '#999',
   },
   youText: {
     color: 'gray',

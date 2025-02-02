@@ -21,8 +21,11 @@ const ContactsScreen: React.FC = () => {
   const globalStyles = useglobalStyles();
   const navigation = useNavigation<ContactsScreenProp>();
 
-  const [searchQuery, setSearchQuery] = useState<string>(''); // State for search
-  const [filteredUsers, setFilteredUsers] = useState<User[]>([]); // State for filtered contacts
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+
+  // If no contacts have been loaded yet, consider it the initial load.
+  const isInitialLoading = loading && allContacts.length === 0;
 
   useEffect(() => {
     if (searchQuery.trim() === '') {
@@ -36,25 +39,21 @@ const ContactsScreen: React.FC = () => {
   }, [searchQuery, allContacts]);
 
   const handleContactPress = (contact: User) => {
-    // Navigate to the member's profile or perform another action
     navigation.navigate('OtherUserProfile', { userId: contact.uid });
   };
 
-  // Render the empty state UI
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
       <Ionicons name="people-outline" size={64} color="#888" />
       <Text style={styles.emptyText}>No contacts found</Text>
-      {/* <CustomButton title="Refresh Contacts" onPress={refreshContacts} /> */}
     </View>
   );
 
   return (
     <>
-      {/* Loading Overlay */}
-      {loading && <LoadingOverlay />}
+      {/* Only show the loading overlay on the first load */}
+      {isInitialLoading && <LoadingOverlay />}
       <View style={globalStyles.container}>
-        {/* Error State */}
         {error && !loading && (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>{error}</Text>
@@ -67,19 +66,13 @@ const ContactsScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Main Content */}
-        {!loading && !error && (
+        {!error && (
           <>
-            {/* Screen Title */}
             <ScreenTitle title="Contacts" />
-
-            {/* Search Bar */}
             <CustomSearchInput
               searchQuery={searchQuery}
               onSearchQueryChange={setSearchQuery}
             />
-
-            {/* Conditional Rendering based on filtered users */}
             {filteredUsers.length === 0 ? (
               renderEmptyState()
             ) : (
@@ -87,9 +80,10 @@ const ContactsScreen: React.FC = () => {
                 members={filteredUsers}
                 currentUserId={''}
                 onMemberPress={handleContactPress}
-                isLoading={loading}
                 emptyMessage="No registered contacts found."
                 scrollEnabled
+                refreshing={!isInitialLoading && loading}
+                onRefresh={refreshContacts}
               />
             )}
           </>
