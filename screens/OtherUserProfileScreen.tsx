@@ -33,10 +33,12 @@ const OtherUserProfileScreen: React.FC = () => {
   // otherwise, fallback to a one-time fetch.
   useEffect(() => {
     if (usersCache[userId]) {
+      console.log('User found in cache', usersCache[userId]);
       setUserProfile(usersCache[userId]);
       setLoading(false);
     } else {
       fetchUserDetails(userId).then((user) => {
+        console.log('User fetched', user);
         setUserProfile(user);
         setLoading(false);
       });

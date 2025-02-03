@@ -116,12 +116,12 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
 
   // --- USER SUBSCRIPTION LOGIC ---
   // Ref to track user subscriptions
+
   const userSubscriptionsRef = useRef<{ [uid: string]: () => void }>({});
 
   const subscribeToUser = useCallback(
     (uid: string) => {
       if (!user) return;
-      // Avoid multiple subscriptions for the same uid.
       if (userSubscriptionsRef.current[uid]) return;
       const userDocRef = doc(db, 'users', uid);
       const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
@@ -140,20 +140,36 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       });
       userSubscriptionsRef.current[uid] = unsubscribe;
     },
-    [setUsersCache],
+    [user, setUsersCache],
   );
 
   const subscribeToUsers = useCallback(
     (uids: string[]) => {
-      uids.forEach((uid) => {
-        subscribeToUser(uid);
-      });
+      uids.forEach((uid) => subscribeToUser(uid));
     },
     [subscribeToUser],
   );
 
   useEffect(() => {
-    // Cleanup all user subscriptions when the provider unmounts.
+    // Build a set of UIDs currently in usersCache.
+    const currentUids = new Set(Object.keys(usersCache));
+
+    // Subscribe to each user present in the cache.
+    Object.keys(usersCache).forEach((uid) => {
+      subscribeToUser(uid);
+    });
+
+    // Unsubscribe from any user that is no longer in usersCache.
+    Object.keys(userSubscriptionsRef.current).forEach((uid) => {
+      if (!currentUids.has(uid)) {
+        userSubscriptionsRef.current[uid]();
+        delete userSubscriptionsRef.current[uid];
+      }
+    });
+  }, [usersCache, subscribeToUser]);
+
+  useEffect(() => {
+    // Cleanup all subscriptions when the component unmounts.
     return () => {
       Object.values(userSubscriptionsRef.current).forEach((unsubscribe) =>
         unsubscribe(),
