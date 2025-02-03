@@ -143,6 +143,7 @@ const MemberList: React.FC<MemberListProps> = ({
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           ) : undefined
         }
+        contentContainerStyle={{ flexGrow: 1 }}
       />
     </View>
   );
@@ -152,7 +153,7 @@ export default MemberList;
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     marginVertical: 10,
   },
   memberItem: {
