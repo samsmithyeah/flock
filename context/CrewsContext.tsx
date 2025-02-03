@@ -116,7 +116,6 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
 
   // --- USER SUBSCRIPTION LOGIC ---
   // Ref to track user subscriptions
-
   const userSubscriptionsRef = useRef<{ [uid: string]: () => void }>({});
 
   const subscribeToUser = useCallback(
@@ -149,24 +148,6 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     },
     [subscribeToUser],
   );
-
-  useEffect(() => {
-    // Build a set of UIDs currently in usersCache.
-    const currentUids = new Set(Object.keys(usersCache));
-
-    // Subscribe to each user present in the cache.
-    Object.keys(usersCache).forEach((uid) => {
-      subscribeToUser(uid);
-    });
-
-    // Unsubscribe from any user that is no longer in usersCache.
-    Object.keys(userSubscriptionsRef.current).forEach((uid) => {
-      if (!currentUids.has(uid)) {
-        userSubscriptionsRef.current[uid]();
-        delete userSubscriptionsRef.current[uid];
-      }
-    });
-  }, [usersCache, subscribeToUser]);
 
   useEffect(() => {
     // Cleanup all subscriptions when the component unmounts.
