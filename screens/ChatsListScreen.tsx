@@ -449,12 +449,12 @@ const ChatsListScreen: React.FC = () => {
         <Text style={styles.chatLastMessage} numberOfLines={2}>
           {item.lastMessage ? (
             item.lastMessageSenderName ? (
-              <>
-                <Text style={styles.senderName}>
+              <Text>
+                <Text key="sender" style={styles.senderName}>
                   {item.lastMessageSenderName}:{' '}
                 </Text>
-                {item.lastMessage}
-              </>
+                <Text key="message">{item.lastMessage}</Text>
+              </Text>
             ) : (
               item.lastMessage
             )

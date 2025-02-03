@@ -1,3 +1,5 @@
+// context/DirectMessagesContext.tsx
+
 import React, {
   createContext,
   useState,
@@ -321,7 +323,7 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
                 lastRead: { [user.uid]: lastRead },
               } as DirectMessage;
             })
-            .filter((dm) => dm !== null);
+            .filter((dm): dm is DirectMessage => dm !== null);
           setDms(fetchedDMs);
         } catch (error) {
           console.error('Error fetching direct messages:', error);
@@ -374,7 +376,7 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
         } as DirectMessage;
       });
       const fetchedDMs = (await Promise.all(dmPromises)).filter(
-        (dm) => dm !== null,
+        (dm): dm is DirectMessage => dm !== null,
       );
       setDms(fetchedDMs);
     } catch (error) {
