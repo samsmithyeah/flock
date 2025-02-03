@@ -1,9 +1,5 @@
-// screens/OtherUserProfileScreen.tsx
-
 import React, { useEffect, useLayoutEffect, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/firebase';
 import {
   RouteProp,
   useRoute,
@@ -13,9 +9,10 @@ import {
 import { User } from '@/types/User';
 import ProfilePicturePicker from '@/components/ProfilePicturePicker';
 import { NavParamList } from '@/navigation/AppNavigator';
-import Toast from 'react-native-toast-message';
 import CustomButton from '@/components/CustomButton';
 import Colors from '@/styles/colors';
+import moment from 'moment';
+import { useCrews } from '@/context/CrewsContext';
 
 type OtherUserProfileScreenRouteProp = RouteProp<
   NavParamList,
@@ -26,49 +23,25 @@ const OtherUserProfileScreen: React.FC = () => {
   const route = useRoute<OtherUserProfileScreenRouteProp>();
   const navigation = useNavigation<NavigationProp<NavParamList>>();
   const { userId } = route.params;
+  const { usersCache, setUsersCache, fetchUserDetails } = useCrews();
 
   const [userProfile, setUserProfile] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
+  // Use the usersCache from CrewsContext.
+  // If the user is already in the cache, use it;
+  // otherwise, fallback to a one-time fetch.
   useEffect(() => {
-    const fetchUserProfile = async () => {
-      try {
-        const userRef = doc(db, 'users', userId);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          const userData = userSnap.data();
-          const fetchedUser: User = {
-            uid: userSnap.id,
-            displayName: userData.displayName || '',
-            firstName: userData.firstName || '',
-            lastName: userData.lastName || '',
-            email: userData.email || '',
-            photoURL: userData.photoURL || '',
-          };
-          setUserProfile(fetchedUser);
-        } else {
-          Toast.show({
-            type: 'error',
-            text1: 'Error',
-            text2: 'User profile not found',
-          });
-          navigation.goBack();
-        }
-      } catch (error) {
-        console.error('Error fetching user profile:', error);
-        Toast.show({
-          type: 'error',
-          text1: 'Error',
-          text2: 'Could not fetch user profile',
-        });
-        navigation.goBack();
-      } finally {
+    if (usersCache[userId]) {
+      setUserProfile(usersCache[userId]);
+      setLoading(false);
+    } else {
+      fetchUserDetails(userId).then((user) => {
+        setUserProfile(user);
         setLoading(false);
-      }
-    };
-
-    fetchUserProfile();
-  }, [userId, navigation]);
+      });
+    }
+  }, [userId, usersCache, setUsersCache]);
 
   useLayoutEffect(() => {
     if (userProfile) {
@@ -76,10 +49,7 @@ const OtherUserProfileScreen: React.FC = () => {
         title: userProfile.displayName || 'User Profile',
       });
     }
-  });
-
-  // Optional: Add buttons like "Send Message" or "Add Friend"
-  // For now, we'll keep it simple as per your request
+  }, [navigation, userProfile]);
 
   if (loading) {
     return (
@@ -97,6 +67,25 @@ const OtherUserProfileScreen: React.FC = () => {
     );
   }
 
+  const getStatusText = () => {
+    if (userProfile.isOnline) {
+      return 'Online';
+    }
+    if (userProfile.lastSeen) {
+      const lastSeenMoment = moment(userProfile.lastSeen.toDate());
+      const now = moment();
+      if (lastSeenMoment.isSame(now, 'day')) {
+        return `Today at ${lastSeenMoment.format('h:mma')}`;
+      } else if (lastSeenMoment.isSame(now.subtract(1, 'day'), 'day')) {
+        return `Yesterday at ${lastSeenMoment.format('h:mma')}`;
+      } else {
+        return lastSeenMoment.format('MMM Do, YYYY [at] h:mma');
+      }
+    } else {
+      return 'N/A';
+    }
+  };
+
   return (
     <View style={styles.container}>
       <ProfilePicturePicker
@@ -106,19 +95,10 @@ const OtherUserProfileScreen: React.FC = () => {
         storagePath={`users/${userProfile.uid}/profile.jpg`}
         size={150}
       />
-
       <View style={styles.infoContainer}>
-        <InfoItem
-          label="Name"
-          value={`${userProfile.firstName} ${userProfile.lastName}`}
-        />
-        <InfoItem
-          label="Display Name"
-          value={userProfile.displayName || 'N/A'}
-        />
-        <InfoItem label="Email Address" value={userProfile.email || 'N/A'} />
+        <InfoItem label="Name" value={userProfile.displayName || 'N/A'} />
+        <InfoItem label="Status" value={getStatusText() || 'N/A'} />
       </View>
-
       <View style={styles.chatButton}>
         <CustomButton
           title={`Send a message to ${userProfile.displayName}`}
@@ -139,7 +119,6 @@ const OtherUserProfileScreen: React.FC = () => {
   );
 };
 
-// Reusable component for displaying label-value pairs
 interface InfoItemProps {
   label: string;
   value: string;
@@ -172,6 +151,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 15,
     marginTop: 20,
+    borderColor: '#E0E0E0',
+    borderWidth: 1,
   },
   infoItem: {
     flexDirection: 'row',

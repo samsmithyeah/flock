@@ -1,3 +1,5 @@
+import { Timestamp } from 'firebase/firestore';
+
 export interface User {
   uid: string;
   displayName: string;
@@ -10,4 +12,6 @@ export interface User {
   badgeCount?: number;
   phoneNumber?: string;
   country?: string;
+  isOnline?: boolean;
+  lastSeen?: Timestamp;
 }

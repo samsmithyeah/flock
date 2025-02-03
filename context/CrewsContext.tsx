@@ -1,3 +1,5 @@
+// context/CrewsContext.tsx
+
 import React, {
   createContext,
   useState,
@@ -6,6 +8,7 @@ import React, {
   useContext,
   useMemo,
   useRef,
+  useCallback,
 } from 'react';
 import {
   collection,
@@ -60,6 +63,9 @@ interface CrewsContextProps {
   loadingMatches: boolean;
   loadingEvents: boolean;
   fetchCrew: (crewId: string) => Promise<Crew | null>;
+  fetchUserDetails: (uid: string) => Promise<User>;
+  subscribeToUser: (uid: string) => void;
+  subscribeToUsers: (uids: string[]) => void;
 }
 
 const CrewsContext = createContext<CrewsContextProps | undefined>(undefined);
@@ -77,7 +83,6 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     [key: string]: string[];
   }>({});
 
-  // NEW: Overall "events" for the next 7 days
   const [dateEvents, setDateEvents] = useState<{ [key: string]: number }>({});
   const [dateEventCrews, setDateEventCrews] = useState<{
     [key: string]: string[];
@@ -93,7 +98,6 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
   const [matchesNeedsRefresh, setMatchesNeedsRefresh] = useState(false);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // NEW: Store each crew's events in memory for partial recalculation
   const [crewEventsMap, setCrewEventsMap] = useState<{
     [crewId: string]: { [date: string]: number };
   }>({});
@@ -101,7 +105,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
   const memoizedCrews = useMemo(() => crews, [crews]);
   const memoizedUsersCache = useMemo(() => usersCache, [usersCache]);
 
-  // We'll always use the next 7 days in this context
+  // We always use the next 7 days in this context
   const weekDates = useMemo(() => {
     const dates: string[] = [];
     for (let i = 0; i < 7; i++) {
@@ -110,19 +114,66 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     return dates;
   }, []);
 
-  // Helper to rebuild "dateEvents" & "dateEventCrews" from the entire crewEventsMap
+  // --- USER SUBSCRIPTION LOGIC ---
+  // Ref to track user subscriptions
+  const userSubscriptionsRef = useRef<{ [uid: string]: () => void }>({});
+
+  const subscribeToUser = useCallback(
+    (uid: string) => {
+      if (!user) return;
+      // Avoid multiple subscriptions for the same uid.
+      if (userSubscriptionsRef.current[uid]) return;
+      const userDocRef = doc(db, 'users', uid);
+      const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const userData = docSnap.data();
+          const updatedUser: User = {
+            uid: docSnap.id,
+            displayName: userData.displayName || 'Unnamed User',
+            email: userData.email || '',
+            photoURL: userData.photoURL || '',
+            isOnline: userData.isOnline || false,
+            lastSeen: userData.lastSeen || null,
+          };
+          setUsersCache((prev) => ({ ...prev, [uid]: updatedUser }));
+        }
+      });
+      userSubscriptionsRef.current[uid] = unsubscribe;
+    },
+    [setUsersCache],
+  );
+
+  const subscribeToUsers = useCallback(
+    (uids: string[]) => {
+      uids.forEach((uid) => {
+        subscribeToUser(uid);
+      });
+    },
+    [subscribeToUser],
+  );
+
+  useEffect(() => {
+    // Cleanup all user subscriptions when the provider unmounts.
+    return () => {
+      Object.values(userSubscriptionsRef.current).forEach((unsubscribe) =>
+        unsubscribe(),
+      );
+      userSubscriptionsRef.current = {};
+    };
+  }, []);
+
+  // --- END USER SUBSCRIPTION LOGIC ---
+
+  // Helper to rebuild "dateEvents" & "dateEventCrews"
   const recalcAllEvents = (allCrewEvents: {
     [crewId: string]: { [day: string]: number };
   }) => {
-    // Initialize fresh counters
     const tempDateEvents: { [day: string]: number } = {};
     const tempDateEventCrews: { [day: string]: string[] } = {};
     weekDates.forEach((day) => {
       tempDateEvents[day] = 0;
       tempDateEventCrews[day] = [];
     });
-
-    // Combine each crew’s 7-day distribution
     for (const [cid, distribution] of Object.entries(allCrewEvents)) {
       for (const [day, eventCount] of Object.entries(distribution)) {
         if (eventCount > 0) {
@@ -133,8 +184,6 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         }
       }
     }
-
-    // Store in context
     setDateEvents(tempDateEvents);
     setDateEventCrews(tempDateEventCrews);
   };
@@ -175,19 +224,53 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       }
       return null;
     });
-
     const crewsResults = await Promise.all(crewPromises);
     return crewsResults.filter((c): c is Crew => c !== null);
   };
 
+  const fetchUserDetails = useCallback(
+    async (uid: string): Promise<User> => {
+      const cachedUser = usersCache[uid];
+      if (cachedUser) return cachedUser;
+      try {
+        const userDoc = await getDoc(doc(db, 'users', uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          const fetchedUser: User = {
+            uid: userDoc.id,
+            displayName: userData.displayName || 'Unnamed User',
+            email: userData.email || '',
+            photoURL: userData.photoURL || '',
+          };
+          setUsersCache((prev) => ({ ...prev, [uid]: fetchedUser }));
+          return fetchedUser;
+        } else {
+          return {
+            uid,
+            displayName: 'Unknown User',
+            email: 'unknown@example.com',
+            photoURL: '',
+          };
+        }
+      } catch (error) {
+        console.error(`Error fetching user data for UID ${uid}:`, error);
+        return {
+          uid,
+          displayName: 'Error Fetching User',
+          email: 'error@example.com',
+          photoURL: '',
+        };
+      }
+    },
+    [usersCache, setUsersCache],
+  );
+
   const fetchUpStatuses = async (fetchedCrewIds: string[]) => {
     setLoadingStatuses(true);
-
     const counts: { [key: string]: number } = {};
     weekDates.forEach((date) => {
       counts[date] = 0;
     });
-
     try {
       const statusDocRefs = fetchedCrewIds.flatMap((crewId) =>
         weekDates.map((date) =>
@@ -197,7 +280,6 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       const statusSnapshots = await Promise.all(
         statusDocRefs.map((ref) => getDoc(ref)),
       );
-
       statusSnapshots.forEach((statusSnap) => {
         if (statusSnap.exists()) {
           const statusData = statusSnap.data();
@@ -209,7 +291,6 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
           }
         }
       });
-
       setDateCounts(counts);
     } catch (error) {
       console.error('Error fetching up statuses:', error);
@@ -223,19 +304,15 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
-  // Debounced fetchMatches logic
   const fetchMatches = async (fetchedCrewIds: string[]) => {
     setLoadingMatches(true);
-
     try {
       const matches: { [key: string]: number } = {};
       const matchingCrews: { [key: string]: string[] } = {};
-
       weekDates.forEach((date) => {
         matches[date] = 0;
         matchingCrews[date] = [];
       });
-
       const allStatusPromises = fetchedCrewIds.flatMap((crewId) =>
         weekDates.map(async (date) => {
           const statusesRef = collection(
@@ -254,11 +331,8 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
           return { crewId, date, snapshot: statusesSnapshot };
         }),
       );
-
       const allStatusResults = await Promise.all(allStatusPromises);
-
       allStatusResults.forEach(({ crewId, date, snapshot }) => {
-        // If user is up for going out
         const userStatus = snapshot.docs.find(
           (docSnap) => docSnap.id === user?.uid,
         );
@@ -272,7 +346,6 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
           }
         }
       });
-
       setDateMatches(matches);
       setDateMatchingCrews(matchingCrews);
     } catch (error) {
@@ -288,31 +361,20 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
-  /**
-   * Called once after the user’s crews are known, to build an initial `crewEventsMap`.
-   * This is the same logic you had in fetchDateEvents, except it updates only the map
-   * for each crew (we then do a final recalcAllEvents).
-   */
   const buildInitialCrewEventsMap = async (fetchedCrewIds: string[]) => {
     setLoadingEvents(true);
     const newMap: { [crewId: string]: { [day: string]: number } } = {};
-
-    // For each crew, fetch all events and see which of the next 7 days they span
     try {
       for (const crewId of fetchedCrewIds) {
         const eventsRef = collection(db, 'crews', crewId, 'events');
         const crewQuery = query(eventsRef, orderBy('startDate'));
         const snapshot = await getDocs(crewQuery);
-
-        // Start each crew’s distribution with zero for each day
         const crewDayCount: { [day: string]: number } = {};
         weekDates.forEach((day) => (crewDayCount[day] = 0));
-
         snapshot.docs.forEach((docSnap) => {
           const evt = docSnap.data() as any;
           const start = moment(evt.startDate, 'YYYY-MM-DD');
           const end = moment(evt.endDate, 'YYYY-MM-DD');
-
           weekDates.forEach((day) => {
             const d = moment(day, 'YYYY-MM-DD');
             if (d.isBetween(start, end, 'day', '[]')) {
@@ -320,11 +382,8 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
             }
           });
         });
-
         newMap[crewId] = crewDayCount;
       }
-
-      // Store the entire map and recalc
       setCrewEventsMap(newMap);
       recalcAllEvents(newMap);
     } catch (error) {
@@ -339,20 +398,13 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
-  /**
-   * NEW: Called whenever an events snapshot for a single crew changes in real time.
-   * We'll recalc only that crew's distribution for the next 7 days, then update
-   * crewEventsMap and recalc the global dateEvents, dateEventCrews.
-   */
   const recalcCrewEvents = (crewId: string, snapshotDocs: any[]) => {
     const crewDayCount: { [day: string]: number } = {};
     weekDates.forEach((day) => (crewDayCount[day] = 0));
-
     snapshotDocs.forEach((docSnap) => {
       const evt = docSnap.data();
       const start = moment(evt.startDate, 'YYYY-MM-DD');
       const end = moment(evt.endDate, 'YYYY-MM-DD');
-
       for (const day of weekDates) {
         const d = moment(day, 'YYYY-MM-DD');
         if (d.isBetween(start, end, 'day', '[]')) {
@@ -360,8 +412,6 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         }
       }
     });
-
-    // Update that crew in the crewEventsMap, then recalc global
     setCrewEventsMap((prevMap) => {
       const newMap = { ...prevMap, [crewId]: crewDayCount };
       recalcAllEvents(newMap);
@@ -420,7 +470,6 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
           timestamp: Timestamp.fromDate(new Date()),
         });
       }
-      // (Optionally update local caches such as dateCounts and dateMatchingCrews if needed)
     } catch (error) {
       console.error('Error setting status explicitly:', error);
       throw error;
@@ -444,7 +493,6 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         user.uid,
       );
       const statusSnap = await getDoc(userStatusRef);
-
       if (statusSnap.exists()) {
         const currentStatus = statusSnap.data().upForGoingOutTonight || false;
         await updateDoc(userStatusRef, {
@@ -458,14 +506,12 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
           timestamp: Timestamp.fromDate(new Date()),
         });
       }
-
       setDateCounts((prev) => ({
         ...prev,
         [selectedDate]: toggleTo
           ? prev[selectedDate] + 1
           : Math.max(prev[selectedDate] - 1, 0),
       }));
-
       setDateMatchingCrews((prev) => {
         const updated = { ...prev };
         if (toggleTo) {
@@ -480,8 +526,6 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         }
         return updated;
       });
-
-      // Just mark that we need to refresh matches
       setMatchesNeedsRefresh(true);
     } catch (error) {
       console.error('Error toggling status:', error);
@@ -505,7 +549,6 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       });
       return;
     }
-
     try {
       if (crewIds.length === 0) {
         Toast.show({
@@ -515,16 +558,13 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         });
         return;
       }
-
       const selectedDateStr = date;
       const newStatus = toggleTo;
       const MAX_BATCH_SIZE = 10;
-
       const batches: string[][] = [];
       for (let i = 0; i < crewIds.length; i += MAX_BATCH_SIZE) {
         batches.push(crewIds.slice(i, i + MAX_BATCH_SIZE));
       }
-
       await Promise.all(
         batches.map(async (batchCrewIds) => {
           const batch = writeBatch(db);
@@ -550,7 +590,6 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
           await batch.commit();
         }),
       );
-
       Toast.show({
         type: 'success',
         text1: 'Success',
@@ -558,17 +597,14 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
           newStatus ? 'up' : 'not up'
         } for it on ${moment(selectedDateStr).format('MMMM Do, YYYY')}.`,
       });
-
       setDateCounts((prev) => ({
         ...prev,
         [selectedDateStr]: newStatus ? crewIds.length : 0,
       }));
-
       setDateMatchingCrews((prev) => ({
         ...prev,
         [selectedDateStr]: newStatus ? [...crewIds] : [],
       }));
-
       setMatchesNeedsRefresh(true);
     } catch (error) {
       console.error('Error toggling status:', error);
@@ -580,7 +616,6 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
-  // Main effect that runs once on user login
   useEffect(() => {
     if (!user?.uid) {
       setCrewIds([]);
@@ -600,7 +635,6 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     let unsubscribeList: Unsubscribe[] = [];
 
     const setupCrewListeners = (fetchedCrewIds: string[]) => {
-      // Listen for changes to each crew doc
       fetchedCrewIds.forEach((crewId) => {
         const crewRef = doc(db, 'crews', crewId);
         const unsubCrewDoc = onSnapshot(crewRef, (docSnap) => {
@@ -619,14 +653,11 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
               return [...prevCrews, updatedCrew];
             });
           } else {
-            // Crew doc was deleted
             setCrews((prev) => prev.filter((c) => c.id !== crewId));
             setCrewIds((prev) => prev.filter((id) => id !== crewId));
           }
         });
         unsubscribeList.push(unsubCrewDoc);
-
-        // Listen for changes to userStatuses (to keep matches up to date)
         weekDates.forEach((date) => {
           const userStatusesRef = collection(
             db,
@@ -641,8 +672,6 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
           });
           unsubscribeList.push(unsubStatuses);
         });
-
-        // NEW: Listen for changes to events in real-time
         const eventsRef = collection(db, 'crews', crewId, 'events');
         const unsubEvents = onSnapshot(
           query(eventsRef, orderBy('startDate')),
@@ -670,27 +699,31 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         setLoadingEvents(false);
         return;
       }
-
       try {
         const fetchedCrewIds = await fetchUserCrews(user.uid);
         setCrewIds(fetchedCrewIds);
         setLoadingCrews(false);
-
         if (fetchedCrewIds.length > 0 && weekDates.length > 0) {
-          // fetch base data
           const fetchedCrews = await fetchCrewDetails(fetchedCrewIds);
           setCrews(fetchedCrews);
-
+          // Subscribe to all members from each crew (assuming each crew has a memberIds array)
+          const allMemberIds = new Set<string>();
+          fetchedCrews.forEach((crew) => {
+            if (
+              (crew as any).memberIds &&
+              Array.isArray((crew as any).memberIds)
+            ) {
+              (crew as any).memberIds.forEach((uid: string) =>
+                allMemberIds.add(uid),
+              );
+            }
+          });
+          subscribeToUsers(Array.from(allMemberIds));
           await fetchUpStatuses(fetchedCrewIds);
           await fetchMatches(fetchedCrewIds);
-
-          // Build the initial crewEventsMap once
           await buildInitialCrewEventsMap(fetchedCrewIds);
-
-          // Finally, set up real-time listeners
           setupCrewListeners(fetchedCrewIds);
         } else {
-          // No crews or no days
           setCrews([]);
           setDateCounts({});
           setDateMatches({});
@@ -721,7 +754,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       unsubscribeList.forEach((unsub) => unsub());
       if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
     };
-  }, [user?.uid, weekDates]);
+  }, [user?.uid, weekDates, subscribeToUsers]);
 
   return (
     <CrewsContext.Provider
@@ -745,6 +778,9 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         loadingMatches,
         loadingEvents,
         fetchCrew,
+        fetchUserDetails,
+        subscribeToUser,
+        subscribeToUsers,
       }}
     >
       {children}

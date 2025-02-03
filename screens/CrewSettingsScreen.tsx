@@ -15,7 +15,7 @@ import {
   useNavigation,
   NavigationProp,
 } from '@react-navigation/native';
-import { doc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { deleteCrew, db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
 import { useCrews } from '@/context/CrewsContext';
@@ -36,7 +36,7 @@ type CrewSettingsScreenRouteProp = RouteProp<NavParamList, 'CrewSettings'>;
 
 const CrewSettingsScreen: React.FC = () => {
   const { user } = useUser();
-  const { setCrews, setCrewIds } = useCrews();
+  const { setCrews, setCrewIds, usersCache, subscribeToUsers } = useCrews();
   const globalStyles = useGlobalStyles();
   const route = useRoute<CrewSettingsScreenRouteProp>();
   const { crewId } = route.params;
@@ -107,39 +107,22 @@ const CrewSettingsScreen: React.FC = () => {
     };
   }, [crewId, isDeleting, user, navigation]);
 
-  // Fetch member profiles
   useEffect(() => {
-    const fetchMembers = async () => {
-      if (crew && crew.memberIds.length > 0) {
-        try {
-          const memberDocsPromises = crew.memberIds.map((memberId) =>
-            getDoc(doc(db, 'users', memberId)),
-          );
-          const memberDocs = await Promise.all(memberDocsPromises);
+    if (crew && crew.memberIds && crew.memberIds.length > 0) {
+      subscribeToUsers(crew.memberIds);
+    }
+  }, [crew, subscribeToUsers]);
 
-          const membersList: User[] = memberDocs
-            .filter((docSnap) => docSnap.exists())
-            .map((docSnap) => ({
-              uid: docSnap.id,
-              ...(docSnap.data() as Omit<User, 'uid'>),
-            }));
-
-          setMembers(membersList);
-        } catch (error) {
-          console.error('Error fetching members:', error);
-          Toast.show({
-            type: 'error',
-            text1: 'Error',
-            text2: 'Could not fetch members data',
-          });
-        }
-      } else {
-        setMembers([]);
-      }
-    };
-
-    fetchMembers();
-  }, [crew]);
+  useEffect(() => {
+    if (crew && crew.memberIds && crew.memberIds.length > 0) {
+      const updatedMembers = crew.memberIds
+        .map((memberId) => usersCache[memberId])
+        .filter(Boolean) as User[];
+      setMembers(updatedMembers);
+    } else {
+      setMembers([]);
+    }
+  }, [crew, usersCache]);
 
   // Function to delete the crew
   const handleDeleteCrew = async () => {

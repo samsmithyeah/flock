@@ -6,6 +6,7 @@ import React, {
   useEffect,
   useContext,
   ReactNode,
+  useRef,
 } from 'react';
 import { Contact } from '@/types/Contacts';
 import {
@@ -21,6 +22,7 @@ import {
   getDocs,
   doc,
   getDoc,
+  onSnapshot,
 } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { User } from '@/types/User';
@@ -55,6 +57,49 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
   const [error, setError] = useState<string | null>(null);
   const [country, setCountry] = useState<CountryCode>('GB');
   const { user } = useUser();
+  const userSubscriptionsRef = useRef<{ [uid: string]: () => void }>({});
+
+  useEffect(() => {
+    // Subscribe to changes for any contacts that aren’t already subscribed.
+    allContacts.forEach((contact) => {
+      if (!userSubscriptionsRef.current[contact.uid]) {
+        const unsubscribe = onSnapshot(
+          doc(db, 'users', contact.uid),
+          (docSnap) => {
+            if (docSnap.exists()) {
+              const data = docSnap.data();
+              // Update the contact’s isOnline status in state.
+              setAllContacts((prevContacts) =>
+                prevContacts.map((c) =>
+                  c.uid === contact.uid ? { ...c, isOnline: data.isOnline } : c,
+                ),
+              );
+            }
+          },
+        );
+        userSubscriptionsRef.current[contact.uid] = unsubscribe;
+      }
+    });
+
+    // Cleanup subscriptions for contacts that are no longer in the list.
+    const currentUids = new Set(allContacts.map((c) => c.uid));
+    Object.keys(userSubscriptionsRef.current).forEach((uid) => {
+      if (!currentUids.has(uid)) {
+        userSubscriptionsRef.current[uid]();
+        delete userSubscriptionsRef.current[uid];
+      }
+    });
+  }, [allContacts]);
+
+  useEffect(() => {
+    // When the ContactsContext unmounts, clean up all subscriptions.
+    return () => {
+      Object.values(userSubscriptionsRef.current).forEach((unsubscribe) =>
+        unsubscribe(),
+      );
+      userSubscriptionsRef.current = {};
+    };
+  }, []);
 
   useEffect(() => {
     setCountry((user?.country ?? 'GB') as CountryCode);

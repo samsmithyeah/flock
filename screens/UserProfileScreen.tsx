@@ -228,11 +228,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 15,
     marginTop: 20,
-    shadowColor: '#000', // For iOS shadow
-    shadowOffset: { width: 0, height: 1 }, // For iOS shadow
-    shadowOpacity: 0.1, // For iOS shadow
-    shadowRadius: 2, // For iOS shadow
-    elevation: 2, // For Android shadow
+    borderColor: '#E0E0E0',
+    borderWidth: 1,
   },
   infoItem: {
     flexDirection: 'row',

@@ -1,5 +1,3 @@
-// components/ProfilePicturePicker.tsx
-
 import React, { useState } from 'react';
 import {
   View,
@@ -31,8 +29,9 @@ interface ProfilePicturePickerProps {
   iconColor?: string;
   iconOffsetX?: number;
   iconOffsetY?: number;
-  borderWidth?: number; // Optional border width
-  borderColor?: string; // Optional border color
+  borderWidth?: number;
+  borderColor?: string;
+  isOnline?: boolean;
 }
 
 const ProfilePicturePicker: React.FC<ProfilePicturePickerProps> = ({
@@ -45,12 +44,12 @@ const ProfilePicturePicker: React.FC<ProfilePicturePickerProps> = ({
   iconColor = '#888',
   iconOffsetX = 0.03,
   iconOffsetY = 0.03,
-  borderWidth = 0, // Default no border
-  borderColor = '#fff', // Default border color (white)
+  borderWidth = 0,
+  borderColor = '#fff',
+  isOnline = false,
 }) => {
   const [isUploading, setIsUploading] = useState(false);
 
-  // Function to request media library permissions
   const requestPermission = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -64,7 +63,6 @@ const ProfilePicturePicker: React.FC<ProfilePicturePickerProps> = ({
     return true;
   };
 
-  // Function to handle image picking
   const pickImage = async () => {
     const hasPermission = await requestPermission();
     if (!hasPermission) return;
@@ -93,7 +91,6 @@ const ProfilePicturePicker: React.FC<ProfilePicturePickerProps> = ({
     }
   };
 
-  // Function to handle image removal (Optional)
   const removeImage = async () => {
     Alert.alert(
       'Remove Image',
@@ -105,11 +102,8 @@ const ProfilePicturePicker: React.FC<ProfilePicturePickerProps> = ({
           style: 'destructive',
           onPress: async () => {
             try {
-              // Delete the image from Firebase Storage
               const storageRef = ref(storage, storagePath);
               await deleteObject(storageRef);
-
-              // Update the parent component to remove the image URL
               onImageUpdate('');
               Toast.show({
                 type: 'success',
@@ -130,15 +124,13 @@ const ProfilePicturePicker: React.FC<ProfilePicturePickerProps> = ({
     );
   };
 
-  // Function to upload image to Firebase Storage
   const uploadImage = async (uri: string) => {
     setIsUploading(true);
     try {
-      // Resize the image using ImageManipulator
       const resizedImage = await ImageManipulator.manipulateAsync(
         uri,
-        [{ resize: { width: 500 } }], // Resize to a width of 500 pixels
-        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }, // Compress the image
+        [{ resize: { width: 500 } }],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG },
       );
 
       const response = await fetch(resizedImage.uri);
@@ -170,8 +162,8 @@ const ProfilePicturePicker: React.FC<ProfilePicturePickerProps> = ({
             width: size,
             height: size,
             borderRadius: size / 2,
-            borderWidth: borderWidth, // Apply border width
-            borderColor: borderColor, // Apply border color
+            borderWidth: borderWidth,
+            borderColor: borderColor,
           },
         ]}
       >
@@ -190,18 +182,30 @@ const ProfilePicturePicker: React.FC<ProfilePicturePickerProps> = ({
           </View>
         )}
       </View>
+      {isOnline && (
+        <View
+          style={[
+            styles.onlineIndicator,
+            {
+              width: size * 0.2,
+              height: size * 0.2,
+              borderRadius: (size * 0.2) / 2,
+            },
+          ]}
+        />
+      )}
       {editable && (
         <TouchableOpacity
           onPress={pickImage}
-          onLongPress={imageUrl ? removeImage : undefined} // Optional: Allow removal on long press
+          onLongPress={imageUrl ? removeImage : undefined}
           style={[
             styles.editIconContainer,
             {
               width: size * 0.3,
               height: size * 0.3,
               borderRadius: (size * 0.3) / 2,
-              right: size * iconOffsetX, // Dynamic horizontal offset
-              bottom: size * iconOffsetY, // Dynamic vertical offset
+              right: size * iconOffsetX,
+              bottom: size * iconOffsetY,
             },
           ]}
           accessibilityLabel="Change Profile Picture"
@@ -219,8 +223,6 @@ export default ProfilePicturePicker;
 const styles = StyleSheet.create({
   container: {
     position: 'relative',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   profilePictureContainer: {
     backgroundColor: '#e6e6e6',
@@ -237,7 +239,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.3,
     shadowRadius: 1,
-    elevation: 2, // For Android
+    elevation: 2,
   },
   uploadingOverlay: {
     position: 'absolute',
@@ -247,5 +249,12 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 999,
+  },
+  onlineIndicator: {
+    position: 'absolute',
+    backgroundColor: '#4CD964',
+    zIndex: 1,
+    right: 2,
+    bottom: 2,
   },
 });
