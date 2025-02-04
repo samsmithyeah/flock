@@ -72,6 +72,7 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
 
   // Ref to keep track of message listeners
   const listenersRef = useRef<{ [dmId: string]: () => void }>({});
+  const pendingUserFetches = useRef<{ [uid: string]: Promise<any> }>({});
 
   // Fetch unread count for a specific DM
   const fetchUnreadCount = useCallback(
@@ -237,7 +238,7 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
       const unsubscribe = onSnapshot(
         msgQuery,
         async (querySnapshot) => {
-          if (!user?.uid) return () => {};
+          if (!user?.uid) return;
           try {
             const fetchedMessages: Message[] = await Promise.all(
               querySnapshot.docs.map(async (docSnap) => {
@@ -249,7 +250,17 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
                 } else if (usersCache[senderId]) {
                   senderName = usersCache[senderId].displayName || 'Unknown';
                 } else {
-                  const fetchedUser = await fetchUserDetails(senderId);
+                  // Use the pendingUserFetches cache to prevent duplicate calls.
+                  if (!pendingUserFetches.current[senderId]) {
+                    console.log(
+                      'Fetching user details from directmessagescontext line 255 for',
+                      senderId,
+                    );
+                    pendingUserFetches.current[senderId] =
+                      fetchUserDetails(senderId);
+                  }
+                  const fetchedUser =
+                    await pendingUserFetches.current[senderId];
                   senderName = fetchedUser.displayName || 'Unknown';
                 }
                 return {
@@ -279,6 +290,7 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
           }
         },
         (error) => {
+          if (!user?.uid) return;
           console.warn('Error listening to DM messages:', error);
         },
       );

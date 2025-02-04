@@ -37,13 +37,16 @@ const OtherUserProfileScreen: React.FC = () => {
       setUserProfile(usersCache[userId]);
       setLoading(false);
     } else {
+      console.log(
+        `Fetching user with ID: ${userId} from otherUserProfileScreen`,
+      );
       fetchUserDetails(userId).then((user) => {
         console.log('User fetched', user);
         setUserProfile(user);
         setLoading(false);
       });
     }
-  }, [userId, usersCache, setUsersCache]);
+  }, [userId, usersCache, setUsersCache, fetchUserDetails]);
 
   useLayoutEffect(() => {
     if (userProfile) {
@@ -70,9 +73,6 @@ const OtherUserProfileScreen: React.FC = () => {
   }
 
   const getStatusText = () => {
-    if (userProfile.isOnline) {
-      return 'Online';
-    }
     if (userProfile.lastSeen) {
       const lastSeenMoment = moment(userProfile.lastSeen.toDate());
       const now = moment();
@@ -98,8 +98,29 @@ const OtherUserProfileScreen: React.FC = () => {
         size={150}
       />
       <View style={styles.infoContainer}>
-        <InfoItem label="Name" value={userProfile.displayName || 'N/A'} />
-        <InfoItem label="Status" value={getStatusText() || 'N/A'} />
+        <View style={styles.infoItem}>
+          <Text style={styles.infoLabel}>Status: </Text>
+          <View style={styles.statusContainer}>
+            <View
+              style={[
+                styles.statusDot,
+                {
+                  backgroundColor: userProfile.isOnline ? '#2ecc71' : '#e74c3c',
+                },
+              ]}
+            />
+            <Text style={styles.infoValue}>
+              {userProfile.isOnline ? 'Online' : 'Offline'}
+            </Text>
+          </View>
+        </View>
+        {!userProfile.isOnline && (
+          <View style={styles.infoItem}>
+            <Text style={styles.infoLabel}>Last seen: </Text>
+
+            <Text style={styles.infoValue}>{getStatusText()}</Text>
+          </View>
+        )}
       </View>
       <View style={styles.chatButton}>
         <CustomButton
@@ -121,18 +142,6 @@ const OtherUserProfileScreen: React.FC = () => {
   );
 };
 
-interface InfoItemProps {
-  label: string;
-  value: string;
-}
-
-const InfoItem: React.FC<InfoItemProps> = ({ label, value }) => (
-  <View style={styles.infoItem}>
-    <Text style={styles.infoLabel}>{label}:</Text>
-    <Text style={styles.infoValue}>{value}</Text>
-  </View>
-);
-
 export default OtherUserProfileScreen;
 
 const styles = StyleSheet.create({
@@ -141,6 +150,16 @@ const styles = StyleSheet.create({
     padding: 20,
     alignItems: 'center',
     backgroundColor: Colors.background,
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
   },
   loaderContainer: {
     flex: 1,
@@ -161,10 +180,11 @@ const styles = StyleSheet.create({
     marginVertical: 8,
   },
   infoLabel: {
-    fontWeight: '600',
     fontSize: 16,
-    width: '40%',
+    fontWeight: '500',
     color: '#333',
+    marginBottom: 5,
+    width: '30%',
   },
   infoValue: {
     fontSize: 16,

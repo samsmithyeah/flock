@@ -359,6 +359,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const buildInitialCrewEventsMap = async (fetchedCrewIds: string[]) => {
+    if (!user) return;
     setLoadingEvents(true);
     const newMap: { [crewId: string]: { [day: string]: number } } = {};
     try {
@@ -396,6 +397,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const recalcCrewEvents = (crewId: string, snapshotDocs: any[]) => {
+    if (!user) return;
     const crewDayCount: { [day: string]: number } = {};
     weekDates.forEach((day) => (crewDayCount[day] = 0));
     snapshotDocs.forEach((docSnap) => {
@@ -633,6 +635,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
 
     const setupCrewListeners = (fetchedCrewIds: string[]) => {
       fetchedCrewIds.forEach((crewId) => {
+        if (!user) return;
         const crewRef = doc(db, 'crews', crewId);
         const unsubCrewDoc = onSnapshot(crewRef, (docSnap) => {
           if (docSnap.exists()) {
@@ -676,6 +679,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
             recalcCrewEvents(crewId, snapshot.docs);
           },
           (error) => {
+            if (!user) return;
             console.error('Error in events snapshot:', error);
             Toast.show({
               type: 'error',

@@ -97,11 +97,15 @@ const DMChatScreen: React.FC<DMChatScreenProps> = ({ route }) => {
     if (usersCache[otherUserId]) {
       setOtherUser(usersCache[otherUserId]);
     } else {
+      console.log(
+        'Fetching user details from dmchatscreen line 100 for',
+        otherUserId,
+      );
       fetchUserDetails(otherUserId).then((user) => {
         setOtherUser(user);
       });
     }
-  }, [otherUserId, usersCache, setUsersCache]);
+  }, [otherUserId, usersCache, setUsersCache, fetchUserDetails]);
 
   useLayoutEffect(() => {
     if (otherUser) {

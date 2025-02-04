@@ -167,6 +167,9 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
     retries = 0,
   ): Promise<User> => {
     try {
+      console.log(
+        `Fetching user ${uid} with retry ${retries} from fetchUserDetailsWithRetry`,
+      );
       const user = await fetchUserDetails(uid);
       if (!user) throw new Error(`User ${uid} not found`);
       return user;
@@ -229,6 +232,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
 
         return querySnapshot.size;
       } catch (error) {
+        if (!user?.uid) return 0;
         console.error(`Error fetching unread count for chat ${chatId}:`, error);
         return 0;
       }
