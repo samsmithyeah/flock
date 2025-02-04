@@ -152,7 +152,25 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
 
   const subscribeToUsers = useCallback(
     (uids: string[]) => {
-      uids.forEach((uid) => subscribeToUser(uid));
+      try {
+        if (!Array.isArray(uids)) {
+          throw new Error('uids must be an array');
+        }
+
+        uids.forEach((uid) => {
+          if (typeof uid !== 'string') {
+            console.warn('Invalid uid type, expected string:', uid);
+            return;
+          }
+          try {
+            subscribeToUser(uid);
+          } catch (err) {
+            console.error(`Error subscribing to user ${uid}:`, err);
+          }
+        });
+      } catch (error) {
+        console.error('Error in subscribeToUsers:', error);
+      }
     },
     [subscribeToUser],
   );
@@ -777,7 +795,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       unsubscribeList.forEach((unsub) => unsub());
       if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
     };
-  }, [user?.uid, weekDates, subscribeToUsers]);
+  }, [user?.uid, weekDates]);
 
   return (
     <CrewsContext.Provider

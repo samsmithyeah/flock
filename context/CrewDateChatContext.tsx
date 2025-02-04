@@ -232,8 +232,9 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         const querySnapshot = await getDocs(msgQuery);
 
         return querySnapshot.size;
-      } catch (error) {
+      } catch (error: any) {
         if (!user?.uid) return 0;
+        if (error.code === 'permission-denied') return 0;
         console.error(`Error fetching unread count for chat ${chatId}:`, error);
         return 0;
       }
