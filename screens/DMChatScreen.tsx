@@ -15,6 +15,7 @@ import {
   Bubble,
   Send,
   SendProps,
+  InputToolbar,
 } from 'react-native-gifted-chat';
 import { useUser } from '@/context/UserContext';
 import { useDirectMessages } from '@/context/DirectMessagesContext';
@@ -73,7 +74,6 @@ const DMChatScreen: React.FC<DMChatScreenProps> = ({ route }) => {
     isFocusedRef.current = isFocused;
   }, [isFocused]);
 
-  // Listen for typing status updates.
   useEffect(() => {
     if (!conversationId) return;
     const convoRef = doc(db, 'direct_messages', conversationId);
@@ -105,10 +105,7 @@ const DMChatScreen: React.FC<DMChatScreenProps> = ({ route }) => {
     if (usersCache[otherUserId]) {
       setOtherUser(usersCache[otherUserId]);
     } else {
-      console.log(
-        'Fetching user details from dmchatscreen line 100 for',
-        otherUserId,
-      );
+      console.log('Fetching user details from dmchatscreen for', otherUserId);
       fetchUserDetails(otherUserId).then((user) => {
         setOtherUser(user);
       });
@@ -275,6 +272,11 @@ const DMChatScreen: React.FC<DMChatScreenProps> = ({ route }) => {
     );
   }, [otherUser]);
 
+  // Custom input toolbar styled to resemble iOS.
+  const renderInputToolbar = (props: any) => (
+    <InputToolbar {...props} containerStyle={styles.inputToolbarContainer} />
+  );
+
   if (!conversationId) return <LoadingOverlay />;
   return (
     <View style={styles.container}>
@@ -301,16 +303,16 @@ const DMChatScreen: React.FC<DMChatScreenProps> = ({ route }) => {
         renderSend={(props: SendProps<IMessage>) => (
           <Send
             {...props}
-            containerStyle={{
-              justifyContent: 'center',
-              paddingHorizontal: 10,
-              opacity: props.text ? 1 : 0.5,
-            }}
+            containerStyle={[
+              styles.sendContainer,
+              { opacity: props.text && props.text.trim() ? 1 : 0.5 },
+            ]}
             alwaysShowSend
           >
             <Ionicons size={30} color={'#1E90FF'} name={'arrow-up-circle'} />
           </Send>
         )}
+        renderInputToolbar={renderInputToolbar}
         renderFooter={() =>
           isOtherUserTyping ? (
             <View style={styles.footerContainer}>
@@ -335,4 +337,15 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   footerText: { fontSize: 14, color: '#aaa' },
+  inputToolbarContainer: {
+    backgroundColor: '#fff',
+    marginHorizontal: 5,
+    marginVertical: 5,
+    borderRadius: 20,
+    borderTopWidth: 0,
+  },
+  sendContainer: {
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
 });

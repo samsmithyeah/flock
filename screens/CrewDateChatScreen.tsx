@@ -16,6 +16,7 @@ import {
   Send,
   SendProps,
   AvatarProps,
+  InputToolbar,
 } from 'react-native-gifted-chat';
 import { useUser } from '@/context/UserContext';
 import { useCrewDateChat } from '@/context/CrewDateChatContext';
@@ -384,6 +385,11 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
     [otherMembers],
   );
 
+  // Custom input toolbar styled to resemble iOS.
+  const renderInputToolbar = (props: any) => (
+    <InputToolbar {...props} containerStyle={styles.inputToolbarContainer} />
+  );
+
   if (!chatId) return <LoadingOverlay />;
   return (
     <View style={styles.container}>
@@ -405,14 +411,14 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
             wrapperStyle={{ left: { backgroundColor: '#BFF4BE' } }}
           />
         )}
+        renderInputToolbar={renderInputToolbar}
         renderSend={(props: SendProps<IMessage>) => (
           <Send
             {...props}
-            containerStyle={{
-              justifyContent: 'center',
-              paddingHorizontal: 10,
-              opacity: props.text ? 1 : 0.5,
-            }}
+            containerStyle={[
+              styles.sendContainer,
+              { opacity: props.text && props.text.trim() ? 1 : 0.5 },
+            ]}
             alwaysShowSend
           >
             <Ionicons size={30} color={'#1E90FF'} name={'arrow-up-circle'} />
@@ -443,4 +449,15 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   footerText: { fontSize: 14, color: '#aaa' },
+  inputToolbarContainer: {
+    backgroundColor: '#fff',
+    marginHorizontal: 5,
+    marginVertical: 5,
+    borderRadius: 20,
+    borderTopWidth: 0,
+  },
+  sendContainer: {
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
 });
