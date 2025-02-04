@@ -90,6 +90,7 @@ const CrewSettingsScreen: React.FC = () => {
         setLoading(false);
       },
       (error) => {
+        if (error.code === 'permission-denied') return;
         if (user) {
           console.error('Error fetching crew:', error);
           Toast.show({

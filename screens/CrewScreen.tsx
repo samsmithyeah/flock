@@ -152,6 +152,7 @@ const CrewScreen: React.FC = () => {
         setLoading(false);
       },
       (error) => {
+        if (error.code === 'permission-denied') return;
         if (user) {
           console.error('Error fetching crew:', error);
           Toast.show({
@@ -223,6 +224,7 @@ const CrewScreen: React.FC = () => {
         setEventsForWeek(groupedByDay);
       },
       (error) => {
+        if (error.code === 'permission-denied') return;
         console.error('Error fetching events:', error);
         Toast.show({
           type: 'error',
@@ -265,6 +267,7 @@ const CrewScreen: React.FC = () => {
           });
         },
         (error) => {
+          if (error.code === 'permission-denied') return;
           console.error('Error fetching statuses for', day, error);
           Toast.show({
             type: 'error',

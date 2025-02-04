@@ -291,6 +291,7 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
         },
         (error) => {
           if (!user?.uid) return;
+          if (error.code === 'permission-denied') return;
           console.warn('Error listening to DM messages:', error);
         },
       );
@@ -347,6 +348,7 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
         }
       },
       (error) => {
+        if (error.code === 'permission-denied') return;
         console.error('Error listening to direct messages:', error);
         Toast.show({
           type: 'error',

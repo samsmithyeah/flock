@@ -25,6 +25,7 @@ import {
   serverTimestamp,
   arrayUnion,
   arrayRemove,
+  FirestoreError,
 } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
@@ -341,34 +342,27 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
     const chatQuery = query(
       collection(db, 'crew_date_chats'),
       where('memberIds', 'array-contains', user.uid),
-      where('hasMessages', '==', true), // Optional condition
+      where('hasMessages', '==', true),
     );
 
     const unsubscribe = onSnapshot(
       chatQuery,
       async (querySnapshot) => {
         try {
-          // Map each document snapshot to a promise that resolves to a CrewDateChat object
           const chatPromises = querySnapshot.docs.map(async (docSnap) => {
             const chatData = docSnap.data();
-
             const memberIds: string[] = chatData.memberIds || [];
-
             // Exclude the current user's UID to get other members
             const otherMemberIds = memberIds.filter((id) => id !== user.uid);
-
             // Fetch details for other members in parallel
             const otherMembers: User[] = await Promise.all(
               otherMemberIds.map((uid) => fetchUserDetailsWithRetry(uid)),
             );
-
             // Extract crewId from chatId (document ID)
             const [crewId] = docSnap.id.split('_');
-
             // Fetch crewName from crews collection
             const crew = crews.find((c) => c.id === crewId);
             const crewName = crew ? crew.name : 'Unknown Crew';
-
             // Get lastRead timestamp for current user
             const lastRead = chatData.lastRead
               ? chatData.lastRead[user.uid] || null
@@ -376,7 +370,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
 
             return {
               id: docSnap.id,
-              crewId: crewId,
+              crewId,
               otherMembers,
               crewName,
               avatarUrl: crew?.iconUrl,
@@ -384,12 +378,11 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
             } as CrewDateChat;
           });
 
-          // Wait for all chat promises to resolve in parallel
           const fetchedChats = await Promise.all(chatPromises);
-
           setChats(fetchedChats);
-          // computeTotalUnread will handle updating totalUnread
-        } catch (error) {
+        } catch (error: any) {
+          if (!user?.uid) return;
+          if (error.code === 'permission-denied') return;
           console.error('Error processing real-time chat updates:', error);
           Toast.show({
             type: 'error',
@@ -399,6 +392,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         }
       },
       (error) => {
+        if (error.code === 'permission-denied') return;
         console.error('Error listening to chats:', error);
         Toast.show({
           type: 'error',
@@ -637,7 +631,9 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
             });
           }
         },
-        (error) => {
+        (error: FirestoreError) => {
+          if (!user?.uid) return;
+          if (error.code === 'permission-denied') return;
           console.error('Error listening to messages:', error);
         },
       );

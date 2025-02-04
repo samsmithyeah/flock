@@ -163,6 +163,8 @@ export const InvitationsProvider: React.FC<InvitationsProviderProps> = ({
         setLoading(false);
       },
       (error) => {
+        if (!user) return;
+        if (error.code === 'permission-denied') return;
         console.error('Error fetching invitations:', error);
         setLoading(false);
         Toast.show({

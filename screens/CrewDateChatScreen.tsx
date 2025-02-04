@@ -304,6 +304,8 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
         }
       },
       (error) => {
+        if (!user?.uid) return;
+        if (error.code === 'permission-denied') return;
         console.error('Error listening to typing status (group):', error);
       },
     );

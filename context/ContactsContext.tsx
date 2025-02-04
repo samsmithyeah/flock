@@ -61,25 +61,42 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
 
   useEffect(() => {
     // Subscribe to changes for any contacts that aren’t already subscribed.
-    allContacts.forEach((contact) => {
-      if (!userSubscriptionsRef.current[contact.uid]) {
-        const unsubscribe = onSnapshot(
-          doc(db, 'users', contact.uid),
-          (docSnap) => {
-            if (docSnap.exists()) {
-              const data = docSnap.data();
-              // Update the contact’s isOnline status in state.
-              setAllContacts((prevContacts) =>
-                prevContacts.map((c) =>
-                  c.uid === contact.uid ? { ...c, isOnline: data.isOnline } : c,
-                ),
+    allContacts.forEach(
+      (contact) => {
+        if (!user) return;
+        if (!userSubscriptionsRef.current[contact.uid]) {
+          const unsubscribe = onSnapshot(
+            doc(db, 'users', contact.uid),
+            (docSnap) => {
+              if (docSnap.exists()) {
+                const data = docSnap.data();
+                setAllContacts((prevContacts) =>
+                  prevContacts.map((c) =>
+                    c.uid === contact.uid
+                      ? { ...c, isOnline: data.isOnline }
+                      : c,
+                  ),
+                );
+              }
+            },
+            (error: any) => {
+              if (error.code === 'permission-denied') return;
+              console.error(
+                'Error in contacts snapshot for uid',
+                contact.uid,
+                ':',
+                error,
               );
-            }
-          },
-        );
-        userSubscriptionsRef.current[contact.uid] = unsubscribe;
-      }
-    });
+            },
+          );
+          userSubscriptionsRef.current[contact.uid] = unsubscribe;
+        }
+      },
+      (error: any) => {
+        if (error.code === 'permission-denied') return;
+        console.error('Error in contacts snapshot:', error);
+      },
+    );
 
     // Cleanup subscriptions for contacts that are no longer in the list.
     const currentUids = new Set(allContacts.map((c) => c.uid));

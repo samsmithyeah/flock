@@ -24,6 +24,7 @@ import {
   setDoc,
   updateDoc,
   orderBy,
+  FirestoreError,
 } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
@@ -123,20 +124,27 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       if (!user) return;
       if (userSubscriptionsRef.current[uid]) return;
       const userDocRef = doc(db, 'users', uid);
-      const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
-        if (docSnap.exists()) {
-          const userData = docSnap.data();
-          const updatedUser: User = {
-            uid: docSnap.id,
-            displayName: userData.displayName || 'Unnamed User',
-            email: userData.email || '',
-            photoURL: userData.photoURL || '',
-            isOnline: userData.isOnline || false,
-            lastSeen: userData.lastSeen || null,
-          };
-          setUsersCache((prev) => ({ ...prev, [uid]: updatedUser }));
-        }
-      });
+      const unsubscribe = onSnapshot(
+        userDocRef,
+        (docSnap) => {
+          if (docSnap.exists()) {
+            const userData = docSnap.data();
+            const updatedUser: User = {
+              uid: docSnap.id,
+              displayName: userData.displayName || 'Unnamed User',
+              email: userData.email || '',
+              photoURL: userData.photoURL || '',
+              isOnline: userData.isOnline || false,
+              lastSeen: userData.lastSeen || null,
+            };
+            setUsersCache((prev) => ({ ...prev, [uid]: updatedUser }));
+          }
+        },
+        (error) => {
+          if (error.code === 'permission-denied') return;
+          console.error('Error in user snapshot:', error);
+        },
+      );
       userSubscriptionsRef.current[uid] = unsubscribe;
     },
     [user, setUsersCache],
@@ -158,8 +166,6 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       userSubscriptionsRef.current = {};
     };
   }, []);
-
-  // --- END USER SUBSCRIPTION LOGIC ---
 
   // Helper to rebuild "dateEvents" & "dateEventCrews"
   const recalcAllEvents = (allCrewEvents: {
@@ -345,7 +351,9 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       });
       setDateMatches(matches);
       setDateMatchingCrews(matchingCrews);
-    } catch (error) {
+    } catch (error: any) {
+      if (!user) return;
+      if (error.code === 'permission-denied') return;
       console.error('Error fetching matches:', error);
       Toast.show({
         type: 'error',
@@ -658,20 +666,33 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
           }
         });
         unsubscribeList.push(unsubCrewDoc);
-        weekDates.forEach((date) => {
-          const userStatusesRef = collection(
-            db,
-            'crews',
-            crewId,
-            'statuses',
-            date,
-            'userStatuses',
-          );
-          const unsubStatuses = onSnapshot(userStatusesRef, () => {
-            setMatchesNeedsRefresh(true);
-          });
-          unsubscribeList.push(unsubStatuses);
-        });
+        weekDates.forEach(
+          (date) => {
+            const userStatusesRef = collection(
+              db,
+              'crews',
+              crewId,
+              'statuses',
+              date,
+              'userStatuses',
+            );
+            const unsubStatuses = onSnapshot(
+              userStatusesRef,
+              () => {
+                setMatchesNeedsRefresh(true);
+              },
+              (error) => {
+                if (error.code === 'permission-denied') return;
+                console.error('Error in statuses snapshot:', error);
+              },
+            );
+            unsubscribeList.push(unsubStatuses);
+          },
+          (error: FirestoreError) => {
+            if (error.code === 'permission-denied') return;
+            console.error('Error in user snapshot:', error);
+          },
+        );
         const eventsRef = collection(db, 'crews', crewId, 'events');
         const unsubEvents = onSnapshot(
           query(eventsRef, orderBy('startDate')),
@@ -680,6 +701,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
           },
           (error) => {
             if (!user) return;
+            if (error.code === 'permission-denied') return;
             console.error('Error in events snapshot:', error);
             Toast.show({
               type: 'error',

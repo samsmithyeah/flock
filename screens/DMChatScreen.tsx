@@ -77,19 +77,27 @@ const DMChatScreen: React.FC<DMChatScreenProps> = ({ route }) => {
   useEffect(() => {
     if (!conversationId) return;
     const convoRef = doc(db, 'direct_messages', conversationId);
-    const unsubscribe = onSnapshot(convoRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data.typingStatus) {
-          const otherTyping = data.typingStatus[otherUserId] || false;
-          setIsOtherUserTyping(Boolean(otherTyping));
+    const unsubscribe = onSnapshot(
+      convoRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.typingStatus) {
+            const otherTyping = data.typingStatus[otherUserId] || false;
+            setIsOtherUserTyping(Boolean(otherTyping));
+          } else {
+            setIsOtherUserTyping(false);
+          }
         } else {
           setIsOtherUserTyping(false);
         }
-      } else {
+      },
+      (error) => {
+        if (error.code === 'permission-denied') return;
+        console.error('Error listening to typing status:', error);
         setIsOtherUserTyping(false);
-      }
-    });
+      },
+    );
     return () => unsubscribe();
   }, [conversationId, otherUserId]);
 
