@@ -2,6 +2,10 @@
   "firestore": {
     "rules": "firestore.rules"
   },
+  "storage": {
+    "rules": "storage.rules",
+    "bucket": "gs://goingoutapp-c90b1.appspot.com"
+  },
   "functions": [
     {
       "source": "functions",
