@@ -9,7 +9,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import FastImage from 'react-native-fast-image';
+import { Image } from 'expo-image';
 import { Crew } from '@/types/Crew';
 import { User } from '@/types/User';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
@@ -73,7 +73,7 @@ const CrewList: React.FC<CrewListProps> = ({
             >
               {/* Crew Image */}
               {item.iconUrl ? (
-                <FastImage
+                <Image
                   source={{ uri: item.iconUrl }}
                   style={styles.crewImage}
                 />

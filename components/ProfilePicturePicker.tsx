@@ -15,7 +15,7 @@ import {
   getDownloadURL,
   deleteObject,
 } from 'firebase/storage';
-import FastImage from 'react-native-fast-image';
+import { Image } from 'expo-image';
 import { storage } from '@/firebase';
 import Toast from 'react-native-toast-message';
 
@@ -168,10 +168,10 @@ const ProfilePicturePicker: React.FC<ProfilePicturePickerProps> = ({
         ]}
       >
         {imageUrl ? (
-          <FastImage
+          <Image
             source={{ uri: imageUrl }}
             style={{ width: size, height: size, borderRadius: size / 2 }}
-            resizeMode={FastImage.resizeMode.cover}
+            contentFit="cover"
           />
         ) : (
           <Ionicons name={iconName} size={size * 0.5} color={iconColor} />
