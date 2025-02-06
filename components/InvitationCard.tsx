@@ -3,7 +3,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import FastImage from 'react-native-fast-image';
+import { Image } from 'expo-image';
 import { InvitationWithDetails } from '@/types/Invitation';
 
 interface InvitationCardProps {
@@ -20,7 +20,7 @@ const InvitationCard: React.FC<InvitationCardProps> = ({
   return (
     <View style={styles.card}>
       {invitation.crew?.iconUrl ? (
-        <FastImage
+        <Image
           source={{ uri: invitation.crew.iconUrl }}
           style={styles.crewImage}
         />

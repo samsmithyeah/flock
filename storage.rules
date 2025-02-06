@@ -1,0 +1,23 @@
+rules_version = '2';
+service firebase.storage {
+match /b/{bucket}/o {
+    // Users folder: each user's folder is named with their UID.
+    match /users/{userId}/{allPaths=**} {
+    // Allow any authenticated user to read profile photos.
+    allow read: if request.auth != null;
+    
+    // Only allow a user to write to their own folder.
+    allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Crews folder: each crew's folder is named with the crew UID.
+    match /crews/{crewId}/{allPaths=**} {
+    // Allow any authenticated user to read crew photos.
+    allow read: if request.auth != null;
+    
+    // For now, allow any authenticated user to write.
+    // (Later, you may incorporate a check so that only crew members or otherwise authorized users can write.)
+    allow write: if request.auth != null;
+    }
+}
+}

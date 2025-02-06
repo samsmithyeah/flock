@@ -81,6 +81,7 @@ const MemberList: React.FC<MemberListProps> = ({
           editable={false}
           storagePath={`users/${item.uid}/profile.jpg`}
           size={40}
+          isOnline={item.isOnline}
         />
         <View style={styles.memberInfo}>
           <Text style={[styles.memberText, isDisabled && styles.disabledText]}>

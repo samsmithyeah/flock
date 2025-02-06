@@ -33,7 +33,6 @@ import { useUser } from '@/context/UserContext';
 import ScreenTitle from '@/components/ScreenTitle';
 import CustomSearchInput from '@/components/CustomSearchInput';
 import ProfilePicturePicker from '@/components/ProfilePicturePicker';
-import Toast from 'react-native-toast-message';
 import { storage } from '@/storage';
 import useGlobalStyles from '@/styles/globalStyles';
 
@@ -47,6 +46,7 @@ interface CombinedChat {
   lastMessageSenderId?: string;
   lastMessageSenderName?: string;
   unreadCount: number;
+  isOnline?: boolean;
 }
 
 interface ChatMetadata {
@@ -195,7 +195,6 @@ const ChatsListScreen: React.FC = () => {
           senderName: cached.lastMessageSenderName ?? 'Unknown',
           createdAt: new Date(cached.lastMessageTime),
         };
-        // Update in background
         (async () => {
           const updated = await fetchLastMessageFromFirestore(chatId, chatType);
           if (
@@ -216,7 +215,6 @@ const ChatsListScreen: React.FC = () => {
         })();
         return cachedResult;
       } else {
-        // No cache
         const result = await fetchLastMessageFromFirestore(chatId, chatType);
         if (result) {
           saveChatMetadata(chatId, {
@@ -232,7 +230,6 @@ const ChatsListScreen: React.FC = () => {
     [getChatMetadata, saveChatMetadata, fetchLastMessageFromFirestore],
   );
 
-  // Always fetch unread from Firestore to ensure correctness after lastRead updates
   const fetchUnreadFromFirestore = useCallback(
     async (chatId: string, chatType: 'direct' | 'group'): Promise<number> => {
       if (chatType === 'direct') {
@@ -274,7 +271,6 @@ const ChatsListScreen: React.FC = () => {
 
   const combineChats = useCallback(async () => {
     if (!user) return;
-    // Attempt immediate load from cache (for UI snappiness)
     const cachedCombined = loadCachedChatData();
     if (cachedCombined.length > 0 && !isFocused) {
       setCombinedChats(cachedCombined);
@@ -283,12 +279,22 @@ const ChatsListScreen: React.FC = () => {
     }
 
     try {
+      // For direct messages, we now resolve participant UIDs using usersCache.
       const directMessagesPromises = dms.map(async (dm) => {
-        const otherParticipants = dm.participants;
-        const title = otherParticipants.map((p) => p.displayName).join(', ');
-        const iconUrl = otherParticipants[0]?.photoURL;
+        // dm.participants is now an array of UIDs. Resolve each:
+        const resolvedParticipants = dm.participants.map(
+          (uid) =>
+            usersCache[uid] || {
+              displayName: 'Unknown',
+              photoURL: null,
+              isOnline: false,
+            },
+        );
+        const title = resolvedParticipants.map((u) => u.displayName).join(', ');
+        const iconUrl = resolvedParticipants[0]?.photoURL;
         const lastMsg = await fetchLastMessage(dm.id, 'direct');
         const unreadCount = await fetchUnreadFromFirestore(dm.id, 'direct');
+        const isOnline = resolvedParticipants[0]?.isOnline ?? false;
 
         return {
           id: dm.id,
@@ -300,6 +306,7 @@ const ChatsListScreen: React.FC = () => {
           lastMessageSenderId: lastMsg?.senderId,
           lastMessageSenderName: lastMsg?.senderName,
           unreadCount,
+          isOnline,
         };
       });
 
@@ -308,7 +315,6 @@ const ChatsListScreen: React.FC = () => {
         const chatDate = getFormattedChatDate(gc.id);
         const title = `${crewName} (${chatDate})`;
         const iconUrl = getIconUrlForCrew(gc.id);
-
         const lastMsg = await fetchLastMessage(gc.id, 'group');
         const unreadCount = await fetchUnreadFromFirestore(gc.id, 'group');
 
@@ -331,7 +337,6 @@ const ChatsListScreen: React.FC = () => {
       ]);
 
       const combined = [...directMessages, ...groupChatsData];
-
       combined.sort((a, b) => {
         if (a.lastMessageTime && b.lastMessageTime) {
           return b.lastMessageTime.getTime() - a.lastMessageTime.getTime();
@@ -345,14 +350,13 @@ const ChatsListScreen: React.FC = () => {
       });
 
       setCombinedChats(combined);
-      setFilteredChats((prev) =>
+      setFilteredChats(
         searchQuery.trim()
           ? combined.filter((chat) =>
               chat.title.toLowerCase().includes(searchQuery.toLowerCase()),
             )
           : combined,
       );
-
       saveCachedChatData(combined);
     } catch (error) {
       console.error('Error combining chats:', error);
@@ -371,6 +375,8 @@ const ChatsListScreen: React.FC = () => {
     saveCachedChatData,
     searchQuery,
     isFocused,
+    user,
+    usersCache,
   ]);
 
   useEffect(() => {
@@ -426,6 +432,7 @@ const ChatsListScreen: React.FC = () => {
           }
           editable={false}
           onImageUpdate={() => {}}
+          isOnline={item.isOnline ?? false}
         />
       </View>
       <View style={styles.chatDetails}>
@@ -442,12 +449,12 @@ const ChatsListScreen: React.FC = () => {
         <Text style={styles.chatLastMessage} numberOfLines={2}>
           {item.lastMessage ? (
             item.lastMessageSenderName ? (
-              <>
-                <Text style={styles.senderName}>
+              <Text>
+                <Text key="sender" style={styles.senderName}>
                   {item.lastMessageSenderName}:{' '}
                 </Text>
-                {item.lastMessage}
-              </>
+                <Text key="message">{item.lastMessage}</Text>
+              </Text>
             ) : (
               item.lastMessage
             )
@@ -469,12 +476,10 @@ const ChatsListScreen: React.FC = () => {
   return (
     <View style={globalStyles.container}>
       <ScreenTitle title="Chats" />
-
       <CustomSearchInput
         searchQuery={searchQuery}
         onSearchQueryChange={setSearchQuery}
       />
-
       <FlatList
         data={filteredChats}
         keyExtractor={(item) => item.id}

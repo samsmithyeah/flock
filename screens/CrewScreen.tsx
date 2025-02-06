@@ -20,7 +20,6 @@ import {
 } from '@react-navigation/native';
 import {
   doc,
-  getDoc,
   collection,
   onSnapshot,
   query,
@@ -76,7 +75,7 @@ const CrewScreen: React.FC = () => {
   const { crewId, date } = route.params;
   const navigation = useNavigation<NavigationProp<NavParamList>>();
   const { user } = useUser();
-  const { setStatusForCrew } = useCrews();
+  const { setStatusForCrew, usersCache, subscribeToUsers } = useCrews();
   const { addMemberToChat, removeMemberFromChat } = useCrewDateChat();
   const globalStyles = useglobalStyles();
   const insets = useSafeAreaInsets();
@@ -153,6 +152,7 @@ const CrewScreen: React.FC = () => {
         setLoading(false);
       },
       (error) => {
+        if (error.code === 'permission-denied') return;
         if (user) {
           console.error('Error fetching crew:', error);
           Toast.show({
@@ -170,40 +170,22 @@ const CrewScreen: React.FC = () => {
     };
   }, [crewId, user, navigation]);
 
-  // Fetch members
   useEffect(() => {
-    const fetchMembers = async () => {
-      if (crew && crew.memberIds && crew.memberIds.length > 0) {
-        try {
-          const memberDocs = await Promise.all(
-            crew.memberIds.map((memberId) =>
-              getDoc(doc(db, 'users', memberId)),
-            ),
-          );
+    if (crew && crew.memberIds && crew.memberIds.length > 0) {
+      subscribeToUsers(crew.memberIds);
+    }
+  }, [crew, subscribeToUsers]);
 
-          const membersList: User[] = memberDocs
-            .filter((docSnap) => docSnap.exists())
-            .map((docSnap) => ({
-              uid: docSnap.id,
-              ...(docSnap.data() as Omit<User, 'uid'>),
-            }));
-
-          setMembers(membersList);
-        } catch (error) {
-          console.error('Error fetching members:', error);
-          Toast.show({
-            type: 'error',
-            text1: 'Error',
-            text2: 'Could not fetch members',
-          });
-        }
-      } else {
-        setMembers([]);
-      }
-    };
-
-    fetchMembers();
-  }, [crew]);
+  useEffect(() => {
+    if (crew && crew.memberIds && crew.memberIds.length > 0) {
+      const updatedMembers = crew.memberIds
+        .map((memberId) => usersCache[memberId])
+        .filter(Boolean) as User[];
+      setMembers(updatedMembers);
+    } else {
+      setMembers([]);
+    }
+  }, [crew, usersCache]);
 
   // Fetch events for the current week
   useEffect(() => {
@@ -242,6 +224,7 @@ const CrewScreen: React.FC = () => {
         setEventsForWeek(groupedByDay);
       },
       (error) => {
+        if (error.code === 'permission-denied') return;
         console.error('Error fetching events:', error);
         Toast.show({
           type: 'error',
@@ -284,6 +267,7 @@ const CrewScreen: React.FC = () => {
           });
         },
         (error) => {
+          if (error.code === 'permission-denied') return;
           console.error('Error fetching statuses for', day, error);
           Toast.show({
             type: 'error',

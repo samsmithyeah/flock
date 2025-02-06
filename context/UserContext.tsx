@@ -1,5 +1,3 @@
-// context/UserContext.tsx
-
 import React, {
   createContext,
   useState,
@@ -9,18 +7,19 @@ import React, {
   useCallback,
   useMemo,
 } from 'react';
-import { auth, db } from '@/firebase'; // Ensure correct import paths
-import { User } from '@/types/User';
-import { doc, getDoc, updateDoc } from 'firebase/firestore'; // Firestore functions
+import { AppState } from 'react-native';
+import { auth, db } from '@/firebase';
+import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
 import * as Notifications from 'expo-notifications';
 import { getIdTokenResult } from 'firebase/auth';
+import { User } from '@/types/User';
 
 interface UserContextType {
   user: User | null;
   setUser: (user: User | null) => void;
   logout: () => Promise<void>;
-  activeChats: Set<string>; // Using Set for efficient lookups
+  activeChats: Set<string>;
   addActiveChat: (chatId: string) => void;
   removeActiveChat: (chatId: string) => void;
   setBadgeCount: (count: number) => Promise<void>;
@@ -41,30 +40,22 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   const memoizedActiveChats = useMemo(() => activeChats, [activeChats]);
 
   useEffect(() => {
-    // Listen for authentication state changes
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          // Reference to the user's document in Firestore
           const userDocRef = doc(db, 'users', firebaseUser.uid);
           const userDoc = await getDoc(userDocRef);
-
           if (userDoc.exists()) {
             const userData = userDoc.data() as User;
-            userData.phoneNumber && setUser(userData);
-
-            // Check custom claims for 'admin'
+            if (userData.phoneNumber) setUser(userData);
             const tokenResult = await getIdTokenResult(firebaseUser);
             const adminClaim = tokenResult.claims.admin ?? false;
             setIsAdmin(adminClaim as boolean);
-
-            // Initialize activeChats from Firestore
             const activeChatsFromDB = new Set<string>(
               userData.activeChats || [],
             );
             setActiveChats(activeChatsFromDB);
           } else {
-            // Handle case where user document doesn't exist
             console.log('User document does not exist in Firestore.');
             setUser(null);
             setIsAdmin(false);
@@ -81,24 +72,45 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
           setActiveChats(new Set());
         }
       } else {
-        // User is signed out
         setUser(null);
         setActiveChats(new Set());
       }
     });
-
-    // Cleanup the listener on unmount
     return () => unsubscribe();
   }, []);
 
-  // Function to update activeChats in Firestore
+  // Listen to app state changes to update online status
+  useEffect(() => {
+    const handleAppStateChange = async (nextAppState: string) => {
+      if (!user?.uid) return;
+      const userDocRef = doc(db, 'users', user.uid);
+      if (nextAppState === 'active') {
+        await updateDoc(userDocRef, {
+          isOnline: true,
+          lastSeen: serverTimestamp(),
+        });
+      } else {
+        await updateDoc(userDocRef, {
+          isOnline: false,
+          lastSeen: serverTimestamp(),
+        });
+      }
+    };
+
+    const subscription = AppState.addEventListener(
+      'change',
+      handleAppStateChange,
+    );
+    return () => subscription.remove();
+  }, [user?.uid]);
+
   const updateActiveChatsInDB = useCallback(
     async (chats: Set<string>) => {
       if (!user?.uid) return;
       const userDocRef = doc(db, 'users', user.uid);
       try {
         await updateDoc(userDocRef, {
-          activeChats: Array.from(chats), // Convert Set to Array for Firestore
+          activeChats: Array.from(chats),
         });
       } catch (error) {
         console.error('Error updating active chats:', error);
@@ -107,7 +119,6 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     [user?.uid],
   );
 
-  // Function to add a chat to activeChats
   const addActiveChat = useCallback(
     (chatId: string) => {
       setActiveChats((prev) => {
@@ -120,7 +131,6 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     [updateActiveChatsInDB],
   );
 
-  // Function to remove a chat from activeChats
   const removeActiveChat = useCallback(
     (chatId: string) => {
       setActiveChats((prev) => {
@@ -160,7 +170,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
       setActiveChats(new Set());
     } catch (error) {
       console.error('Logout Error:', error);
-      throw error; // Re-throw the error to handle it in the calling component
+      throw error;
     }
   };
 
