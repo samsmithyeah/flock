@@ -32,6 +32,7 @@ const EventInfoModal: React.FC<EventInfoModalProps> = ({
       }
 
       try {
+        console.log('getDoc in EventInfoModal');
         const userDoc = await getDoc(doc(db, 'users', uid));
         if (userDoc.exists()) {
           const userData = userDoc.data();

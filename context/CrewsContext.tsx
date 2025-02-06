@@ -103,6 +103,8 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     [crewId: string]: { [date: string]: number };
   }>({});
 
+  const lastMatchesFetchTimeRef = useRef<number>(0);
+
   const memoizedCrews = useMemo(() => crews, [crews]);
   const memoizedUsersCache = useMemo(() => usersCache, [usersCache]);
 
@@ -210,6 +212,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const fetchCrew = async (crewId: string): Promise<Crew | null> => {
+    console.log('getDoc in fetchCrew');
     const crewDoc = await getDoc(doc(db, 'crews', crewId));
     if (crewDoc.exists()) {
       const crew = {
@@ -228,6 +231,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       crewsRef,
       where('memberIds', 'array-contains', uid),
     );
+    console.log('getDocs in fetchUserCrews');
     const crewsSnapshot = await getDocs(userCrewsQuery);
     return crewsSnapshot.docs.map((docSnap) => docSnap.id);
   };
@@ -236,6 +240,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     fetchedCrewIds: string[],
   ): Promise<Crew[]> => {
     const crewPromises = fetchedCrewIds.map(async (crewId) => {
+      console.log('getDoc in fetchCrewDetails');
       const crewDoc = await getDoc(doc(db, 'crews', crewId));
       if (crewDoc.exists()) {
         return {
@@ -254,6 +259,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       const cachedUser = usersCache[uid];
       if (cachedUser) return cachedUser;
       try {
+        console.log('getDoc in fetchUserDetails');
         const userDoc = await getDoc(doc(db, 'users', uid));
         if (userDoc.exists()) {
           const userData = userDoc.data();
@@ -348,6 +354,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
             statusesRef,
             where('upForGoingOutTonight', '==', true),
           );
+          console.log('getDocs in fetchMatches');
           const statusesSnapshot = await getDocs(statusesQuery);
           return { crewId, date, snapshot: statusesSnapshot };
         }),
@@ -444,27 +451,16 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     });
   };
 
-  const scheduleMatchesRefresh = () => {
-    if (refreshTimeoutRef.current) {
-      clearTimeout(refreshTimeoutRef.current);
-    }
-    refreshTimeoutRef.current = setTimeout(() => {
-      if (crewIds.length > 0) {
-        fetchMatches(crewIds);
-      } else {
-        setMatchesNeedsRefresh(false);
-      }
-    }, 500);
-  };
-
+  // Replace your current useEffect for matches refresh with something like this:
   useEffect(() => {
-    if (matchesNeedsRefresh && crewIds.length > 0) {
-      scheduleMatchesRefresh();
+    if (!matchesNeedsRefresh || crewIds.length === 0) return;
+    const now = Date.now();
+    const THROTTLE_INTERVAL = 2000; // 2 seconds
+    if (now - lastMatchesFetchTimeRef.current >= THROTTLE_INTERVAL) {
+      lastMatchesFetchTimeRef.current = now;
+      fetchMatches(crewIds);
     }
-    return () => {
-      if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
-    };
-  }, [matchesNeedsRefresh, crewIds]);
+  }, [matchesNeedsRefresh, crewIds, fetchMatches]);
 
   const setStatusForCrew = async (
     crewId: string,
@@ -482,6 +478,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         'userStatuses',
         user.uid,
       );
+      console.log('getDoc in setStatusForCrew');
       const statusSnap = await getDoc(userStatusRef);
       if (statusSnap.exists()) {
         await updateDoc(userStatusRef, {
@@ -517,6 +514,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         'userStatuses',
         user.uid,
       );
+      console.log('getDoc in toggleStatusForCrew');
       const statusSnap = await getDoc(userStatusRef);
       if (statusSnap.exists()) {
         const currentStatus = statusSnap.data().upForGoingOutTonight || false;

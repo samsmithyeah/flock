@@ -1,3 +1,5 @@
+// context/UserContext.tsx
+
 import React, {
   createContext,
   useState,
@@ -43,6 +45,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       if (firebaseUser) {
         try {
+          console.log('getDoc in UserProvider');
           const userDocRef = doc(db, 'users', firebaseUser.uid);
           const userDoc = await getDoc(userDocRef);
           if (userDoc.exists()) {

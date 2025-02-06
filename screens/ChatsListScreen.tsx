@@ -82,6 +82,7 @@ const ChatsListScreen: React.FC = () => {
         return usersCache[senderId].displayName;
       }
       try {
+        console.log('getDoc in getSenderName');
         const senderDoc = await getDoc(doc(db, 'users', senderId));
         if (senderDoc.exists()) {
           const senderData = senderDoc.data();
@@ -155,6 +156,7 @@ const ChatsListScreen: React.FC = () => {
           orderBy('createdAt', 'desc'),
           limit(1),
         );
+        console.log('getDocs in fetchLastMessageFromFirestore');
         const querySnapshot = await getDocs(messagesQuery);
 
         if (!querySnapshot.empty) {
