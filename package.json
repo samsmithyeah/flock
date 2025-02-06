@@ -67,7 +67,7 @@
     "react-native-country-codes-picker": "^2.3.5",
     "react-native-gesture-handler": "~2.16.1",
     "react-native-get-random-values": "~1.11.0",
-    "react-native-gifted-chat": "^2.6.5",
+    "react-native-gifted-chat": "^2.6.4",
     "react-native-linear-gradient": "^2.8.3",
     "react-native-mmkv": "2.12.2",
     "react-native-modal-datetime-picker": "^18.0.0",

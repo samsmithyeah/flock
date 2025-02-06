@@ -75,9 +75,6 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
     [key: string]: boolean;
   }>({});
 
-  // Persist typing timeout in a ref
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
   useEffect(() => {
     isFocusedRef.current = isFocused;
   }, [isFocused]);
@@ -88,7 +85,7 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
     return null;
   }, [crewId, date, id]);
 
-  // Fetch crew details from crews context or firestore.
+  // Fetch crew details from crews context.
   useEffect(() => {
     if (!crewId || !user?.uid) {
       setCrew({ name: 'Unknown Crew', iconUrl: undefined });
@@ -101,7 +98,6 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
         setCrew({ name: crewData.name, iconUrl: crewData.iconUrl });
       } else {
         try {
-          console.log('getDoc in CrewDateChatScreen useEffect fetchCrew');
           const crewDoc = await getDoc(doc(db, 'crews', crewId));
           if (crewDoc.exists()) {
             const data = crewDoc.data();
@@ -122,23 +118,22 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
     fetchCrew();
   }, [crewId, crews, user?.uid]);
 
-  // Fetch other members details using global usersCache.
+  // Fetch other members details using the global usersCache.
   useEffect(() => {
     if (!chatId || !user?.uid) return;
     const fetchMembers = async () => {
       try {
-        console.log('getDoc in CrewDateChatScreen useEffect fetchMembers');
         const chatRef = doc(db, 'crew_date_chats', chatId);
         const chatSnap = await getDoc(chatRef);
         if (chatSnap.exists()) {
           const chatData = chatSnap.data();
           const memberIds: string[] = chatData.memberIds || [];
-          const otherMemberIds = memberIds.filter((id) => id !== user.uid);
+          const otherMemberIds = memberIds.filter((id) => id !== user?.uid);
+          // For each member, try to use the cache; if not present, fallback to a one-time fetch.
           const fetchedMembers = await Promise.all(
             otherMemberIds.map(async (uid) => {
               if (usersCache[uid]) return usersCache[uid];
               try {
-                console.log('getDoc in CrewDateChatScreen fetchMembers 2');
                 const userDoc = await getDoc(doc(db, 'users', uid));
                 if (userDoc.exists()) {
                   const data = userDoc.data() as User;
@@ -174,7 +169,7 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
     };
 
     fetchMembers();
-  }, [chatId, user?.uid, usersCache, setUsersCache]);
+  }, [chatId, user?.uid]);
 
   useLayoutEffect(() => {
     if (crew) {
@@ -185,14 +180,14 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
     }
   }, [navigation, crew, date, insets.top]);
 
-  // Throttled typing status updater.
+  // Typing status for group chat.
+  let typingTimeout: NodeJS.Timeout;
   const updateTypingStatus = useMemo(
     () =>
       throttle(async (isTyping: boolean) => {
         if (!chatId || !user?.uid) return;
         const chatRef = doc(db, 'crew_date_chats', chatId);
         try {
-          console.log('getDoc in CrewDateChatScreen updateTypingStatus');
           const chatSnap = await getDoc(chatRef);
           if (!chatSnap.exists()) {
             await setDoc(
@@ -223,12 +218,12 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
       const isTyping = text.length > 0;
       updateTypingStatus(isTyping);
       if (isTyping) {
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(() => {
+        if (typingTimeout) clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => {
           updateTypingStatus(false);
         }, TYPING_TIMEOUT);
-      } else if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
+      } else {
+        if (typingTimeout) clearTimeout(typingTimeout);
       }
     },
     [updateTypingStatus],
@@ -270,7 +265,7 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
     if (!chatId) return;
     const unsubscribeMessages = listenToMessages(chatId);
     return () => unsubscribeMessages();
-  }, [chatId, listenToMessages]);
+  }, [chatId]);
 
   useEffect(() => {
     if (!chatId || !user?.uid) return;
@@ -291,8 +286,11 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
               if (isTyping && lastUpdate) {
                 const now = Date.now();
                 const lastUpdateMillis = (lastUpdate as Timestamp).toMillis();
-                updatedTypingStatus[uid] =
-                  now - lastUpdateMillis < TYPING_TIMEOUT;
+                if (now - lastUpdateMillis < TYPING_TIMEOUT) {
+                  updatedTypingStatus[uid] = true;
+                } else {
+                  updatedTypingStatus[uid] = false;
+                }
               } else {
                 updatedTypingStatus[uid] = false;
               }
@@ -387,42 +385,10 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
     [otherMembers],
   );
 
-  const renderInputToolbar = useCallback(
-    (props: any) => (
-      <InputToolbar {...props} containerStyle={styles.inputToolbarContainer} />
-    ),
-    [],
+  // Custom input toolbar styled to resemble iOS.
+  const renderInputToolbar = (props: any) => (
+    <InputToolbar {...props} containerStyle={styles.inputToolbarContainer} />
   );
-
-  const renderSend = useCallback(
-    (props: SendProps<IMessage>) => (
-      <Send
-        {...props}
-        containerStyle={[
-          styles.sendContainer,
-          { opacity: props.text && props.text.trim() ? 1 : 0.5 },
-        ]}
-        alwaysShowSend
-      >
-        <Ionicons size={30} color={'#1E90FF'} name={'arrow-up-circle'} />
-      </Send>
-    ),
-    [],
-  );
-
-  const renderFooter = useCallback(() => {
-    if (typingDisplayNames.length > 0) {
-      return (
-        <View style={styles.footerContainer}>
-          <Text style={styles.footerText}>
-            {typingDisplayNames.join(', ')}{' '}
-            {typingDisplayNames.length === 1 ? 'is' : 'are'} typing...
-          </Text>
-        </View>
-      );
-    }
-    return null;
-  }, [typingDisplayNames]);
 
   if (!chatId) return <LoadingOverlay />;
   return (
@@ -446,8 +412,28 @@ const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
           />
         )}
         renderInputToolbar={renderInputToolbar}
-        renderSend={renderSend}
-        renderFooter={renderFooter}
+        renderSend={(props: SendProps<IMessage>) => (
+          <Send
+            {...props}
+            containerStyle={[
+              styles.sendContainer,
+              { opacity: props.text && props.text.trim() ? 1 : 0.5 },
+            ]}
+            alwaysShowSend
+          >
+            <Ionicons size={30} color={'#1E90FF'} name={'arrow-up-circle'} />
+          </Send>
+        )}
+        renderFooter={() =>
+          typingDisplayNames.length > 0 ? (
+            <View style={styles.footerContainer}>
+              <Text style={styles.footerText}>
+                {typingDisplayNames.join(', ')}{' '}
+                {typingDisplayNames.length === 1 ? 'is' : 'are'} typing...
+              </Text>
+            </View>
+          ) : null
+        }
       />
     </View>
   );

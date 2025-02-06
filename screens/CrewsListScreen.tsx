@@ -64,7 +64,6 @@ const CrewsListScreen: React.FC<CrewsListScreenProps> = ({ navigation }) => {
       const fetchUsers = async () => {
         try {
           const userPromises = memberIdsToFetch.map(async (uid) => {
-            console.log('getDoc in CrewsListScreen');
             const userDoc = await getDoc(doc(db, 'users', uid));
             if (userDoc.exists()) {
               return {

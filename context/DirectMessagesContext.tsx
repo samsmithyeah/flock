@@ -29,6 +29,7 @@ import Toast from 'react-native-toast-message';
 import { useCrews } from './CrewsContext';
 import { storage } from '@/storage';
 
+// Message remains unchanged
 interface Message {
   id: string;
   senderId: string;
@@ -37,9 +38,10 @@ interface Message {
   senderName?: string;
 }
 
+// Update DM interface to store only participant UIDs (not full user objects)
 interface DirectMessage {
   id: string;
-  participants: string[];
+  participants: string[]; // Only the UIDs of the other participant(s)
   lastRead: { [uid: string]: Timestamp | null };
 }
 
@@ -68,55 +70,70 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
   const [messages, setMessages] = useState<{ [dmId: string]: Message[] }>({});
   const [totalUnread, setTotalUnread] = useState<number>(0);
 
+  // Ref to keep track of message listeners
   const listenersRef = useRef<{ [dmId: string]: () => void }>({});
   const pendingUserFetches = useRef<{ [uid: string]: Promise<any> }>({});
 
-  // Compute the unread count for a specific DM from the locally cached state.
-  const computeUnreadCountForDM = useCallback(
-    (dmId: string): number => {
-      if (!user?.uid) return 0;
-      const dm = dms.find((dm) => dm.id === dmId);
-      if (!dm) return 0;
-      const dmMessages = messages[dmId] || [];
-      // Convert the stored lastRead to a Date.
-      let lastReadDate: Date | null = null;
-      const lastRead = dm.lastRead[user.uid];
-      if (lastRead && typeof lastRead.toDate === 'function') {
-        lastReadDate = lastRead.toDate();
-      }
-      if (!lastReadDate) {
-        return dmMessages.length;
-      }
-      // Compare using getTime() for both Date objects.
-      return dmMessages.filter(
-        (msg) => msg.createdAt.getTime() > lastReadDate!.getTime(),
-      ).length;
-    },
-    [user?.uid, dms, messages],
-  );
-
-  // Updated fetchUnreadCount: it now uses the local state to compute unread count.
+  // Fetch unread count for a specific DM
   const fetchUnreadCount = useCallback(
     async (dmId: string): Promise<number> => {
-      return computeUnreadCountForDM(dmId);
+      if (!user?.uid) return 0;
+      try {
+        const dmRef = doc(db, 'direct_messages', dmId);
+        const dmDoc = await getDoc(dmRef);
+        if (!dmDoc.exists()) {
+          console.warn(`DM document ${dmId} does not exist.`);
+          return 0;
+        }
+        const dmData = dmDoc.data();
+        if (!dmData) return 0;
+        const lastRead = dmData.lastRead ? dmData.lastRead[user.uid] : null;
+        if (!lastRead) {
+          const messagesRef = collection(
+            db,
+            'direct_messages',
+            dmId,
+            'messages',
+          );
+          const allMessages = await getDocs(messagesRef);
+          return allMessages.size;
+        }
+        const messagesRef = collection(db, 'direct_messages', dmId, 'messages');
+        const msqQuery = query(messagesRef, where('createdAt', '>', lastRead));
+        const querySnapshot = await getDocs(msqQuery);
+        return querySnapshot.size;
+      } catch (error) {
+        console.error('Error fetching unread count:', error);
+        return 0;
+      }
     },
-    [computeUnreadCountForDM],
+    [user?.uid],
   );
 
-  // Compute total unread messages (for DMs not in activeChats) from local state.
-  useEffect(() => {
+  // Compute total unread messages across all DMs (excluding active chats)
+  const computeTotalUnread = useCallback(async () => {
     if (!user?.uid || dms.length === 0) {
       setTotalUnread(0);
       return;
     }
-    const total = dms
-      .filter((dm) => !activeChats.has(dm.id))
-      .reduce((acc, dm) => acc + computeUnreadCountForDM(dm.id), 0);
-    setTotalUnread(total);
-  }, [user?.uid, dms, messages, activeChats, computeUnreadCountForDM]);
+    try {
+      const unreadPromises = dms
+        .filter((dm) => !activeChats.has(dm.id))
+        .map((dm) => fetchUnreadCount(dm.id));
+      const unreadCounts = await Promise.all(unreadPromises);
+      const total = unreadCounts.reduce((acc, count) => acc + count, 0);
+      setTotalUnread(total);
+    } catch (error) {
+      console.error('Error computing total unread messages:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Could not compute total unread messages',
+      });
+    }
+  }, [user?.uid, dms, fetchUnreadCount, activeChats]);
 
-  // --- The rest of your functions remain unchanged ---
-
+  // Update the lastRead timestamp for a DM
   const updateLastRead = useCallback(
     async (dmId: string) => {
       if (!user?.uid) return;
@@ -136,11 +153,11 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
     [user?.uid],
   );
 
+  // Send a message in a DM
   const sendMessage = useCallback(
     async (dmId: string, text: string) => {
       if (!user?.uid) return;
       try {
-        console.log('getDoc in sendMessage');
         const dmRef = doc(db, 'direct_messages', dmId);
         const dmDoc = await getDoc(dmRef);
         const otherUserUid = dmId.split('_').find((id) => id !== user.uid);
@@ -198,12 +215,14 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
     [user?.uid, updateLastRead],
   );
 
+  // Listen for real-time updates in DM messages
   const listenToDMMessages = useCallback(
     (dmId: string) => {
       if (!user?.uid) return () => {};
       const messagesRef = collection(db, 'direct_messages', dmId, 'messages');
       const msgQuery = query(messagesRef, orderBy('createdAt', 'asc'));
 
+      // Load cached messages if available
       const cachedMessages = storage.getString(`messages_${dmId}`);
       if (cachedMessages) {
         const parsedCachedMessages: Message[] = JSON.parse(
@@ -231,7 +250,12 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
                 } else if (usersCache[senderId]) {
                   senderName = usersCache[senderId].displayName || 'Unknown';
                 } else {
+                  // Use the pendingUserFetches cache to prevent duplicate calls.
                   if (!pendingUserFetches.current[senderId]) {
+                    console.log(
+                      'Fetching user details from directmessagescontext line 255 for',
+                      senderId,
+                    );
                     pendingUserFetches.current[senderId] =
                       fetchUserDetails(senderId);
                   }
@@ -282,6 +306,8 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
     [user?.uid, user?.displayName, usersCache, fetchUserDetails],
   );
 
+  // Listen for real-time updates in DM list.
+  // Now, we simply store the other participant’s UID in each DM.
   const listenToDirectMessages = useCallback(() => {
     if (!user?.uid) return () => {};
     const dmQuery = query(
@@ -296,6 +322,7 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
             .map((docSnap) => {
               const dmData = docSnap.data();
               const participantIds: string[] = dmData.participants || [];
+              // Exclude the current user's UID; what remains are the other participant(s)
               const otherParticipantIds = participantIds.filter(
                 (id) => id !== user.uid,
               );
@@ -333,8 +360,10 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
     return unsubscribe;
   }, [user?.uid]);
 
+  // Fetch direct messages once (if not already listening)
   const fetchDirectMessages = useCallback(async () => {
     if (!user?.uid) {
+      console.log('User is not logged in. Clearing DMs.');
       setDms([]);
       setMessages({});
       setTotalUnread(0);
@@ -345,7 +374,6 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
         collection(db, 'direct_messages'),
         where('participants', 'array-contains', user.uid),
       );
-      console.log('getDocs in fetchDirectMessages');
       const querySnapshot = await getDocs(dmQuery);
       const dmPromises = querySnapshot.docs.map(async (docSnap) => {
         const dmData = docSnap.data();
@@ -376,6 +404,10 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
   }, [user?.uid]);
 
   useEffect(() => {
+    computeTotalUnread();
+  }, [computeTotalUnread]);
+
+  useEffect(() => {
     fetchDirectMessages();
   }, [user?.uid, fetchDirectMessages]);
 
@@ -388,6 +420,16 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
   }, [user?.uid, listenToDirectMessages]);
 
   useEffect(() => {
+    return () => {
+      Object.values(listenersRef.current).forEach((unsubscribe) =>
+        unsubscribe(),
+      );
+      listenersRef.current = {};
+    };
+  }, []);
+
+  // Set up message listeners for each DM
+  useEffect(() => {
     dms.forEach((dm) => {
       listenToDMMessages(dm.id);
     });
@@ -398,15 +440,6 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
       listenersRef.current = {};
     };
   }, [dms, listenToDMMessages]);
-
-  useEffect(() => {
-    return () => {
-      Object.values(listenersRef.current).forEach((unsubscribe) =>
-        unsubscribe(),
-      );
-      listenersRef.current = {};
-    };
-  }, []);
 
   return (
     <DirectMessagesContext.Provider

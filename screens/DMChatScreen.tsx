@@ -128,7 +128,6 @@ const DMChatScreen: React.FC<DMChatScreenProps> = ({ route }) => {
         if (!conversationId || !user?.uid) return;
         const convoRef = doc(db, 'direct_messages', conversationId);
         try {
-          console.log('getDoc in updateTypingStatus DMChatScreen');
           const chatSnap = await getDoc(convoRef);
           if (!chatSnap.exists()) {
             await setDoc(
