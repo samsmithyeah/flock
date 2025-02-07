@@ -482,7 +482,7 @@ const ChatsListScreen: React.FC = () => {
       />
       <FlatList
         data={filteredChats}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.title + item.id}
         renderItem={renderItem}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={
