@@ -27,8 +27,7 @@ async function migrateUsers() {
 
   snapshot.forEach((doc) => {
     const data = doc.data();
-    // Check if the user has a phoneNumber and doesn't yet have a hashedPhoneNumber.
-    if (data.phoneNumber && !data.hashedPhoneNumber) {
+    if (data.phoneNumber) {
       const hashed = hashPhoneNumber(data.phoneNumber);
       batch.update(doc.ref, { hashedPhoneNumber: hashed });
       count++;
