@@ -18,9 +18,8 @@ export const notifyContactsOnNewUser = functions.firestore
       return null;
     }
 
-    console.log('New user data:', afterData);
-
     if (!beforeData.hashedPhoneNumber && afterData.hashedPhoneNumber) {
+      console.log('New user data:', afterData);
       console.log('Hashed phone number added. Firing notifications.');
 
       const newUserHashed = afterData.hashedPhoneNumber;
@@ -30,17 +29,21 @@ export const notifyContactsOnNewUser = functions.firestore
       const querySnapshot = await usersRef
         .where('hashedContacts', 'array-contains', newUserHashed)
         .get();
-
       // Exclude self-notifications.
       const pushTokens: string[] = [];
+      const contactNames: string[] = [];
       querySnapshot.forEach((doc) => {
         if (doc.id !== event.params.uid) {
           const userData = doc.data();
+          if (userData.displayName) {
+            contactNames.push(userData.displayName);
+          }
           if (userData.expoPushToken && Expo.isExpoPushToken(userData.expoPushToken)) {
             pushTokens.push(userData.expoPushToken);
           }
         }
       });
+      console.log(`Sent notifications to ${contactNames.length} users: ${contactNames.join(', ')}`);
 
       if (pushTokens.length === 0) {
         console.log('No contacts to notify.');
@@ -57,8 +60,6 @@ export const notifyContactsOnNewUser = functions.firestore
 
       await sendExpoNotifications(messages);
       console.log(`Notified ${pushTokens.length} contacts.`);
-    } else {
-      console.log('No change in hashedPhoneNumber; not firing notifications.');
     }
     return null;
   });

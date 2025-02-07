@@ -27,7 +27,7 @@ async function migrateUsers() {
 
   snapshot.forEach((doc) => {
     const data = doc.data();
-    if (data.phoneNumber) {
+    if (data.phoneNumber && !data.hashedPhoneNumber) {
       const hashed = hashPhoneNumber(data.phoneNumber);
       batch.update(doc.ref, { hashedPhoneNumber: hashed });
       count++;
