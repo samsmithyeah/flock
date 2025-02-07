@@ -12,7 +12,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Crew } from '@/types/Crew';
 import { User } from '@/types/User';
-import { useNavigation, NavigationProp } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { NavParamList } from '@/navigation/AppNavigator';
 import useGlobalStyles from '@/styles/globalStyles';
 
@@ -27,7 +28,7 @@ const CrewList: React.FC<CrewListProps> = ({
   usersCache,
   currentDate,
 }) => {
-  const navigation = useNavigation<NavigationProp<NavParamList>>();
+  const navigation = useNavigation<NativeStackNavigationProp<NavParamList>>();
   const globalStyles = useGlobalStyles();
 
   useEffect(() => {

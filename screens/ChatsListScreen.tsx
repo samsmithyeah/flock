@@ -12,11 +12,8 @@ import {
 import { useDirectMessages } from '@/context/DirectMessagesContext';
 import { useCrewDateChat } from '@/context/CrewDateChatContext';
 import { useCrews } from '@/context/CrewsContext';
-import {
-  useNavigation,
-  NavigationProp,
-  useIsFocused,
-} from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { NavParamList } from '@/navigation/AppNavigator';
 import {
   getDoc,
@@ -63,7 +60,7 @@ const ChatsListScreen: React.FC = () => {
   const { crews, usersCache, fetchCrew } = useCrews();
   const { user } = useUser();
   const globalStyles = useGlobalStyles();
-  const navigation = useNavigation<NavigationProp<NavParamList>>();
+  const navigation = useNavigation<NativeStackNavigationProp<NavParamList>>();
   const isFocused = useIsFocused();
 
   const [combinedChats, setCombinedChats] = useState<CombinedChat[]>([]);
