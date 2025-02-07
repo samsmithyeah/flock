@@ -42,34 +42,56 @@ const App: React.FC = () => {
     responseListener.current =
       Notifications.addNotificationResponseReceivedListener((response) => {
         console.log('Notification Response:', response);
-        const { screen, crewId, chatId, senderId, date } =
+        const { screen, crewId, chatId, senderId, date, userId } =
           response.notification.request.content.data;
-        if (screen === 'Crew' && crewId) {
-          navigation.navigate('CrewsStack', {
-            screen,
-            params: { crewId, ...(date && { date }) },
-            initial: false,
-          });
-        } else if (screen === 'CrewDateChat' && chatId) {
-          const crewId = chatId.split('_')[0];
-          const date = chatId.split('_')[1];
-          navigation.navigate('ChatsStack', {
-            screen,
-            params: { id: chatId, crewId, date },
-            initial: false,
-          });
-        } else if (screen === 'DMChat' && senderId) {
-          console.log('Navigating to DMChat');
-          console.log('Sender ID:', senderId);
-          navigation.navigate('ChatsStack', {
-            screen,
-            params: { otherUserId: senderId },
-            initial: false,
-          });
-        } else if (screen) {
-          navigation.navigate(screen);
-        } else {
-          console.log('No screen to navigate to');
+
+        switch (screen) {
+          case 'Crew':
+            if (crewId) {
+              navigation.navigate('CrewsStack', {
+                screen,
+                params: { crewId, ...(date && { date }) },
+                initial: false,
+              });
+            }
+            break;
+          case 'CrewDateChat':
+            if (chatId) {
+              const crewId = chatId.split('_')[0];
+              const date = chatId.split('_')[1];
+              navigation.navigate('ChatsStack', {
+                screen,
+                params: { id: chatId, crewId, date },
+                initial: false,
+              });
+            }
+            break;
+          case 'DMChat':
+            if (senderId) {
+              console.log('Navigating to DMChat');
+              console.log('Sender ID:', senderId);
+              navigation.navigate('ChatsStack', {
+                screen,
+                params: { otherUserId: senderId },
+                initial: false,
+              });
+            }
+            break;
+          case 'OtherUserProfile':
+            if (userId) {
+              navigation.navigate('ContactsStack', {
+                screen,
+                params: { userId },
+                initial: false,
+              });
+            }
+            break;
+          default:
+            if (screen) {
+              navigation.navigate(screen);
+            } else {
+              console.log('No screen to navigate to');
+            }
         }
       });
 

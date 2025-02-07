@@ -99,7 +99,6 @@ const GoogleLoginButton: React.FC = () => {
       accessibilityHint="Authenticate using your Google account"
       icon={{
         name: 'logo-google',
-        size: 24,
         color: '#fff',
       }}
       loading={loading}

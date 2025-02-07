@@ -27,6 +27,7 @@ import {
 import { db } from '@/firebase';
 import { User } from '@/types/User';
 import { useUser } from '@/context/UserContext';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 interface ContactsContextValue {
   contacts: Contact[];
@@ -59,44 +60,37 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
   const { user } = useUser();
   const userSubscriptionsRef = useRef<{ [uid: string]: () => void }>({});
 
+  // ------------------ SET UP REALTIME SUBSCRIPTIONS ------------------
   useEffect(() => {
     // Subscribe to changes for any contacts that aren’t already subscribed.
-    allContacts.forEach(
-      (contact) => {
-        if (!user) return;
-        if (!userSubscriptionsRef.current[contact.uid]) {
-          const unsubscribe = onSnapshot(
-            doc(db, 'users', contact.uid),
-            (docSnap) => {
-              if (docSnap.exists()) {
-                const data = docSnap.data();
-                setAllContacts((prevContacts) =>
-                  prevContacts.map((c) =>
-                    c.uid === contact.uid
-                      ? { ...c, isOnline: data.isOnline }
-                      : c,
-                  ),
-                );
-              }
-            },
-            (error: any) => {
-              if (error.code === 'permission-denied') return;
-              console.error(
-                'Error in contacts snapshot for uid',
-                contact.uid,
-                ':',
-                error,
+    allContacts.forEach((contact) => {
+      if (!user) return;
+      if (!userSubscriptionsRef.current[contact.uid]) {
+        const unsubscribe = onSnapshot(
+          doc(db, 'users', contact.uid),
+          (docSnap) => {
+            if (docSnap.exists()) {
+              const data = docSnap.data();
+              setAllContacts((prevContacts) =>
+                prevContacts.map((c) =>
+                  c.uid === contact.uid ? { ...c, isOnline: data.isOnline } : c,
+                ),
               );
-            },
-          );
-          userSubscriptionsRef.current[contact.uid] = unsubscribe;
-        }
-      },
-      (error: any) => {
-        if (error.code === 'permission-denied') return;
-        console.error('Error in contacts snapshot:', error);
-      },
-    );
+            }
+          },
+          (error: any) => {
+            if (error.code === 'permission-denied') return;
+            console.error(
+              'Error in contacts snapshot for uid',
+              contact.uid,
+              ':',
+              error,
+            );
+          },
+        );
+        userSubscriptionsRef.current[contact.uid] = unsubscribe;
+      }
+    });
 
     // Cleanup subscriptions for contacts that are no longer in the list.
     const currentUids = new Set(allContacts.map((c) => c.uid));
@@ -106,7 +100,7 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
         delete userSubscriptionsRef.current[uid];
       }
     });
-  }, [allContacts]);
+  }, [allContacts, user]);
 
   useEffect(() => {
     // When the ContactsContext unmounts, clean up all subscriptions.
@@ -122,6 +116,42 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
     setCountry((user?.country ?? 'GB') as CountryCode);
   }, [user]);
 
+  // ------------------ CALLABLE FUNCTIONS ------------------
+  // Call Cloud Function to update user's contacts in hashed form.
+  const updateUserContacts = async (phoneNumbers: string[]): Promise<void> => {
+    const functions = getFunctions();
+    const updateUserContactsFn = httpsCallable(functions, 'updateUserContacts');
+    try {
+      await updateUserContactsFn({ phoneNumbers });
+    } catch (error) {
+      console.error('Error updating user contacts:', error);
+    }
+  };
+
+  // Call Cloud Function to fetch matched users from hashed contacts.
+  interface MatchedUsersResponse {
+    matchedUsers: User[];
+  }
+
+  const fetchMatchedUsers = async (phoneNumbers: string[]): Promise<User[]> => {
+    const functions = getFunctions();
+    const getMatchedUsersFromContacts = httpsCallable<
+      { phoneNumbers: string[] },
+      MatchedUsersResponse
+    >(functions, 'getMatchedUsersFromContacts');
+    try {
+      const result = await getMatchedUsersFromContacts({ phoneNumbers });
+      const matchedUsers = result.data.matchedUsers;
+      return matchedUsers.filter(
+        (matchedUser) => matchedUser.uid !== user?.uid,
+      );
+    } catch (error) {
+      console.error('Error fetching matched users via cloud function:', error);
+      return [];
+    }
+  };
+
+  // ------------------ LOAD CONTACTS FUNCTION ------------------
   const loadContacts = async () => {
     console.log('🔄 Starting to load contacts...');
     try {
@@ -194,7 +224,10 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
         `📞 Extracted ${uniquePhoneNumbers.length} unique phone numbers.`,
       );
 
-      // Fetch matched users from phone contacts
+      // Update the user's own contacts on the backend with hashed versions.
+      await updateUserContacts(uniquePhoneNumbers);
+
+      // Fetch matched users from phone contacts via the Cloud Function.
       let matchedFromContacts: User[] = [];
       if (uniquePhoneNumbers.length > 0) {
         console.log('🔍 Fetching matched users from phone contacts...');
@@ -215,7 +248,7 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
       }
       setMatchedUsersFromCrews(matchedFromCrews);
 
-      // Combine both lists, avoiding duplicates
+      // Combine both lists, avoiding duplicates.
       const combinedMap = new Map<string, User>();
 
       matchedFromContacts.forEach((user) => {
@@ -226,7 +259,7 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
         combinedMap.set(user.uid, user);
       });
 
-      // Exclude the current user from the combined list
+      // Exclude the current user from the combined list.
       const combinedList = Array.from(combinedMap.values()).filter(
         (u) => u.uid !== user?.uid,
       );
@@ -234,7 +267,7 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
         `📋 Combined contacts count (excluding current user): ${combinedList.length}`,
       );
 
-      // Order the combined list by displayName
+      // Order the combined list by displayName.
       combinedList.sort((a, b) =>
         a.displayName.localeCompare(b.displayName, 'en', {
           sensitivity: 'base',
@@ -251,64 +284,10 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
-  const fetchMatchedUsers = async (phoneNumbers: string[]): Promise<User[]> => {
-    console.log(
-      `🔄 Starting fetchMatchedUsers with ${phoneNumbers.length} phone numbers.`,
-    );
-    const usersRef = collection(db, 'users');
-    const batchSize = 10; // Firestore 'in' queries allow max 10 elements
-    const batches = [];
-
-    for (let i = 0; i < phoneNumbers.length; i += batchSize) {
-      const batch = phoneNumbers.slice(i, i + batchSize);
-      batches.push(batch);
-    }
-
-    console.log(`🔢 Divided phone numbers into ${batches.length} batches.`);
-
-    const matched: User[] = [];
-
-    const queryPromises = batches.map(async (batch, index) => {
-      console.log(`📄 Processing batch ${index + 1}/${batches.length}:`, batch);
-      const q = query(usersRef, where('phoneNumber', 'in', batch));
-      try {
-        const querySnapshot = await getDocs(q);
-        console.log(
-          `✅ Batch ${index + 1}: Found ${querySnapshot.docs.length} matched users.`,
-        );
-        for (const docSnap of querySnapshot.docs) {
-          const data = docSnap.data();
-          matched.push({
-            uid: docSnap.id,
-            displayName: data.displayName,
-            phoneNumber: data.phoneNumber,
-            photoURL: data.photoURL || undefined,
-            email: data.email,
-          });
-        }
-      } catch (error) {
-        console.error(`❌ Error in batch ${index + 1}:`, error);
-      }
-    });
-
-    await Promise.all(queryPromises);
-    console.log(`🔍 Total matched users from contacts: ${matched.length}`);
-
-    // Filter out the current user from the matched users
-    const filteredMatched = matched.filter(
-      (matchedUser) => matchedUser.uid !== user?.uid,
-    );
-    console.log(
-      `🚫 Excluded current user. Matched users count after exclusion: ${filteredMatched.length}`,
-    );
-
-    return filteredMatched;
-  };
-
   const fetchCrewMembers = async (currentUserId: string): Promise<User[]> => {
     console.log(`🔄 Starting fetchCrewMembers for user ID: ${currentUserId}`);
     try {
-      // Fetch all crews the user is part of
+      // Fetch all crews the user is part of.
       const crewsRef = collection(db, 'crews');
       const userCrewsQuery = query(
         crewsRef,
@@ -325,7 +304,7 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
         return [];
       }
 
-      // Collect all unique member IDs from all crews
+      // Collect all unique member IDs from all crews.
       const memberIdsSet = new Set<string>();
 
       crewsSnapshot.forEach((crewDoc) => {
@@ -334,7 +313,7 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
         memberIds.forEach((id) => memberIdsSet.add(id));
       });
 
-      // Remove the current user's ID
+      // Remove the current user's ID.
       memberIdsSet.delete(currentUserId);
 
       const potentialMemberIds = Array.from(memberIdsSet);
@@ -347,7 +326,7 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
         return [];
       }
 
-      // Fetch user profiles
+      // Fetch user profiles.
       const usersRef = collection(db, 'users');
       const userDocsPromises = potentialMemberIds.map((memberId) =>
         getDoc(doc(usersRef, memberId)),
@@ -364,7 +343,6 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
         }));
 
       console.log(`✅ Fetched ${fetchedMembers.length} valid crew members.`);
-
       return fetchedMembers;
     } catch (error) {
       console.error('❌ Error fetching crew members:', error);
@@ -402,7 +380,7 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
   );
 };
 
-// Custom hook for consuming the context
+// Custom hook for consuming the context.
 export const useContacts = () => {
   const context = useContext(ContactsContext);
   if (!context) {

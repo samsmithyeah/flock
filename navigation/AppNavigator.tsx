@@ -63,6 +63,11 @@ export type NavParamList = {
       }
     | undefined;
   Contacts: undefined;
+  ContactsStack: {
+    screen: string;
+    params: { userId?: string };
+    initial: boolean;
+  };
 };
 
 const Stack = createStackNavigator<NavParamList>();

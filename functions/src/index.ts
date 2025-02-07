@@ -12,6 +12,10 @@ import { pokeCrew } from './notifications/pokeCrew';
 import { sendCode, verifyCode } from './utils/phoneVerification';
 import { deleteAccount } from './utils/deleteAccount';
 import { notifyCrewMembersOnEventWrite } from './notifications/notifyCrewMembersOnEventWrite';
+import { notifyContactsOnNewUser } from './notifications/notifyContactsOnNewUser';
+import { getMatchedUsersFromContacts } from './utils/getMatchesUsersFromContacts';
+import { updatePhoneNumberHash } from './utils/updatePhoneNumberHash';
+import { updateUserContacts } from './utils/updateUserContacts';
 
 export {
   notifyCrewMembersOnEventWrite,
@@ -28,6 +32,10 @@ export {
   sendCode,
   verifyCode,
   deleteAccount,
+  notifyContactsOnNewUser,
+  getMatchedUsersFromContacts,
+  updatePhoneNumberHash,
+  updateUserContacts,
 };
 
 // Initialize Firebase Admin SDK

@@ -28,7 +28,6 @@ import { NavParamList } from '@/navigation/AppNavigator';
 
 const CELL_COUNT = 6;
 
-// ----------- INTERFACES FOR CALLABLE FUNCTIONS -----------
 interface SendCodeRequest {
   phone: string;
 }
@@ -48,14 +47,13 @@ interface VerifyCodeResponse {
   message: string;
 }
 
-// -------------- HELPER FOR COUNTRY FLAG EMOJI --------------
+// Helper for converting country code to flag emoji
 const getFlagEmoji = (countryCode: string): string => {
   return countryCode
     .toUpperCase()
     .replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
 };
 
-// ------------------- MAIN COMPONENT ------------------------
 const PhoneVerificationScreen: React.FC = () => {
   const [selectedCountry, setSelectedCountry] = useState<{
     dial_code: string;
@@ -91,7 +89,7 @@ const PhoneVerificationScreen: React.FC = () => {
     setValue: setVerificationCode,
   });
 
-  // Initialize Cloud Functions
+  // Initialize Cloud Functions and define callable functions
   const functions = getFunctions();
   const sendCodeFn = httpsCallable<SendCodeRequest, SendCodeResponse>(
     functions,
@@ -101,8 +99,13 @@ const PhoneVerificationScreen: React.FC = () => {
     functions,
     'verifyCode',
   );
+  // New callable function to update the hashed phone number on Firestore.
+  const updatePhoneNumberHashFn = httpsCallable<
+    { phoneNumber: string },
+    { success: boolean }
+  >(functions, 'updatePhoneNumberHash');
 
-  // Update full phone number whenever user changes input or country
+  // Update full phone number whenever the input or selected country changes
   useEffect(() => {
     const sanitized = phoneNumber.trim().replace(/^0+/, '');
     const computedFullPhoneNumber = `${selectedCountry.dial_code}${sanitized}`;
@@ -117,9 +120,6 @@ const PhoneVerificationScreen: React.FC = () => {
       return;
     }
 
-    // const sanitizedPhoneNumber = phoneNumber.trim().replace(/^0+/, '');
-    // const fullPhoneNumberLocal = `${selectedCountry.dial_code}${sanitizedPhoneNumber}`;
-
     // Basic E.164 check
     const phoneRegex = /^\+[1-9]\d{1,14}$/;
     if (!phoneRegex.test(fullPhoneNumber)) {
@@ -130,7 +130,6 @@ const PhoneVerificationScreen: React.FC = () => {
     setLoading(true);
     try {
       const result = await sendCodeFn({ phone: fullPhoneNumber });
-      // result.data is typed as SendCodeResponse
       if (result.data.success) {
         setIsVerificationCodeSent(true);
         Toast.show({
@@ -167,22 +166,27 @@ const PhoneVerificationScreen: React.FC = () => {
         phone: fullPhoneNumber,
         code: verificationCode,
       });
-      // result.data is typed as VerifyCodeResponse
       if (result.data.success) {
-        // Code verified; update Firestore record
+        // Code verified; update the user Firestore record
         const userDocRef = doc(db, 'users', uid!);
         const userDoc = await getDoc(userDocRef);
 
         if (userDoc.exists()) {
-          // Cast DocumentData to your User type
-          const userData = userDoc.data() as User;
-
+          // Update the country field (do not store the raw phone number if you wish to keep it private)
           await updateDoc(userDocRef, {
-            phoneNumber: fullPhoneNumber,
+            phoneNumber: fullPhoneNumber, // Leave this temporarily until hashing is rolled out
             country: selectedCountry.country_code,
           });
-
-          setUser(userData);
+          // Call the secure Cloud Function to compute and store the hashed phone number
+          const hashResult = await updatePhoneNumberHashFn({
+            phoneNumber: fullPhoneNumber,
+          });
+          console.log('Update phone number hash result:', hashResult.data);
+          // Optionally refresh the user context by fetching the updated document
+          const updatedUserDoc = await getDoc(userDocRef);
+          if (updatedUserDoc.exists()) {
+            setUser(updatedUserDoc.data() as User);
+          }
           Toast.show({
             type: 'success',
             text1: 'Success',
@@ -292,7 +296,6 @@ const PhoneVerificationScreen: React.FC = () => {
   );
 };
 
-// --------------------- STYLES ---------------------
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -304,11 +307,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 10,
   },
   title: {
     fontSize: 20,
