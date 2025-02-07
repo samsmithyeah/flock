@@ -50,9 +50,9 @@ export const notifyContactsOnNewUser = functions.firestore
       const messages: ExpoPushMessage[] = pushTokens.map((token) => ({
         to: token,
         sound: 'default',
-        title: `${afterData.displayName || 'A friend'} just joined Flock!`,
-        body: 'Send them a message to say hi 💬',
-        data: { senderId: event.params.uid, screen: 'DMChat' },
+        title: `${afterData.displayName || 'A friend'} just joined Flock`,
+        body: 'Send them a message to say hi!',
+        data: { userId: event.params.uid, screen: 'OtherUserProfile' },
       }));
 
       await sendExpoNotifications(messages);

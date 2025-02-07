@@ -13,6 +13,7 @@ import useglobalStyles from '@/styles/globalStyles';
 import CustomSearchInput from '@/components/CustomSearchInput';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { Ionicons } from '@expo/vector-icons';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 
 type ContactsScreenProp = NativeStackNavigationProp<NavParamList, 'Contacts'>;
 
@@ -49,6 +50,8 @@ const ContactsScreen: React.FC = () => {
     </View>
   );
 
+  const tabBarHeight = useBottomTabBarHeight();
+
   return (
     <>
       {/* Only show the loading overlay on the first load */}
@@ -76,15 +79,17 @@ const ContactsScreen: React.FC = () => {
             {filteredUsers.length === 0 ? (
               renderEmptyState()
             ) : (
-              <MemberList
-                members={filteredUsers}
-                currentUserId={''}
-                onMemberPress={handleContactPress}
-                emptyMessage="No registered contacts found."
-                scrollEnabled
-                refreshing={!isInitialLoading && loading}
-                onRefresh={refreshContacts}
-              />
+              <View style={{ paddingBottom: tabBarHeight }}>
+                <MemberList
+                  members={filteredUsers}
+                  currentUserId={''}
+                  onMemberPress={handleContactPress}
+                  emptyMessage="No registered contacts found."
+                  scrollEnabled
+                  refreshing={!isInitialLoading && loading}
+                  onRefresh={refreshContacts}
+                />
+              </View>
             )}
           </>
         )}
