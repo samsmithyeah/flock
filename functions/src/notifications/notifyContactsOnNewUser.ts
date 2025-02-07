@@ -18,9 +18,8 @@ export const notifyContactsOnNewUser = functions.firestore
       return null;
     }
 
-    console.log('New user data:', afterData);
-
     if (!beforeData.hashedPhoneNumber && afterData.hashedPhoneNumber) {
+      console.log('New user data:', afterData);
       console.log('Hashed phone number added. Firing notifications.');
 
       const newUserHashed = afterData.hashedPhoneNumber;
