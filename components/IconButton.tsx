@@ -23,8 +23,16 @@ const IconButton: React.FC<IconButtonProps> = ({
       style={[
         styles.button,
         { borderColor: color },
-        selected && { backgroundColor: color },
+        selected
+          ? {
+              backgroundColor: color,
+            }
+          : {
+              backgroundColor: `${color}10`, // 10% opacity of the color
+            },
+        styles.pressable,
       ]}
+      activeOpacity={0.7}
     >
       <Ionicons name={iconName} size={size} color={selected ? '#fff' : color} />
     </TouchableOpacity>
@@ -33,13 +41,15 @@ const IconButton: React.FC<IconButtonProps> = ({
 
 const styles = StyleSheet.create({
   button: {
-    width: '30%',
+    width: '33%',
     height: 35,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#ccc',
+    borderWidth: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  pressable: {
+    transform: [{ scale: 1 }],
   },
 });
 

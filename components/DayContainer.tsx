@@ -130,7 +130,7 @@ const DayContainer: React.FC<DayContainerProps> = ({
       );
     } else {
       Alert.alert(
-        'Set unavailable',
+        'Set availability',
         'Are you sure you want to set yourself as unavailable for this day?',
         [
           {
@@ -222,44 +222,44 @@ const DayContainer: React.FC<DayContainerProps> = ({
         </View>
 
         {/* Only show the joinPrompt when userStatus is undefined/null */}
-        {userStatus === undefined && (
-          <Text style={styles.joinPrompt}>
-            Respond to see who's up for {getCrewActivity()}.
-          </Text>
-        )}
-
-        {/* Show member lists for any status (including unavailable) */}
-        {userStatus !== undefined && (
-          <>
-            <Text style={styles.countText}>
-              {upForItMembers.length} of {totalMembers} up for{' '}
-              {getCrewActivity()}:
+        {userStatus === undefined ||
+          (userStatus === null ? (
+            <Text style={styles.joinPrompt}>
+              Respond to see who's up for {getCrewActivity()}.
             </Text>
-            <View style={styles.memberListContainer}>
-              <MemberList
-                members={upForItMembers}
-                currentUserId={user?.uid ?? null}
-                emptyMessage="No one's up for it yet"
-                onMemberPress={navigateToUserProfile}
-                scrollEnabled
-              />
-            </View>
-            {unavailableMembers.length > 0 && (
-              <>
-                <Text style={styles.countText}>Not available:</Text>
-                <View style={styles.memberListContainer}>
-                  <MemberList
-                    members={unavailableMembers}
-                    currentUserId={user?.uid ?? null}
-                    emptyMessage="No one has responded as unavailable"
-                    onMemberPress={navigateToUserProfile}
-                    scrollEnabled
-                  />
-                </View>
-              </>
-            )}
-          </>
-        )}
+          ) : (
+            <>
+              {/* Divider */}
+              <View style={styles.divider} />
+              <Text style={styles.countText}>
+                {upForItMembers.length} of {totalMembers} up for{' '}
+                {getCrewActivity()}:
+              </Text>
+              <View style={styles.memberListContainer}>
+                <MemberList
+                  members={upForItMembers}
+                  currentUserId={user?.uid ?? null}
+                  emptyMessage="No one's up for it yet"
+                  onMemberPress={navigateToUserProfile}
+                  scrollEnabled
+                />
+              </View>
+              {unavailableMembers.length > 0 && (
+                <>
+                  <Text style={styles.countText}>Not available:</Text>
+                  <View style={styles.memberListContainer}>
+                    <MemberList
+                      members={unavailableMembers}
+                      currentUserId={user?.uid ?? null}
+                      emptyMessage="No one has responded as unavailable"
+                      onMemberPress={navigateToUserProfile}
+                      scrollEnabled
+                    />
+                  </View>
+                </>
+              )}
+            </>
+          ))}
       </View>
 
       {/* Only show bottom section actions when user is available */}
@@ -419,7 +419,12 @@ const styles = StyleSheet.create({
   },
   buttonRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     gap: 10,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#E0E0E0',
+    marginTop: 12,
   },
 });

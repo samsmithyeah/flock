@@ -155,7 +155,6 @@ export default MemberList;
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    marginVertical: 10,
   },
   memberItem: {
     flexDirection: 'row',
@@ -195,8 +194,9 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     color: '#666',
-    textAlign: 'center',
-    marginTop: 20,
+    textAlign: 'left',
+    marginLeft: 16,
+    marginTop: 16,
   },
   separator: {
     height: 1,

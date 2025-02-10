@@ -379,8 +379,8 @@ const CrewScreen: React.FC = () => {
 
               if (userIsAvailableOnAnyDate) {
                 Alert.alert(
-                  'Update availability',
-                  'Do you want to mark yourself as not available on the deleted event date(s)?',
+                  'Clear availability',
+                  'Do you want to clear your availability on the deleted event date(s)?',
                   [
                     { text: 'No', style: 'cancel' },
                     {
@@ -388,7 +388,7 @@ const CrewScreen: React.FC = () => {
                       onPress: () => {
                         if (!user) return;
                         eventDates.forEach((day) => {
-                          setStatusForCrew(crewId, day, false);
+                          setStatusForCrew(crewId, day, null);
                           removeMemberFromChat(`${crewId}_${day}`, user.uid);
                         });
                       },
