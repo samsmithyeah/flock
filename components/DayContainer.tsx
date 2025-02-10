@@ -220,6 +220,7 @@ const DayContainer: React.FC<DayContainerProps> = ({
             size={28}
           />
         </View>
+        <View style={styles.divider} />
 
         {/* Only show the joinPrompt when userStatus is undefined/null */}
         {userStatus === undefined || userStatus === null ? (
@@ -229,7 +230,6 @@ const DayContainer: React.FC<DayContainerProps> = ({
         ) : (
           <>
             {/* Divider */}
-            <View style={styles.divider} />
             <Text style={styles.countText}>
               {upForItMembers.length} of {totalMembers} up for{' '}
               {getCrewActivity()}:
@@ -273,7 +273,7 @@ const DayContainer: React.FC<DayContainerProps> = ({
                 icon={{ name: 'chatbubble-ellipses-outline', size: 18 }}
               />
             )}
-            {totalUp < totalMembers && (
+            {totalUp + unavailableMembers.length < totalMembers && (
               <View style={styles.actionButton}>
                 <CustomButton
                   title="Poke the others"

@@ -511,19 +511,31 @@ const CrewScreen: React.FC = () => {
 
     Alert.alert(
       'Poke the others?',
-      `Send a poke to members not up for it on this day?`,
+      "Send a poke to members who haven't responded on this day yet?",
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Poke',
           onPress: async () => {
             try {
+              interface PokeResponse {
+                success: boolean;
+                message: string;
+              }
               const poke = await pokeCrew(crewId, day, user.uid);
-              Toast.show({
-                type: 'success',
-                text1: 'Poke Sent',
-                text2: (poke.data as { message: string }).message,
-              });
+              if ((poke.data as PokeResponse).success) {
+                Toast.show({
+                  type: 'success',
+                  text1: 'Poke sent',
+                  text2: (poke.data as PokeResponse).message,
+                });
+              } else {
+                Toast.show({
+                  type: 'info',
+                  text1: 'No pokes sent',
+                  text2: (poke.data as PokeResponse).message,
+                });
+              }
             } catch (error) {
               console.error('Error sending poke:', error);
               Toast.show({
