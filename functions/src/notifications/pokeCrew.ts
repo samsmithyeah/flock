@@ -132,7 +132,7 @@ export const pokeCrew = functions.https.onCall(
 
       // **Prepare the Notification Message**
       const dateDescription = getDateDescription(date);
-      const messageBody = `${senderName} has poked the crew about ${activityName} ${dateDescription}!`;
+      const messageBody = `${senderName} has poked the ${crewName} crew about ${activityName} ${dateDescription}!`;
 
       // **Fetch Push Tokens for Members Not Up**
       const batchSize = 10; // Firestore 'in' queries support up to 10 elements

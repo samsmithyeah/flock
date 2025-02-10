@@ -285,6 +285,9 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const fetchCrewMembers = async (currentUserId: string): Promise<User[]> => {
+    if (!user) {
+      return [];
+    }
     console.log(`🔄 Starting fetchCrewMembers for user ID: ${currentUserId}`);
     try {
       // Fetch all crews the user is part of.
@@ -344,7 +347,10 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
 
       console.log(`✅ Fetched ${fetchedMembers.length} valid crew members.`);
       return fetchedMembers;
-    } catch (error) {
+    } catch (error: any) {
+      if (error.code === 'permission-denied') {
+        return [];
+      }
       console.error('❌ Error fetching crew members:', error);
       return [];
     }

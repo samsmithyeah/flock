@@ -6,34 +6,34 @@ import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
 import { getDateDescription } from '../utils/dateHelpers';
 
-/**
- * Cloud Function to notify crew members when a user's status changes.
- */
 export const notifyCrewOnStatusChange = onDocumentWritten(
   'crews/{crewId}/statuses/{date}/userStatuses/{userId}',
   async (event) => {
     const { crewId, date, userId } = event.params;
 
-    const beforeData = event.data?.before.exists ?
-      event.data.before.data() :
-      null;
-    const afterData = event.data?.after.exists ?
-      event.data.after.data() :
-      null;
+    const beforeData = event.data?.before.exists ? event.data.before.data() : null;
+    const afterData = event.data?.after.exists ? event.data.after.data() : null;
 
-    // Determine if the status was changed to up or down
-    const statusChangedToUp =
-      !beforeData?.upForGoingOutTonight && afterData?.upForGoingOutTonight;
-    const statusChangedToDown =
-      beforeData?.upForGoingOutTonight && !afterData?.upForGoingOutTonight;
+    const beforeStatus =
+      typeof beforeData?.upForGoingOutTonight === 'boolean' ? beforeData.upForGoingOutTonight : null;
+    const afterStatus =
+      typeof afterData?.upForGoingOutTonight === 'boolean' ? afterData.upForGoingOutTonight : null;
 
-    if (!statusChangedToUp && !statusChangedToDown) {
-      // Status did not change in a way that requires notification
-      console.log('Status change does not require notification.');
+    // Only proceed if the status has changed.
+    if (beforeStatus === afterStatus) {
+      console.log('Status did not change.');
       return null;
     }
 
-    // Fetch the crew document to get memberIds and crew.name
+    if (beforeStatus === false && afterStatus === null) {
+      console.log('Status changed from unavailable to null; no notification needed.');
+      return null;
+    }
+
+    const statusChangedToUp = afterStatus === true;
+    const statusChangedToDown = afterStatus === false;
+
+    // Fetch the crew document to get memberIds and crew name
     const crewRef = admin.firestore().collection('crews').doc(crewId);
     const crewDoc = await crewRef.get();
 
@@ -74,17 +74,20 @@ export const notifyCrewOnStatusChange = onDocumentWritten(
 
     const crewActivity = crewData.activity ? crewData.activity.toLowerCase() : 'meeting up';
 
-    // Determine notification message based on status change
+    // Set notification message based on the new status.
     let messageBody = '';
-    if (statusChangedToUp) {
+
+    if (afterStatus === true) {
       messageBody = `${userName} is up for ${crewActivity} ${dateDescription}!`;
-    } else if (statusChangedToDown) {
+    } else if (beforeStatus === true) {
       messageBody = `${userName} is no longer up for ${crewActivity} ${dateDescription}.`;
+    } else if (afterStatus === false) {
+      messageBody = `${userName} is not available for ${crewActivity} ${dateDescription}.`;
     }
 
     console.log(`Notification Message: ${messageBody}`);
 
-    // Fetch userStatuses to identify members who are also up for it on the same date
+    // Identify members who are also available (true) on the same date.
     const userStatusesRef = admin
       .firestore()
       .collection('crews')
@@ -93,14 +96,11 @@ export const notifyCrewOnStatusChange = onDocumentWritten(
       .doc(date)
       .collection('userStatuses');
 
-    // Firestore 'in' queries support up to 10 elements per query
     const batchSize = 10;
     const eligibleMemberIds: string[] = [];
 
     for (let i = 0; i < memberIds.length; i += batchSize) {
       const batch = memberIds.slice(i, i + batchSize);
-
-      // Query for userStatuses where documentId (userId) is in the current batch and upForGoingOutTonight is true
       const statusesSnapshot = await userStatusesRef
         .where(admin.firestore.FieldPath.documentId(), 'in', batch)
         .where('upForGoingOutTonight', '==', true)
@@ -118,12 +118,10 @@ export const notifyCrewOnStatusChange = onDocumentWritten(
 
     console.log(`Eligible Members to Notify: ${eligibleMemberIds}`);
 
-    // Now, fetch the push tokens for eligible members
+    // Fetch Expo push tokens for eligible members.
     const expoPushTokens: string[] = [];
-
     for (let i = 0; i < eligibleMemberIds.length; i += batchSize) {
       const batch = eligibleMemberIds.slice(i, i + batchSize);
-
       const usersSnapshot = await admin
         .firestore()
         .collection('users')
@@ -138,7 +136,6 @@ export const notifyCrewOnStatusChange = onDocumentWritten(
         if (token && Expo.isExpoPushToken(token)) {
           expoPushTokens.push(token);
         }
-
         if (tokensArray && Array.isArray(tokensArray)) {
           tokensArray.forEach((tok: string) => {
             if (Expo.isExpoPushToken(tok)) {
@@ -156,7 +153,7 @@ export const notifyCrewOnStatusChange = onDocumentWritten(
 
     console.log(`Expo Push Tokens: ${expoPushTokens}`);
 
-    // Prepare the notification messages
+    // Prepare the notification messages.
     const messages: ExpoPushMessage[] = expoPushTokens.map((pushToken) => ({
       to: pushToken,
       sound: 'default',
@@ -174,9 +171,8 @@ export const notifyCrewOnStatusChange = onDocumentWritten(
 
     console.log(`Prepared Messages: ${JSON.stringify(messages)}`);
 
-    // Send the notifications
+    // Send the notifications.
     await sendExpoNotifications(messages);
-
     console.log('Notifications sent successfully.');
 
     return null;

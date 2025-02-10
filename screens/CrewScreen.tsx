@@ -321,8 +321,6 @@ const CrewScreen: React.FC = () => {
   const isUserUpForDay = (day: string) => {
     if (!user) return undefined;
     // Returns true, false or undefined/null (if no status exists)
-    console.log('Checking status for', day, user.uid);
-    console.log('Status:', statusesForWeek[day]?.[user.uid]);
     return statusesForWeek[day]?.[user.uid];
   };
 

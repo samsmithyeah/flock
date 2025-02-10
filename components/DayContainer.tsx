@@ -222,44 +222,43 @@ const DayContainer: React.FC<DayContainerProps> = ({
         </View>
 
         {/* Only show the joinPrompt when userStatus is undefined/null */}
-        {userStatus === undefined ||
-          (userStatus === null ? (
-            <Text style={styles.joinPrompt}>
-              Respond to see who's up for {getCrewActivity()}.
+        {userStatus === undefined || userStatus === null ? (
+          <Text style={styles.joinPrompt}>
+            Respond to see who's up for {getCrewActivity()} on this day.
+          </Text>
+        ) : (
+          <>
+            {/* Divider */}
+            <View style={styles.divider} />
+            <Text style={styles.countText}>
+              {upForItMembers.length} of {totalMembers} up for{' '}
+              {getCrewActivity()}:
             </Text>
-          ) : (
-            <>
-              {/* Divider */}
-              <View style={styles.divider} />
-              <Text style={styles.countText}>
-                {upForItMembers.length} of {totalMembers} up for{' '}
-                {getCrewActivity()}:
-              </Text>
-              <View style={styles.memberListContainer}>
-                <MemberList
-                  members={upForItMembers}
-                  currentUserId={user?.uid ?? null}
-                  emptyMessage="No one's up for it yet"
-                  onMemberPress={navigateToUserProfile}
-                  scrollEnabled
-                />
-              </View>
-              {unavailableMembers.length > 0 && (
-                <>
-                  <Text style={styles.countText}>Not available:</Text>
-                  <View style={styles.memberListContainer}>
-                    <MemberList
-                      members={unavailableMembers}
-                      currentUserId={user?.uid ?? null}
-                      emptyMessage="No one has responded as unavailable"
-                      onMemberPress={navigateToUserProfile}
-                      scrollEnabled
-                    />
-                  </View>
-                </>
-              )}
-            </>
-          ))}
+            <View style={styles.memberListContainer}>
+              <MemberList
+                members={upForItMembers}
+                currentUserId={user?.uid ?? null}
+                emptyMessage="No one's up for it yet"
+                onMemberPress={navigateToUserProfile}
+                scrollEnabled
+              />
+            </View>
+            {unavailableMembers.length > 0 && (
+              <>
+                <Text style={styles.countText}>Not available:</Text>
+                <View style={styles.memberListContainer}>
+                  <MemberList
+                    members={unavailableMembers}
+                    currentUserId={user?.uid ?? null}
+                    emptyMessage="No one has responded as unavailable"
+                    onMemberPress={navigateToUserProfile}
+                    scrollEnabled
+                  />
+                </View>
+              </>
+            )}
+          </>
+        )}
       </View>
 
       {/* Only show bottom section actions when user is available */}
