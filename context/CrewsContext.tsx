@@ -411,7 +411,9 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       }
       setCrewEventsMap(newMap);
       recalcAllEvents(newMap);
-    } catch (error) {
+    } catch (error: any) {
+      if (!user) return;
+      if (error.code === 'permission-denied') return;
       console.error('Error building initial crew events map:', error);
       Toast.show({
         type: 'error',
