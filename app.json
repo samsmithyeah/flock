@@ -37,7 +37,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#D8CECB"
       },
       "permissions": ["READ_CONTACTS"],
       "package": "com.samlovesit.GoingOutApp",
@@ -47,8 +47,8 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/icon.png",
-          "color": "#ffffff"
+          "icon": "./assets/images/icon_96x96_android.png",
+          "color": "#2596be"
         }
       ],
       "expo-router",
