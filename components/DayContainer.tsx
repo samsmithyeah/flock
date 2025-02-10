@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { User } from '@/types/User';
@@ -13,15 +14,17 @@ import CustomButton from '@/components/CustomButton';
 import MemberList from '@/components/MemberList';
 import { getFormattedDate } from '@/utils/dateHelpers';
 import { CrewEvent } from '@/types/CrewEvent';
+import IconButton from '@/components/IconButton';
 
 interface DayContainerProps {
   day: string;
-  userIsUp: boolean;
+  userStatus?: boolean | null;
   upForItMembers: User[];
+  unavailableMembers: User[];
   totalUp: number;
   totalMembers: number;
   getCrewActivity: () => string;
-  toggleDayStatus: (day: string) => void;
+  toggleDayStatus: (day: string, status: boolean | null) => void;
   navigateToDayChat: (day: string) => void;
   handlePokeCrew: (day: string) => void;
   navigateToUserProfile: (user: User) => void;
@@ -33,49 +36,11 @@ interface DayContainerProps {
   margin?: number;
 }
 
-// Your chosen palette
-const eventColors = [
-  '#FFB300',
-  '#F4511E',
-  '#8E24AA',
-  '#3949AB',
-  '#00897B',
-  '#616161',
-  '#EF6C00',
-  '#26A69A',
-  '#7E57C2',
-  '#00ACC1',
-  '#5C6BC0',
-  '#43A047',
-  '#9E9D24',
-  '#D81B60',
-  '#8D6E63',
-  '#78909C',
-  '#1E88E5',
-  '#C0CA33',
-  '#FB8C00',
-  '#4E342E',
-];
-
-// Minimal string hashing function
-const getHash = (str: string): number => {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return hash;
-};
-
-// Derive a color index from the event ID’s hash
-const getEventColor = (eventId: string): string => {
-  const hash = Math.abs(getHash(eventId));
-  return eventColors[hash % eventColors.length];
-};
-
 const DayContainer: React.FC<DayContainerProps> = ({
   day,
-  userIsUp,
+  userStatus,
   upForItMembers,
+  unavailableMembers,
   totalUp,
   totalMembers,
   getCrewActivity,
@@ -89,6 +54,7 @@ const DayContainer: React.FC<DayContainerProps> = ({
   events = [],
 }) => {
   const { user } = useUser();
+
   const isEventCreator = (event: CrewEvent) => event.createdBy === user?.uid;
 
   const handlePillPress = (event: CrewEvent) => {
@@ -96,6 +62,90 @@ const DayContainer: React.FC<DayContainerProps> = ({
       onEditEvent?.(day, event);
     } else {
       onViewEvent?.(event);
+    }
+  };
+
+  useEffect(() => {
+    console.log('User status for day:', day, userStatus);
+  }, [userStatus, day]);
+
+  const handleAvailablePress = () => {
+    if (userStatus === true) {
+      Alert.alert(
+        'Clear availability',
+        'Are you sure you want to clear your response for this day?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Clear',
+            onPress: () => {
+              console.log('clearing status');
+              toggleDayStatus(day, null);
+            },
+          },
+        ],
+      );
+    } else {
+      Alert.alert(
+        'Set availability',
+        'Are you sure you want to set yourself as available for this day?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Confirm',
+            onPress: () => {
+              console.log('setting available');
+              toggleDayStatus(day, true);
+            },
+          },
+        ],
+      );
+    }
+  };
+
+  const handleUnavailablePress = () => {
+    if (userStatus === false) {
+      Alert.alert(
+        'Clear availability',
+        'Are you sure you want to clear your response for this day?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Clear',
+            onPress: () => {
+              console.log('clearing status');
+              toggleDayStatus(day, null);
+            },
+          },
+        ],
+      );
+    } else {
+      Alert.alert(
+        'Set unavailable',
+        'Are you sure you want to set yourself as unavailable for this day?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Confirm',
+            onPress: () => {
+              console.log('setting unavailable');
+              toggleDayStatus(day, false);
+            },
+          },
+        ],
+      );
     }
   };
 
@@ -110,8 +160,6 @@ const DayContainer: React.FC<DayContainerProps> = ({
         >
           {events.map((evt) => {
             const pillColor = getEventColor(evt.id);
-
-            // If it's unconfirmed, we’ll reduce opacity and show an icon
             const eventPillStyles = [
               styles.eventPill,
               { backgroundColor: pillColor },
@@ -122,7 +170,6 @@ const DayContainer: React.FC<DayContainerProps> = ({
                 borderColor: '#fff',
               },
             ];
-
             return (
               <View key={evt.id} style={eventPillStyles}>
                 <TouchableOpacity
@@ -130,13 +177,10 @@ const DayContainer: React.FC<DayContainerProps> = ({
                   onPress={() => handlePillPress(evt)}
                 >
                   <Text style={styles.eventPillText}>{evt.title}</Text>
-
                   <View style={{ flex: 1 }} />
                   {evt.unconfirmed && (
                     <Text style={styles.unconfirmedText}>unconfirmed</Text>
                   )}
-
-                  {/* Editing icon if user is the event creator */}
                   {isEventCreator(evt) && (
                     <Ionicons
                       name="create-outline"
@@ -159,23 +203,37 @@ const DayContainer: React.FC<DayContainerProps> = ({
           )}
         </ScrollView>
 
-        <CustomButton
-          title={userIsUp ? "You're in" : 'Count me in'}
-          variant={userIsUp ? 'secondary' : 'primary'}
-          onPress={() => toggleDayStatus(day)}
-          icon={{ name: userIsUp ? 'star' : 'star-outline', size: 18 }}
-        />
+        {/* Buttons for available / unavailable */}
+        <View style={styles.buttonRow}>
+          <IconButton
+            selected={userStatus === true}
+            onPress={handleAvailablePress}
+            iconName="checkmark"
+            color="#4CAF50"
+            size={28}
+          />
+          <IconButton
+            selected={userStatus === false}
+            onPress={handleUnavailablePress}
+            iconName="close"
+            color="#F44336"
+            size={28}
+          />
+        </View>
 
-        {!userIsUp && (
+        {/* Only show the joinPrompt when userStatus is undefined/null */}
+        {userStatus === undefined && (
           <Text style={styles.joinPrompt}>
-            Join to see who's up for {getCrewActivity()}.
+            Respond to see who's up for {getCrewActivity()}.
           </Text>
         )}
 
-        {userIsUp && (
+        {/* Show member lists for any status (including unavailable) */}
+        {userStatus !== undefined && (
           <>
             <Text style={styles.countText}>
-              {totalUp} of {totalMembers} up for {getCrewActivity()}:
+              {upForItMembers.length} of {totalMembers} up for{' '}
+              {getCrewActivity()}:
             </Text>
             <View style={styles.memberListContainer}>
               <MemberList
@@ -186,12 +244,27 @@ const DayContainer: React.FC<DayContainerProps> = ({
                 scrollEnabled
               />
             </View>
+            {unavailableMembers.length > 0 && (
+              <>
+                <Text style={styles.countText}>Not available:</Text>
+                <View style={styles.memberListContainer}>
+                  <MemberList
+                    members={unavailableMembers}
+                    currentUserId={user?.uid ?? null}
+                    emptyMessage="No one has responded as unavailable"
+                    onMemberPress={navigateToUserProfile}
+                    scrollEnabled
+                  />
+                </View>
+              </>
+            )}
           </>
         )}
       </View>
 
+      {/* Only show bottom section actions when user is available */}
       <View style={styles.bottomSection}>
-        {userIsUp && (
+        {userStatus === true && (
           <>
             {totalUp > 1 && (
               <CustomButton
@@ -222,6 +295,42 @@ const DayContainer: React.FC<DayContainerProps> = ({
 };
 
 export default DayContainer;
+
+const eventColors = [
+  '#FFB300',
+  '#F4511E',
+  '#8E24AA',
+  '#3949AB',
+  '#00897B',
+  '#616161',
+  '#EF6C00',
+  '#26A69A',
+  '#7E57C2',
+  '#00ACC1',
+  '#5C6BC0',
+  '#43A047',
+  '#9E9D24',
+  '#D81B60',
+  '#8D6E63',
+  '#78909C',
+  '#1E88E5',
+  '#C0CA33',
+  '#FB8C00',
+  '#4E342E',
+];
+
+const getHash = (str: string): number => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return hash;
+};
+
+const getEventColor = (eventId: string): string => {
+  const hash = Math.abs(getHash(eventId));
+  return eventColors[hash % eventColors.length];
+};
 
 const styles = StyleSheet.create({
   dayContainer: {
@@ -307,5 +416,10 @@ const styles = StyleSheet.create({
     color: '#333',
     fontWeight: '600',
     textAlign: 'center',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 10,
   },
 });

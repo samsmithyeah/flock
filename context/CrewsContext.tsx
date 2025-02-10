@@ -47,7 +47,7 @@ interface CrewsContextProps {
   setStatusForCrew: (
     crewId: string,
     selectedDate: string,
-    status: boolean,
+    status: boolean | null,
   ) => Promise<void>;
   toggleStatusForCrew: (
     crewId: string,
@@ -304,6 +304,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       statusSnapshots.forEach((statusSnap) => {
         if (statusSnap.exists()) {
           const statusData = statusSnap.data();
+          // Only count if explicitly set to true
           if (statusData.upForGoingOutTonight === true) {
             const date = statusSnap.ref.parent.parent?.id;
             if (date && counts[date] !== undefined) {
@@ -469,7 +470,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
   const setStatusForCrew = async (
     crewId: string,
     selectedDate: string,
-    status: boolean,
+    status: boolean | null,
   ) => {
     try {
       if (!user?.uid) throw new Error('User not authenticated');
@@ -484,11 +485,13 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       );
       const statusSnap = await getDoc(userStatusRef);
       if (statusSnap.exists()) {
+        console.log('Updating existing status:', status);
         await updateDoc(userStatusRef, {
           upForGoingOutTonight: status,
           timestamp: Timestamp.fromDate(new Date()),
         });
       } else {
+        console.log('Setting new status:', status);
         await setDoc(userStatusRef, {
           date: selectedDate,
           upForGoingOutTonight: status,
@@ -504,7 +507,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
   const toggleStatusForCrew = async (
     crewId: string,
     selectedDate: string,
-    toggleTo: boolean,
+    toggleTo: boolean | null,
   ) => {
     try {
       if (!user?.uid) throw new Error('User not authenticated');
@@ -518,28 +521,47 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         user.uid,
       );
       const statusSnap = await getDoc(userStatusRef);
+      let newStatus: boolean | null = toggleTo;
+
+      // If the request isn’t explicitly a clear (null) action,
+      // check if the current status is already the same as toggleTo.
+      if (toggleTo !== null && statusSnap.exists()) {
+        const currentStatus = statusSnap.data().upForGoingOutTonight;
+        if (currentStatus === toggleTo) {
+          newStatus = null;
+        }
+      }
+
       if (statusSnap.exists()) {
-        const currentStatus = statusSnap.data().upForGoingOutTonight || false;
         await updateDoc(userStatusRef, {
-          upForGoingOutTonight: !currentStatus,
+          upForGoingOutTonight: newStatus,
           timestamp: Timestamp.fromDate(new Date()),
         });
       } else {
         await setDoc(userStatusRef, {
           date: selectedDate,
-          upForGoingOutTonight: true,
+          upForGoingOutTonight: newStatus,
           timestamp: Timestamp.fromDate(new Date()),
         });
       }
-      setDateCounts((prev) => ({
-        ...prev,
-        [selectedDate]: toggleTo
-          ? prev[selectedDate] + 1
-          : Math.max(prev[selectedDate] - 1, 0),
-      }));
+
+      // Update local state counts based on the change.
+      setDateCounts((prev) => {
+        let newCount = prev[selectedDate] || 0;
+        const previousStatus = statusSnap.exists()
+          ? statusSnap.data().upForGoingOutTonight
+          : null;
+        if (previousStatus !== true && newStatus === true) {
+          newCount++;
+        } else if (previousStatus === true && newStatus !== true) {
+          newCount = Math.max(newCount - 1, 0);
+        }
+        return { ...prev, [selectedDate]: newCount };
+      });
+
       setDateMatchingCrews((prev) => {
         const updated = { ...prev };
-        if (toggleTo) {
+        if (newStatus === true) {
           if (!updated[selectedDate]) updated[selectedDate] = [];
           if (!updated[selectedDate].includes(crewId))
             updated[selectedDate].push(crewId);
@@ -551,6 +573,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         }
         return updated;
       });
+
       setMatchesNeedsRefresh(true);
     } catch (error) {
       console.error('Error toggling status:', error);

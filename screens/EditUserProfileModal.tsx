@@ -273,12 +273,7 @@ const EditUserProfileModal: React.FC = () => {
                 size: 24,
                 color: '#FFFFFF',
               }}
-              disabled={
-                saving ||
-                !firstName.trim() ||
-                !lastName.trim() ||
-                !displayName.trim()
-              }
+              disabled={saving || !displayName.trim()}
               accessibilityLabel="Save Profile"
               accessibilityHint="Save your updated profile information"
             />

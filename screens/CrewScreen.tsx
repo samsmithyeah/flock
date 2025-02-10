@@ -1,5 +1,3 @@
-// screens/CrewScreen.tsx
-
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   View,
@@ -86,7 +84,7 @@ const CrewScreen: React.FC = () => {
   const [startDate, setStartDate] = useState<Moment>(moment().startOf('day'));
   const [weekDates, setWeekDates] = useState<string[]>([]);
   const [statusesForWeek, setStatusesForWeek] = useState<{
-    [date: string]: { [userId: string]: boolean };
+    [date: string]: { [userId: string]: boolean | null };
   }>({});
   const [scrolledToEnd, setScrolledToEnd] = useState(false);
   const [scrolledToStart, setScrolledToStart] = useState<boolean | undefined>(
@@ -99,7 +97,6 @@ const CrewScreen: React.FC = () => {
   // Controls for AddEventModal
   const [addEventVisible, setAddEventVisible] = useState(false);
   const [isAddingEvent, setIsAddingEvent] = useState(false);
-  // Track which event (if any) is being edited
   const [editingEvent, setEditingEvent] = useState<CrewEvent | null>(null);
   const [viewingEvent, setViewingEvent] = useState<CrewEvent | null>(null);
   const [viewEventModalVisible, setViewEventModalVisible] = useState(false);
@@ -237,7 +234,7 @@ const CrewScreen: React.FC = () => {
     return () => unsub();
   }, [crewId, weekDates, user]);
 
-  // Firestore listeners for each day in "weekDates" => user statuses
+  // Listen for user statuses for each day
   useEffect(() => {
     if (!crewId || !user || !weekDates.length) return;
 
@@ -257,11 +254,20 @@ const CrewScreen: React.FC = () => {
         userStatusesRef,
         (snapshot) => {
           setStatusesForWeek((prev) => {
-            const newStatusesForDay: { [userId: string]: boolean } = {};
+            const newStatusesForDay: { [userId: string]: boolean | null } = {};
             snapshot.forEach((docSnap) => {
-              const data = docSnap.data() as { upForGoingOutTonight: boolean };
+              const data = docSnap.data();
+              console.log(
+                'User status for',
+                docSnap.id,
+                'on',
+                day,
+                data.upForGoingOutTonight,
+              );
               newStatusesForDay[docSnap.id] =
-                data.upForGoingOutTonight || false;
+                data.upForGoingOutTonight !== undefined
+                  ? data.upForGoingOutTonight
+                  : null;
             });
             return { ...prev, [day]: newStatusesForDay };
           });
@@ -313,14 +319,18 @@ const CrewScreen: React.FC = () => {
   };
 
   const isUserUpForDay = (day: string) => {
-    if (!user) return false;
-    return statusesForWeek[day]?.[user.uid] || false;
+    if (!user) return undefined;
+    // Returns true, false or undefined/null (if no status exists)
+    console.log('Checking status for', day, user.uid);
+    console.log('Status:', statusesForWeek[day]?.[user.uid]);
+    return statusesForWeek[day]?.[user.uid];
   };
 
   const getCrewActivity = () =>
     crew?.activity ? crew.activity.toLowerCase() : 'meeting up';
 
-  const toggleDayStatus = (day: string) => {
+  // Updated toggleDayStatus to accept a new status (true for available, false for not available)
+  const toggleDayStatus = async (day: string, newStatus: boolean | null) => {
     if (!user?.uid || !crew) {
       Toast.show({
         type: 'error',
@@ -329,30 +339,16 @@ const CrewScreen: React.FC = () => {
       });
       return;
     }
-    const currentStatus = isUserUpForDay(day);
-    const newStatus = !currentStatus;
     const chatId = `${crewId}_${day}`;
 
-    const confirmToggle = async () => {
-      // Use the explicit set function here as well:
-      await setStatusForCrew(crewId, day, newStatus);
-      if (newStatus) {
-        await addMemberToChat(chatId, user.uid);
-      } else {
-        await removeMemberFromChat(chatId, user.uid);
-      }
-    };
+    console.log('Toggling status for', day, 'to', newStatus);
+    await setStatusForCrew(crewId, day, newStatus);
 
-    Alert.alert(
-      'Confirm status change',
-      currentStatus
-        ? `Are you sure you want to mark yourself as not up for ${getCrewActivity()}?`
-        : `Are you sure you want to mark yourself as up for ${getCrewActivity()}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Confirm', onPress: confirmToggle },
-      ],
-    );
+    if (newStatus) {
+      await addMemberToChat(chatId, user.uid);
+    } else {
+      await removeMemberFromChat(chatId, user.uid);
+    }
   };
 
   const handleDeleteEvent = async (eventId: string) => {
@@ -377,7 +373,6 @@ const CrewScreen: React.FC = () => {
                 text1: 'Deleted',
                 text2: 'Event was removed successfully.',
               });
-              // Only prompt if user is available on any of the event dates
               const userIsAvailableOnAnyDate = eventDates.some((day) =>
                 isUserUpForDay(day),
               );
@@ -427,7 +422,6 @@ const CrewScreen: React.FC = () => {
     setIsAddingEvent(true);
     try {
       if (editingEvent) {
-        // Normalize dates using local time formatting
         const normalizedOldDates = getDatesBetween(
           moment(editingEvent.startDate).format('YYYY-MM-DD'),
           moment(editingEvent.endDate).format('YYYY-MM-DD'),
@@ -445,13 +439,11 @@ const CrewScreen: React.FC = () => {
           location,
         });
 
-        // Explicitly mark user as available for all new dates
         normalizedNewDates.forEach((day) => {
           setStatusForCrew(crewId, day, true);
           addMemberToChat(`${crewId}_${day}`, user.uid);
         });
 
-        // Determine dates that were removed and where the user is currently marked as available
         const removedDates = normalizedOldDates.filter(
           (day) => !normalizedNewDates.includes(day) && isUserUpForDay(day),
         );
@@ -479,13 +471,11 @@ const CrewScreen: React.FC = () => {
           text2: 'Event successfully updated.',
         });
       } else {
-        // Create new event
         await addEventToCrew(
           crewId,
           { title, startDate: start, endDate: end, unconfirmed, location },
           user.uid,
         );
-        // Explicitly mark the user as available on all dates in the event range
         const eventDates = getDatesBetween(start, end);
         eventDates.forEach((day) => {
           setStatusForCrew(crewId, day, true);
@@ -511,7 +501,6 @@ const CrewScreen: React.FC = () => {
     }
   };
 
-  // Poke crew
   const handlePokeCrew = async (day: string) => {
     if (!crewId || !day || !user?.uid) {
       Toast.show({
@@ -552,7 +541,6 @@ const CrewScreen: React.FC = () => {
     );
   };
 
-  // Navigate to day chat
   const navigateToDayChat = (day: string) => {
     navigation.navigate('ChatsStack', {
       screen: 'CrewDateChat',
@@ -561,7 +549,6 @@ const CrewScreen: React.FC = () => {
     });
   };
 
-  // Navigate to user’s profile
   const navigateToUserProfile = (selectedUser: User) => {
     if (!user) return;
     if (selectedUser.uid === user.uid) {
@@ -592,7 +579,6 @@ const CrewScreen: React.FC = () => {
     setViewEventModalVisible(true);
   };
 
-  // Next/prev weeks
   const canGoPrevWeek =
     startDate.isAfter(moment().startOf('day'), 'day') && scrolledToStart;
   const goNextWeek = () => {
@@ -607,7 +593,6 @@ const CrewScreen: React.FC = () => {
     scrollToDate(6, false);
   };
 
-  // Scroll tracking
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
     const x = contentOffset.x;
@@ -621,14 +606,12 @@ const CrewScreen: React.FC = () => {
   };
   const showNextWeekButton = scrolledToEnd;
 
-  // Calendar day selection
   const handleCalendarDayPress = (dayObj: { dateString: string }) => {
     setCalendarVisible(false);
     const chosenDate = dayObj.dateString;
     setSelectedDate(chosenDate);
   };
 
-  // Custom header with gear icon
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
@@ -726,9 +709,14 @@ const CrewScreen: React.FC = () => {
         decelerationRate="fast"
       >
         {weekDates.map((day) => {
-          const userIsUp = isUserUpForDay(day);
+          const userStatus = isUserUpForDay(day);
           const upForItMembers = members.filter(
-            (member) => statusesForWeek[day]?.[member.uid],
+            (member) => statusesForWeek[day]?.[member.uid] === true,
+          );
+          const unavailableMembers = members.filter(
+            (member) =>
+              statusesForWeek[day] &&
+              statusesForWeek[day][member.uid] === false,
           );
           const totalUp = upForItMembers.length;
           const totalMembers = members.length;
@@ -738,8 +726,9 @@ const CrewScreen: React.FC = () => {
             <View key={day} style={styles.dayContainer}>
               <DayContainer
                 day={day}
-                userIsUp={userIsUp}
+                userStatus={userStatus}
                 upForItMembers={upForItMembers}
+                unavailableMembers={unavailableMembers}
                 totalUp={totalUp}
                 totalMembers={totalMembers}
                 getCrewActivity={getCrewActivity}
