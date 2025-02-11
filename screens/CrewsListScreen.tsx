@@ -137,12 +137,9 @@ const CrewsListScreen: React.FC<CrewsListScreenProps> = ({ navigation }) => {
     <>
       {(isLoading || isLoadingUsers) && <LoadingOverlay />}
       <View style={globalStyles.container}>
-        {/* Header Container */}
         <View style={styles.headerContainer}>
-          {/* Screen Title */}
           <ScreenTitle title="Crews" />
 
-          {/* Add Crew Button */}
           <TouchableOpacity
             onPress={() => setIsModalVisible(true)}
             accessibilityLabel="Add crew"
@@ -152,21 +149,17 @@ const CrewsListScreen: React.FC<CrewsListScreenProps> = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Search Bar */}
         <CustomSearchInput
           searchQuery={searchQuery}
           onSearchQueryChange={setSearchQuery}
         />
 
-        {/* Conditional Rendering */}
         {crews.length === 0 ? (
           renderEmptyState()
         ) : (
-          // Crew List
           <CrewList crews={filteredCrews} usersCache={usersCache} />
         )}
 
-        {/* Create Crew Modal */}
         <CreateCrewModal
           isVisible={isModalVisible}
           onClose={() => {

@@ -2,9 +2,9 @@ import moment from 'moment';
 
 export const getFormattedDate = (date: string, short?: boolean) => {
   if (date === moment().format('YYYY-MM-DD')) {
-    return 'Today';
+    return 'today';
   } else if (date === moment().add(1, 'days').format('YYYY-MM-DD')) {
-    return 'Tomorrow';
+    return 'tomorrow';
   } else {
     return moment(date).format(short ? 'MMM Do' : 'dddd, MMMM Do');
   }
@@ -30,7 +30,7 @@ export const getDateDescription = (dateStr: string): string => {
   } else if (diffDays >= 2 && diffDays <= 6) {
     // Get the day of the week, e.g., "Friday"
     const options: Intl.DateTimeFormatOptions = { weekday: 'long' };
-    const dayOfWeek = targetDate.toLocaleDateString('en-US', options);
+    const dayOfWeek = targetDate.toLocaleDateString('en-GB', options);
     return `on ${dayOfWeek}`;
   } else {
     return `on ${dateStr}`;

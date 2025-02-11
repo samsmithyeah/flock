@@ -79,7 +79,7 @@ const ContactsScreen: React.FC = () => {
             {filteredUsers.length === 0 ? (
               renderEmptyState()
             ) : (
-              <View style={{ paddingBottom: tabBarHeight }}>
+              <View style={{ paddingBottom: tabBarHeight, flex: 1 }}>
                 <MemberList
                   members={filteredUsers}
                   currentUserId={''}

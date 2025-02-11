@@ -198,9 +198,8 @@ export const notifyUsersOnNewGroupMessage = onDocumentCreated(
             const messages = expoPushTokens.map((pushToken) => ({
               to: pushToken,
               sound: 'default' as const,
-              title: senderName,
-              subtitle: chatName,
-              body: text,
+              title: chatName,
+              body: `${senderName}: ${text}`,
               data: {
                 screen: 'CrewDateChat',
                 chatId,

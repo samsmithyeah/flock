@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { User } from '@/types/User';
@@ -13,15 +14,17 @@ import CustomButton from '@/components/CustomButton';
 import MemberList from '@/components/MemberList';
 import { getFormattedDate } from '@/utils/dateHelpers';
 import { CrewEvent } from '@/types/CrewEvent';
+import IconButton from '@/components/IconButton';
 
 interface DayContainerProps {
   day: string;
-  userIsUp: boolean;
+  userStatus?: boolean | null;
   upForItMembers: User[];
+  unavailableMembers: User[];
   totalUp: number;
   totalMembers: number;
   getCrewActivity: () => string;
-  toggleDayStatus: (day: string) => void;
+  toggleDayStatus: (day: string, status: boolean | null) => void;
   navigateToDayChat: (day: string) => void;
   handlePokeCrew: (day: string) => void;
   navigateToUserProfile: (user: User) => void;
@@ -33,7 +36,265 @@ interface DayContainerProps {
   margin?: number;
 }
 
-// Your chosen palette
+const DayContainer: React.FC<DayContainerProps> = ({
+  day,
+  userStatus,
+  upForItMembers,
+  unavailableMembers,
+  totalUp,
+  totalMembers,
+  getCrewActivity,
+  toggleDayStatus,
+  navigateToDayChat,
+  handlePokeCrew,
+  navigateToUserProfile,
+  onAddEvent,
+  onEditEvent,
+  onViewEvent,
+  events = [],
+}) => {
+  const { user } = useUser();
+
+  const isEventCreator = (event: CrewEvent) => event.createdBy === user?.uid;
+
+  const handlePillPress = (event: CrewEvent) => {
+    if (isEventCreator(event)) {
+      onEditEvent?.(day, event);
+    } else {
+      onViewEvent?.(event);
+    }
+  };
+
+  useEffect(() => {
+    console.log('User status for day:', day, userStatus);
+  }, [userStatus, day]);
+
+  const handleAvailablePress = () => {
+    if (userStatus === true) {
+      Alert.alert(
+        'Clear availability',
+        'Are you sure you want to clear your response for this day?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Clear',
+            onPress: () => {
+              console.log('clearing status');
+              toggleDayStatus(day, null);
+            },
+          },
+        ],
+      );
+    } else {
+      Alert.alert(
+        'Set availability',
+        'Are you sure you want to set yourself as available for this day?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Confirm',
+            onPress: () => {
+              console.log('setting available');
+              toggleDayStatus(day, true);
+            },
+          },
+        ],
+      );
+    }
+  };
+
+  const handleUnavailablePress = () => {
+    if (userStatus === false) {
+      Alert.alert(
+        'Clear availability',
+        'Are you sure you want to clear your response for this day?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Clear',
+            onPress: () => {
+              console.log('clearing status');
+              toggleDayStatus(day, null);
+            },
+          },
+        ],
+      );
+    } else {
+      Alert.alert(
+        'Set availability',
+        'Are you sure you want to set yourself as unavailable for this day?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Confirm',
+            onPress: () => {
+              console.log('setting unavailable');
+              toggleDayStatus(day, false);
+            },
+          },
+        ],
+      );
+    }
+  };
+
+  return (
+    <View style={styles.dayContainer}>
+      <View>
+        <Text style={styles.dayHeader}>{getFormattedDate(day)}</Text>
+
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.eventsContainer}
+        >
+          {events.map((evt) => {
+            const pillColor = getEventColor(evt.id);
+            const eventPillStyles = [
+              styles.eventPill,
+              { backgroundColor: pillColor },
+              evt.unconfirmed && {
+                opacity: 0.5,
+                borderWidth: 1,
+                borderStyle: 'dashed' as const,
+                borderColor: '#fff',
+              },
+            ];
+            return (
+              <View key={evt.id} style={eventPillStyles}>
+                <TouchableOpacity
+                  style={styles.eventRow}
+                  onPress={() => handlePillPress(evt)}
+                >
+                  <Text style={styles.eventPillText}>{evt.title}</Text>
+                  <View style={{ flex: 1 }} />
+                  {evt.unconfirmed && (
+                    <Text style={styles.unconfirmedText}>unconfirmed</Text>
+                  )}
+                  {isEventCreator(evt) && (
+                    <Ionicons
+                      name="create-outline"
+                      size={16}
+                      color="#fff"
+                      style={styles.editIcon}
+                    />
+                  )}
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+          {onAddEvent && (
+            <TouchableOpacity
+              style={[styles.addEventPill, styles.addPill]}
+              onPress={() => onAddEvent(day)}
+            >
+              <Text style={styles.eventPillText}>+ add an event</Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+
+        {/* Buttons for available / unavailable */}
+        <View style={styles.buttonRow}>
+          <IconButton
+            selected={userStatus === true}
+            onPress={handleAvailablePress}
+            iconName="checkmark"
+            color="#4CAF50"
+            size={28}
+          />
+          <IconButton
+            selected={userStatus === false}
+            onPress={handleUnavailablePress}
+            iconName="close"
+            color="#F44336"
+            size={28}
+          />
+        </View>
+        <View style={styles.divider} />
+
+        {/* Only show the joinPrompt when userStatus is undefined/null */}
+        {userStatus === undefined || userStatus === null ? (
+          <Text style={styles.joinPrompt}>
+            Respond to see who's up for {getCrewActivity()} on this day.
+          </Text>
+        ) : (
+          <>
+            {/* Divider */}
+            <Text style={styles.countText}>
+              {upForItMembers.length} of {totalMembers} up for{' '}
+              {getCrewActivity()}:
+            </Text>
+            <View style={styles.memberListContainer}>
+              <MemberList
+                members={upForItMembers}
+                currentUserId={user?.uid ?? null}
+                emptyMessage="No one's up for it yet"
+                onMemberPress={navigateToUserProfile}
+                scrollEnabled
+              />
+            </View>
+            {unavailableMembers.length > 0 && (
+              <>
+                <Text style={styles.countText}>Not available:</Text>
+                <View style={styles.memberListContainer}>
+                  <MemberList
+                    members={unavailableMembers}
+                    currentUserId={user?.uid ?? null}
+                    emptyMessage="No one has responded as unavailable"
+                    onMemberPress={navigateToUserProfile}
+                    scrollEnabled
+                  />
+                </View>
+              </>
+            )}
+          </>
+        )}
+      </View>
+
+      {/* Only show bottom section actions when user is available */}
+      <View style={styles.bottomSection}>
+        {userStatus === true && (
+          <>
+            {totalUp > 1 && (
+              <CustomButton
+                title="Group chat"
+                variant="secondary"
+                onPress={() => navigateToDayChat(day)}
+                icon={{ name: 'chatbubble-ellipses-outline', size: 18 }}
+              />
+            )}
+            {totalUp + unavailableMembers.length < totalMembers && (
+              <View style={styles.actionButton}>
+                <CustomButton
+                  title="Poke the others"
+                  variant="secondary"
+                  onPress={() => handlePokeCrew(day)}
+                  icon={{ name: 'notifications-outline', size: 18 }}
+                />
+              </View>
+            )}
+            {totalUp === totalMembers && (
+              <Text style={styles.everyoneInText}>Everyone is up for it!</Text>
+            )}
+          </>
+        )}
+      </View>
+    </View>
+  );
+};
+
+export default DayContainer;
+
 const eventColors = [
   '#FFB300',
   '#F4511E',
@@ -57,7 +318,6 @@ const eventColors = [
   '#4E342E',
 ];
 
-// Minimal string hashing function
 const getHash = (str: string): number => {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -66,162 +326,10 @@ const getHash = (str: string): number => {
   return hash;
 };
 
-// Derive a color index from the event ID’s hash
 const getEventColor = (eventId: string): string => {
   const hash = Math.abs(getHash(eventId));
   return eventColors[hash % eventColors.length];
 };
-
-const DayContainer: React.FC<DayContainerProps> = ({
-  day,
-  userIsUp,
-  upForItMembers,
-  totalUp,
-  totalMembers,
-  getCrewActivity,
-  toggleDayStatus,
-  navigateToDayChat,
-  handlePokeCrew,
-  navigateToUserProfile,
-  onAddEvent,
-  onEditEvent,
-  onViewEvent,
-  events = [],
-}) => {
-  const { user } = useUser();
-  const isEventCreator = (event: CrewEvent) => event.createdBy === user?.uid;
-
-  const handlePillPress = (event: CrewEvent) => {
-    if (isEventCreator(event)) {
-      onEditEvent?.(day, event);
-    } else {
-      onViewEvent?.(event);
-    }
-  };
-
-  return (
-    <View style={styles.dayContainer}>
-      <View>
-        <Text style={styles.dayHeader}>{getFormattedDate(day)}</Text>
-
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.eventsContainer}
-        >
-          {events.map((evt) => {
-            const pillColor = getEventColor(evt.id);
-
-            // If it's unconfirmed, we’ll reduce opacity and show an icon
-            const eventPillStyles = [
-              styles.eventPill,
-              { backgroundColor: pillColor },
-              evt.unconfirmed && {
-                opacity: 0.5,
-                borderWidth: 1,
-                borderStyle: 'dashed' as const,
-                borderColor: '#fff',
-              },
-            ];
-
-            return (
-              <View key={evt.id} style={eventPillStyles}>
-                <TouchableOpacity
-                  style={styles.eventRow}
-                  onPress={() => handlePillPress(evt)}
-                >
-                  <Text style={styles.eventPillText}>{evt.title}</Text>
-
-                  <View style={{ flex: 1 }} />
-                  {evt.unconfirmed && (
-                    <Text style={styles.unconfirmedText}>unconfirmed</Text>
-                  )}
-
-                  {/* Editing icon if user is the event creator */}
-                  {isEventCreator(evt) && (
-                    <Ionicons
-                      name="create-outline"
-                      size={16}
-                      color="#fff"
-                      style={styles.editIcon}
-                    />
-                  )}
-                </TouchableOpacity>
-              </View>
-            );
-          })}
-          {onAddEvent && (
-            <TouchableOpacity
-              style={[styles.addEventPill, styles.addPill]}
-              onPress={() => onAddEvent(day)}
-            >
-              <Text style={styles.eventPillText}>+ add an event</Text>
-            </TouchableOpacity>
-          )}
-        </ScrollView>
-
-        <CustomButton
-          title={userIsUp ? "You're in" : 'Count me in'}
-          variant={userIsUp ? 'secondary' : 'primary'}
-          onPress={() => toggleDayStatus(day)}
-          icon={{ name: userIsUp ? 'star' : 'star-outline', size: 18 }}
-        />
-
-        {!userIsUp && (
-          <Text style={styles.joinPrompt}>
-            Join to see who's up for {getCrewActivity()}.
-          </Text>
-        )}
-
-        {userIsUp && (
-          <>
-            <Text style={styles.countText}>
-              {totalUp} of {totalMembers} up for {getCrewActivity()}:
-            </Text>
-            <View style={styles.memberListContainer}>
-              <MemberList
-                members={upForItMembers}
-                currentUserId={user?.uid ?? null}
-                emptyMessage="No one's up for it yet"
-                onMemberPress={navigateToUserProfile}
-                scrollEnabled
-              />
-            </View>
-          </>
-        )}
-      </View>
-
-      <View style={styles.bottomSection}>
-        {userIsUp && (
-          <>
-            {totalUp > 1 && (
-              <CustomButton
-                title="Group chat"
-                variant="secondary"
-                onPress={() => navigateToDayChat(day)}
-                icon={{ name: 'chatbubble-ellipses-outline', size: 18 }}
-              />
-            )}
-            {totalUp < totalMembers && (
-              <View style={styles.actionButton}>
-                <CustomButton
-                  title="Poke the others"
-                  variant="secondary"
-                  onPress={() => handlePokeCrew(day)}
-                  icon={{ name: 'notifications-outline', size: 18 }}
-                />
-              </View>
-            )}
-            {totalUp === totalMembers && (
-              <Text style={styles.everyoneInText}>Everyone is up for it!</Text>
-            )}
-          </>
-        )}
-      </View>
-    </View>
-  );
-};
-
-export default DayContainer;
 
 const styles = StyleSheet.create({
   dayContainer: {
@@ -307,5 +415,15 @@ const styles = StyleSheet.create({
     color: '#333',
     fontWeight: '600',
     textAlign: 'center',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    gap: 10,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#E0E0E0',
+    marginTop: 12,
   },
 });

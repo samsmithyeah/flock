@@ -8,7 +8,6 @@ import { getFormattedDate } from '../utils/dateHelpers';
 
 const getEventDateRangeString = (startDate: string, endDate: string): string => {
   if (!startDate || !endDate) return '';
-
   if (startDate === endDate) {
     return getFormattedDate(startDate);
   } else {
@@ -104,7 +103,7 @@ export const notifyCrewMembersOnEventWrite = onDocumentWritten(
     let notificationBody = '';
     if (isCreated) {
       // e.g. "Sam added 'Birthday Bash' on Jan 5 - Jan 8."
-      notificationBody = `${actorName} created a new event "${eventTitle}"`;
+      notificationBody = `${actorName} created a new event "${eventTitle}" happening ${dateRangeStr}.`;
     } else if (isUpdated) {
       // e.g. "Sam updated 'Birthday Bash'."
       notificationBody = `${actorName} updated the event "${eventTitle}".`;
@@ -161,7 +160,7 @@ export const notifyCrewMembersOnEventWrite = onDocumentWritten(
       to: token,
       sound: 'default',
       title: crewName,
-      subtitle: dateRangeStr,
+      subtitle: eventTitle,
       body: notificationBody,
       data: {
         crewId,

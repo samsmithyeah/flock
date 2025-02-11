@@ -7,6 +7,7 @@ import {
   Keyboard,
   TextInput,
   TouchableOpacity,
+  Dimensions,
 } from 'react-native';
 import Toast from 'react-native-toast-message';
 import Colors from '@/styles/colors';
@@ -27,6 +28,9 @@ import { useRoute, RouteProp } from '@react-navigation/native';
 import { NavParamList } from '@/navigation/AppNavigator';
 
 const CELL_COUNT = 6;
+const { width } = Dimensions.get('window');
+const BASE_WIDTH = 393;
+const vs = (size: number) => (width / BASE_WIDTH) * size;
 
 interface SendCodeRequest {
   phone: string;
@@ -351,11 +355,10 @@ const styles = StyleSheet.create({
   },
   codeFieldRoot: {
     marginBottom: 20,
-    width: '100%',
     justifyContent: 'center',
   },
   cell: {
-    width: 40,
+    width: vs(40),
     height: 40,
     lineHeight: 38,
     fontSize: 24,

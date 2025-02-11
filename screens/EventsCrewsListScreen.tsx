@@ -6,12 +6,12 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { NavParamList } from '@/navigation/AppNavigator';
 import { Crew } from '@/types/Crew';
 import { User } from '@/types/User';
-import moment from 'moment';
 import { getDoc, doc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import Toast from 'react-native-toast-message';
 import useglobalStyles from '@/styles/globalStyles';
+import { getFormattedDay } from '@/utils/dateHelpers';
 
 type EventCrewsListScreenProps = NativeStackScreenProps<
   NavParamList,
@@ -36,11 +36,9 @@ const EventCrewsListScreen: React.FC<EventCrewsListScreenProps> = ({
   const [eventCrews, setEventCrews] = useState<Crew[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(false);
 
-  const getFormattedDate = () => moment(date).format('dddd');
-
   useLayoutEffect(() => {
     navigation.setOptions({
-      title: `${getFormattedDate()}'s crews with events`,
+      title: `${getFormattedDay(date)}'s crews with events`,
     });
   }, [navigation, date]);
 

@@ -538,6 +538,12 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
   const removeMemberFromChat = useCallback(
     async (chatId: string, uid: string): Promise<void> => {
       try {
+        // If the members is not already there, no need to remove
+        const chat = chats.find((chat) => chat.id === chatId);
+        if (!chat || !chat.otherMembers.find((m) => m.uid === uid)) {
+          console.log(`Member ${uid} not found in chat ${chatId}`);
+          return;
+        }
         const chatRef = doc(db, 'crew_date_chats', chatId);
         await updateDoc(chatRef, {
           memberIds: arrayRemove(uid),

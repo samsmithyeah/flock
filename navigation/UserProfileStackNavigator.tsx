@@ -26,6 +26,7 @@ const UserProfileStackNavigator: React.FC = () => {
         options={{
           headerTitle: 'Edit profile',
           headerBackTitleVisible: false,
+          presentation: 'modal',
         }}
       />
     </Stack.Navigator>

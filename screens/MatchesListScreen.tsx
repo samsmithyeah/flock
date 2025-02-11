@@ -8,12 +8,12 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { NavParamList } from '@/navigation/AppNavigator'; // Adjust the path as necessary
 import { Crew } from '@/types/Crew';
 import { User } from '@/types/User';
-import moment from 'moment';
 import { getDoc, doc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import Toast from 'react-native-toast-message';
 import useglobalStyles from '@/styles/globalStyles';
+import { getFormattedDay } from '@/utils/dateHelpers';
 
 type MatchesListScreenProps = NativeStackScreenProps<
   NavParamList,
@@ -37,13 +37,9 @@ const MatchesListScreen: React.FC<MatchesListScreenProps> = ({
   const [matchingCrews, setMatchingCrews] = useState<Crew[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(false);
 
-  const getFormattedDate = () => {
-    return moment(date).format('dddd');
-  };
-
   useLayoutEffect(() => {
     navigation.setOptions({
-      title: `${getFormattedDate()}'s matches`,
+      title: `${getFormattedDay(date)}'s matches`,
     });
   }, [navigation, date]);
 
