@@ -22,6 +22,7 @@ import {
   orderBy,
   setDoc,
   serverTimestamp,
+  getCountFromServer,
 } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
@@ -95,13 +96,13 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
             dmId,
             'messages',
           );
-          const allMessages = await getDocs(messagesRef);
-          return allMessages.size;
+          const countSnapshot = await getCountFromServer(messagesRef);
+          return countSnapshot.data().count;
         }
         const messagesRef = collection(db, 'direct_messages', dmId, 'messages');
         const msqQuery = query(messagesRef, where('createdAt', '>', lastRead));
-        const querySnapshot = await getDocs(msqQuery);
-        return querySnapshot.size;
+        const countSnapshot = await getCountFromServer(msqQuery);
+        return countSnapshot.data().count;
       } catch (error) {
         console.error('Error fetching unread count:', error);
         return 0;

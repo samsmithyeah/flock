@@ -26,6 +26,7 @@ import {
   arrayUnion,
   arrayRemove,
   FirestoreError,
+  getCountFromServer,
 } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
@@ -168,9 +169,6 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
     retries = 0,
   ): Promise<User> => {
     try {
-      console.log(
-        `Fetching user ${uid} with retry ${retries} from fetchUserDetailsWithRetry`,
-      );
       const user = await fetchUserDetails(uid);
       if (!user) throw new Error(`User ${uid} not found`);
       return user;
@@ -228,10 +226,8 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
           console.log('lastRead is null. Fetching all messages.');
           msgQuery = query(messagesRef);
         }
-
-        const querySnapshot = await getDocs(msgQuery);
-
-        return querySnapshot.size;
+        const countSnapshot = await getCountFromServer(msgQuery);
+        return countSnapshot.data().count;
       } catch (error: any) {
         if (!user?.uid) return 0;
         if (error.code === 'permission-denied') return 0;
