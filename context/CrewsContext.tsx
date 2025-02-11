@@ -649,54 +649,57 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       fetchedCrewIds.forEach((crewId) => {
         if (!user) return;
         const crewRef = doc(db, 'crews', crewId);
-        const unsubCrewDoc = onSnapshot(crewRef, (docSnap) => {
-          if (docSnap.exists()) {
-            const updatedCrew = {
-              id: docSnap.id,
-              ...(docSnap.data() as Omit<Crew, 'id'>),
-            } as Crew;
-            setCrews((prevCrews) => {
-              const idx = prevCrews.findIndex((c) => c.id === updatedCrew.id);
-              if (idx !== -1) {
-                const updatedCrews = [...prevCrews];
-                updatedCrews[idx] = updatedCrew;
-                return updatedCrews;
-              }
-              return [...prevCrews, updatedCrew];
-            });
-          } else {
-            setCrews((prev) => prev.filter((c) => c.id !== crewId));
-            setCrewIds((prev) => prev.filter((id) => id !== crewId));
-          }
-        });
-        unsubscribeList.push(unsubCrewDoc);
-        weekDates.forEach(
-          (date) => {
-            const userStatusesRef = collection(
-              db,
-              'crews',
-              crewId,
-              'statuses',
-              date,
-              'userStatuses',
-            );
-            const unsubStatuses = onSnapshot(
-              userStatusesRef,
-              () => {
-                setMatchesNeedsRefresh(true);
-              },
-              (error) => {
-                if (error.code === 'permission-denied') return;
-                console.error('Error in statuses snapshot:', error);
-              },
-            );
-            unsubscribeList.push(unsubStatuses);
+        const unsubCrewDoc = onSnapshot(
+          crewRef,
+          (docSnap) => {
+            if (docSnap.exists()) {
+              const updatedCrew = {
+                id: docSnap.id,
+                ...(docSnap.data() as Omit<Crew, 'id'>),
+              } as Crew;
+              setCrews((prevCrews) => {
+                const idx = prevCrews.findIndex((c) => c.id === updatedCrew.id);
+                if (idx !== -1) {
+                  const updatedCrews = [...prevCrews];
+                  updatedCrews[idx] = updatedCrew;
+                  return updatedCrews;
+                }
+                return [...prevCrews, updatedCrew];
+              });
+            } else {
+              setCrews((prev) => prev.filter((c) => c.id !== crewId));
+              setCrewIds((prev) => prev.filter((id) => id !== crewId));
+            }
           },
-          (error: FirestoreError) => {
+          (error) => {
             if (error.code === 'permission-denied') return;
-            console.error('Error in user snapshot:', error);
+            console.error('Error in crew snapshot for crewId', crewId, error);
           },
         );
+        unsubscribeList.push(unsubCrewDoc);
+
+        weekDates.forEach((date) => {
+          const userStatusesRef = collection(
+            db,
+            'crews',
+            crewId,
+            'statuses',
+            date,
+            'userStatuses',
+          );
+          const unsubStatuses = onSnapshot(
+            userStatusesRef,
+            () => {
+              setMatchesNeedsRefresh(true);
+            },
+            (error) => {
+              if (error.code === 'permission-denied') return;
+              console.error('Error in statuses snapshot:', error);
+            },
+          );
+          unsubscribeList.push(unsubStatuses);
+        });
+
         const eventsRef = collection(db, 'crews', crewId, 'events');
         const unsubEvents = onSnapshot(
           query(eventsRef, orderBy('startDate')),

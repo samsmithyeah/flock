@@ -104,10 +104,10 @@ const DashboardScreen: React.FC = () => {
   };
 
   const renderDayItem = ({ item }: { item: string }) => {
-    const availableCount = dateCounts[item].available || 0;
-    const unavailableCount = dateCounts[item].unavailable || 0;
-    const matches = dateMatches[item] || 0;
-    const events = dateEvents[item] || 0;
+    const availableCount = dateCounts[item].available ?? 0;
+    const unavailableCount = dateCounts[item].unavailable ?? 0;
+    const matches = dateMatches[item] ?? 0;
+    const events = dateEvents[item] ?? 0;
     const total = crewIds.length;
     const isDisabled = moment(item).isBefore(moment(), 'day');
 
