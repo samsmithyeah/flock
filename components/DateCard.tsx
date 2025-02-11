@@ -162,31 +162,44 @@ const styles = StyleSheet.create({
   dayContainer: {
     backgroundColor: '#FFFFFF',
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingRight: 16,
+    paddingLeft: 26,
     borderRadius: 10,
     marginBottom: 12,
     borderColor: '#E0E0E0',
     borderWidth: 1,
   },
   disabledDayContainer: { backgroundColor: '#E0E0E0' },
-  dayHeader: {},
+  dayHeader: {
+    marginBottom: 4,
+  },
   dayText: { fontSize: 16, color: '#333333', fontWeight: '600' },
   disabledDayText: { color: '#A9A9A9' },
   statusRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 8,
   },
   statusInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     flexShrink: 1,
     paddingRight: 8,
-    marginVertical: 4,
+    position: 'relative',
   },
-  statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: 6 },
+  statusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    position: 'absolute',
+    left: -16,
+  },
   statusText: { fontSize: 14, color: '#333333' },
-  actionsRow: { flexDirection: 'row', alignItems: 'center' },
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   matchesContainer: {
     paddingVertical: 4,
     paddingHorizontal: 8,
@@ -204,7 +217,7 @@ const styles = StyleSheet.create({
   },
   matchesText: { color: '#FFFFFF', fontSize: 12, fontWeight: '500' },
   iconButton: {
-    marginLeft: 10,
+    marginLeft: 6,
   },
 });
 
