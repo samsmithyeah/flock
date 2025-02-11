@@ -40,6 +40,7 @@ const CrewsStackNavigator: React.FC = () => {
         options={{
           headerBackTitleVisible: false,
           title: 'Add members',
+          presentation: 'modal',
         }}
       />
       <Stack.Screen
