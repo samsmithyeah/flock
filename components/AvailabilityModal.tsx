@@ -1,5 +1,3 @@
-// components/AvailabilityModal.tsx
-
 import React from 'react';
 import {
   View,
@@ -18,37 +16,48 @@ interface AvailabilityModalProps {
   visible: boolean;
   onClose: () => void;
   date: string;
-  isFullyUp: boolean;
-  isNotUp: boolean;
+  availableCount: number;
+  unavailableCount: number;
+  uniformAvailable?: boolean | null;
+  uniformUnavailable?: boolean | null;
   isLoading: boolean;
-  onToggle: (toggleTo: boolean) => void;
+  onToggle: (toggleTo: boolean | null) => void;
 }
 
 const AvailabilityModal: React.FC<AvailabilityModalProps> = ({
   visible,
   onClose,
   date,
-  isFullyUp,
-  isNotUp,
+  uniformAvailable,
+  uniformUnavailable,
   isLoading,
   onToggle,
+  availableCount,
+  unavailableCount,
 }) => {
-  const handleToggle = (toggleTo: boolean) => {
+  const canClear = availableCount + unavailableCount > 0;
+
+  const handleToggle = (toggleTo: boolean | null) => {
+    let actionText = '';
+    if (toggleTo === true) {
+      actionText = 'mark yourself available';
+    } else if (toggleTo === false) {
+      actionText = 'mark yourself unavailable';
+    } else {
+      actionText = 'clear your status';
+    }
     Alert.alert(
       'Confirm update',
-      `Are you sure you want to mark yourself ${
-        toggleTo ? 'available' : 'unavailable'
-      } across all your crews on ${moment(date).format('MMMM Do, YYYY')}?`,
+      `Are you sure you want to ${actionText} across all your crews on ${moment(
+        date,
+      ).format('MMMM Do, YYYY')}?`,
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'OK',
           onPress: () => {
             onToggle(toggleTo);
-            onClose(); // Close the modal after action
+            onClose();
           },
         },
       ],
@@ -66,7 +75,6 @@ const AvailabilityModal: React.FC<AvailabilityModalProps> = ({
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
-            {/* Close Icon */}
             <TouchableOpacity
               onPress={onClose}
               style={styles.closeButton}
@@ -75,76 +83,83 @@ const AvailabilityModal: React.FC<AvailabilityModalProps> = ({
             >
               <Ionicons name="close" size={24} color="#D3D3D3" />
             </TouchableOpacity>
-
-            {/* Modal Title */}
             <Text style={styles.modalTitle}>{getFormattedDate(date)}</Text>
-
-            {/* Divider */}
             <View style={styles.divider} />
-
-            {/* Option: Mark as Available */}
-            <TouchableOpacity
-              style={styles.modalOption}
-              onPress={() => handleToggle(true)}
-              disabled={isFullyUp || isLoading}
-              accessibilityLabel={`Mark as available for ${getFormattedDate(date)}`}
-              accessibilityHint={
-                isFullyUp
-                  ? `You are already marked as available for all crews on ${moment(
-                      date,
-                    ).format('MMMM Do, YYYY')}.`
-                  : `Tap to mark yourself as available for all crews on ${moment(
-                      date,
-                    ).format('MMMM Do, YYYY')}.`
-              }
-            >
-              <Ionicons
-                name="checkmark-circle"
-                size={24}
-                color={isFullyUp ? '#A9A9A9' : '#32CD32'}
-                style={styles.modalIcon}
-              />
-              <Text
-                style={[
-                  styles.modalText,
-                  (isFullyUp || isLoading) && styles.disabledText,
-                ]}
+            {!uniformAvailable && (
+              <TouchableOpacity
+                style={styles.modalOption}
+                onPress={() => handleToggle(true)}
+                disabled={uniformAvailable || isLoading}
+                accessibilityLabel={`Mark as available for ${getFormattedDate(date)}`}
+                accessibilityHint={`Tap to mark yourself as available for all crews on ${moment(
+                  date,
+                ).format('MMMM Do, YYYY')}.`}
               >
-                Mark as available for all crews
-              </Text>
-            </TouchableOpacity>
-
-            {/* Option: Mark as Unavailable */}
-            <TouchableOpacity
-              style={styles.modalOption}
-              onPress={() => handleToggle(false)}
-              disabled={isNotUp || isLoading}
-              accessibilityLabel={`Mark as unavailable for ${getFormattedDate(date)}`}
-              accessibilityHint={
-                isNotUp
-                  ? `You are already marked as unavailable for any crews on ${moment(
-                      date,
-                    ).format('MMMM Do, YYYY')}.`
-                  : `Tap to mark yourself as unavailable for any crews on ${moment(
-                      date,
-                    ).format('MMMM Do, YYYY')}.`
-              }
-            >
-              <Ionicons
-                name="close-circle"
-                size={24}
-                color={isNotUp ? '#A9A9A9' : '#FF6347'}
-                style={styles.modalIcon}
-              />
-              <Text
-                style={[
-                  styles.modalText,
-                  (isNotUp || isLoading) && styles.disabledText,
-                ]}
+                <Ionicons
+                  name="checkmark-circle"
+                  size={24}
+                  color={uniformAvailable ? '#A9A9A9' : '#32CD32'}
+                  style={styles.modalIcon}
+                />
+                <Text
+                  style={[
+                    styles.modalText,
+                    (uniformAvailable || isLoading) && styles.disabledText,
+                  ]}
+                >
+                  Mark as available for all crews
+                </Text>
+              </TouchableOpacity>
+            )}
+            {!uniformUnavailable && (
+              <TouchableOpacity
+                style={styles.modalOption}
+                onPress={() => handleToggle(false)}
+                disabled={uniformUnavailable || isLoading}
+                accessibilityLabel={`Mark as unavailable for ${getFormattedDate(date)}`}
+                accessibilityHint={`Tap to mark yourself as unavailable for all crews on ${moment(
+                  date,
+                ).format('MMMM Do, YYYY')}.`}
               >
-                Mark as unavailable for all crews
-              </Text>
-            </TouchableOpacity>
+                <Ionicons
+                  name="close-circle"
+                  size={24}
+                  color={uniformUnavailable ? '#A9A9A9' : '#FF6347'}
+                  style={styles.modalIcon}
+                />
+                <Text
+                  style={[
+                    styles.modalText,
+                    (uniformUnavailable || isLoading) && styles.disabledText,
+                  ]}
+                >
+                  Mark as unavailable for all crews
+                </Text>
+              </TouchableOpacity>
+            )}
+            {canClear && (
+              <TouchableOpacity
+                style={styles.modalOption}
+                onPress={() => handleToggle(null)}
+                disabled={isLoading}
+                accessibilityLabel={`Clear your status for ${getFormattedDate(date)}`}
+                accessibilityHint={`Tap to clear your current status for all crews on ${moment(
+                  date,
+                ).format('MMMM Do, YYYY')}.`}
+              >
+                <Ionicons
+                  name="remove-circle"
+                  size={24}
+                  color="#808080"
+                  style={styles.modalIcon}
+                />
+                <Text
+                  style={[styles.modalText, isLoading && styles.disabledText]}
+                >
+                  Clear your status for all crews
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </TouchableWithoutFeedback>
@@ -168,12 +183,7 @@ const styles = StyleSheet.create({
     elevation: 5,
     position: 'relative',
   },
-  closeButton: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    padding: 4,
-  },
+  closeButton: { position: 'absolute', top: 12, right: 12, padding: 4 },
   modalTitle: {
     fontSize: 18,
     fontWeight: '600',
@@ -181,26 +191,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#333333',
   },
-  divider: {
-    height: 1,
-    backgroundColor: '#E0E0E0',
-    marginBottom: 12,
-  },
+  divider: { height: 1, backgroundColor: '#E0E0E0', marginBottom: 12 },
   modalOption: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
   },
-  modalIcon: {
-    marginRight: 12,
-  },
-  modalText: {
-    fontSize: 16,
-    color: '#333333',
-  },
-  disabledText: {
-    color: '#A9A9A9',
-  },
+  modalIcon: { marginRight: 12 },
+  modalText: { fontSize: 16, color: '#333333' },
+  disabledText: { color: '#A9A9A9' },
 });
 
 export default AvailabilityModal;

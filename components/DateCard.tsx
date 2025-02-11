@@ -1,5 +1,3 @@
-// components/DateCard.tsx
-
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,26 +6,26 @@ import AvailabilityModal from '@/components/AvailabilityModal';
 
 interface DateCardProps {
   date: string;
-  count: number;
+  availableCount: number;
+  unavailableCount: number;
   matches: number;
   events: number;
   total: number;
   isDisabled: boolean;
-  statusColor: string;
   isLoading: boolean;
-  onToggle: (date: string, toggleTo: boolean) => void;
+  onToggle: (date: string, toggleTo: boolean | null) => void;
   onPressMatches: (date: string) => void;
   onPressEvents: (date: string) => void;
 }
 
 const DateCard: React.FC<DateCardProps> = ({
   date,
-  count,
+  availableCount,
+  unavailableCount,
   matches,
   events,
   total,
   isDisabled,
-  statusColor,
   isLoading,
   onToggle,
   onPressMatches,
@@ -35,13 +33,47 @@ const DateCard: React.FC<DateCardProps> = ({
 }) => {
   const [isModalVisible, setModalVisible] = useState(false);
 
-  const statusText = `You're up for seeing ${count} of ${total} crew${total !== 1 ? 's' : ''}`;
-  const isFullyUp = count === total;
-  const isNotUp = count === 0;
+  const uniformAvailable = availableCount === total;
+  const uniformUnavailable = unavailableCount === total;
+  const uniformNeutral = availableCount === 0 && unavailableCount === 0;
 
-  const handleToggle = (toggleTo: boolean) => {
+  const getDotColor = (): string => {
+    if (uniformAvailable) return '#32CD32'; // green
+    if (uniformUnavailable) return '#F44336'; // red
+    if (uniformNeutral) return '#D3D3D3'; // light grey
+    return '#FFA500'; // orange
+  };
+
+  const getStatusText = () => {
+    if (uniformAvailable) {
+      return `You're up for seeing for all ${total} of your crews`;
+    }
+    if (uniformUnavailable) {
+      return `You're not up for seeing any of your ${total} crews`;
+    }
+    if (uniformNeutral) {
+      return `You haven't responded to any of your ${total} crews`;
+    }
+    if (!uniformAvailable && availableCount > 0 && !unavailableCount) {
+      return `You're up for seeing ${availableCount} of ${total} crew${total !== 1 ? 's' : ''} and haven't responded to the others`;
+    }
+    if (!uniformUnavailable && unavailableCount > 0 && !availableCount) {
+      return `You're not up for seeing ${unavailableCount} crew${unavailableCount !== 1 ? 's' : ''} and haven't responded to the others`;
+    }
+    if (
+      !uniformAvailable &&
+      !uniformUnavailable &&
+      availableCount > 0 &&
+      unavailableCount > 0
+    ) {
+      return `You're up for seeing ${availableCount} crew${availableCount !== 1 ? 's' : ''}, don't want to see ${unavailableCount} crew${unavailableCount !== 1 ? 's' : ''} and haven't responded to the others`;
+    }
+
+    return `You're up for seeing ${availableCount} of ${total} crew${total !== 1 ? 's' : ''}`;
+  };
+
+  const handleToggle = (toggleTo: boolean | null) => {
     onToggle(date, toggleTo);
-    // No need to handle Alert here as it's now managed in AvailabilityModal
   };
 
   return (
@@ -55,11 +87,13 @@ const DateCard: React.FC<DateCardProps> = ({
       </View>
       <View style={styles.statusRow}>
         <View style={styles.statusInfo}>
-          <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+          <View
+            style={[styles.statusDot, { backgroundColor: getDotColor() }]}
+          />
           <Text
             style={[styles.statusText, isDisabled && styles.disabledDayText]}
           >
-            {statusText}
+            {getStatusText()}
           </Text>
         </View>
         {!isDisabled && (
@@ -74,7 +108,6 @@ const DateCard: React.FC<DateCardProps> = ({
         )}
       </View>
       <View style={styles.actionsRow}>
-        {/* Display Matches */}
         {matches > 0 && (
           <TouchableOpacity
             style={styles.matchesContainer}
@@ -87,7 +120,6 @@ const DateCard: React.FC<DateCardProps> = ({
             </Text>
           </TouchableOpacity>
         )}
-        {/* Display Events */}
         {events > 0 && (
           <TouchableOpacity
             style={styles.eventsContainer}
@@ -105,10 +137,12 @@ const DateCard: React.FC<DateCardProps> = ({
         visible={isModalVisible}
         onClose={() => setModalVisible(false)}
         date={date}
-        isFullyUp={isFullyUp}
-        isNotUp={isNotUp}
+        uniformAvailable={uniformAvailable}
+        uniformUnavailable={uniformUnavailable}
         isLoading={isLoading}
         onToggle={handleToggle}
+        availableCount={availableCount}
+        unavailableCount={unavailableCount}
       />
     </View>
   );
@@ -124,18 +158,10 @@ const styles = StyleSheet.create({
     borderColor: '#E0E0E0',
     borderWidth: 1,
   },
-  disabledDayContainer: {
-    backgroundColor: '#E0E0E0',
-  },
+  disabledDayContainer: { backgroundColor: '#E0E0E0' },
   dayHeader: {},
-  dayText: {
-    fontSize: 16,
-    color: '#333333',
-    fontWeight: '600',
-  },
-  disabledDayText: {
-    color: '#A9A9A9',
-  },
+  dayText: { fontSize: 16, color: '#333333', fontWeight: '600' },
+  disabledDayText: { color: '#A9A9A9' },
   statusRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -144,21 +170,13 @@ const styles = StyleSheet.create({
   statusInfo: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 1,
+    paddingRight: 8,
+    marginVertical: 4,
   },
-  statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 6,
-  },
-  statusText: {
-    fontSize: 14,
-    color: '#333333',
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+  statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: 6 },
+  statusText: { fontSize: 14, color: '#333333' },
+  actionsRow: { flexDirection: 'row', alignItems: 'center' },
   matchesContainer: {
     paddingVertical: 4,
     paddingHorizontal: 8,
@@ -174,13 +192,9 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     alignSelf: 'flex-start',
   },
-  matchesText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '500',
-  },
+  matchesText: { color: '#FFFFFF', fontSize: 12, fontWeight: '500' },
   iconButton: {
-    padding: 8,
+    marginLeft: 10,
   },
 });
 

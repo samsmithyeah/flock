@@ -19,12 +19,6 @@ import CreateCrewModal from '@/components/CreateCrewModal';
 import Icon from '@expo/vector-icons/MaterialIcons';
 import useglobalStyles from '@/styles/globalStyles';
 
-const getDotColor = (count: number, total: number): string => {
-  if (count === total && total > 0) return '#32CD32';
-  if (count > 0 && count < total) return '#FFA500';
-  return '#D3D3D3';
-};
-
 type DashboardScreenNavigationProp = NativeStackNavigationProp<
   NavParamList,
   'Home'
@@ -36,7 +30,7 @@ const DashboardScreen: React.FC = () => {
     dateCounts,
     dateMatches,
     dateEvents, // <-- bring in dateEvents
-    toggleStatusForDateAllCrews,
+    setStatusForDateAllCrews,
     loadingCrews,
     loadingStatuses,
     loadingMatches,
@@ -61,10 +55,10 @@ const DashboardScreen: React.FC = () => {
 
   const isLoading = loadingCrews || loadingStatuses || isLoadingUsers;
 
-  const handleToggle = async (date: string, toggleTo: boolean) => {
+  const handleToggle = async (date: string, toggleTo: boolean | null) => {
     setIsLoadingUsers(true);
     try {
-      await toggleStatusForDateAllCrews(date, toggleTo);
+      await setStatusForDateAllCrews(date, toggleTo);
     } catch (error) {
       console.error('Error toggling status:', error);
       Toast.show({
@@ -110,26 +104,26 @@ const DashboardScreen: React.FC = () => {
   };
 
   const renderDayItem = ({ item }: { item: string }) => {
-    const count = dateCounts[item] || 0;
+    const availableCount = dateCounts[item].available || 0;
+    const unavailableCount = dateCounts[item].unavailable || 0;
     const matches = dateMatches[item] || 0;
-    const events = dateEvents[item] || 0; // <-- get number of events for this date
+    const events = dateEvents[item] || 0;
     const total = crewIds.length;
     const isDisabled = moment(item).isBefore(moment(), 'day');
-    const statusColor = getDotColor(count, total);
 
     return (
       <DateCard
         date={item}
-        count={count}
+        availableCount={availableCount}
+        unavailableCount={unavailableCount}
         matches={matches}
         events={events}
         total={total}
         isDisabled={isDisabled}
-        statusColor={statusColor}
         isLoading={loadingMatches}
         onToggle={handleToggle}
         onPressMatches={handlePressMatches}
-        onPressEvents={handlePressEvents} // <-- pass the new onPressEvents callback
+        onPressEvents={handlePressEvents}
       />
     );
   };

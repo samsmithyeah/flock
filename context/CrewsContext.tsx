@@ -38,7 +38,7 @@ interface CrewsContextProps {
   setCrewIds: React.Dispatch<React.SetStateAction<string[]>>;
   crews: Crew[];
   setCrews: React.Dispatch<React.SetStateAction<Crew[]>>;
-  dateCounts: { [key: string]: number };
+  dateCounts: { [key: string]: { available: number; unavailable: number } };
   dateMatches: { [key: string]: number };
   dateMatchingCrews: { [key: string]: string[] };
   dateEvents: { [key: string]: number };
@@ -49,14 +49,9 @@ interface CrewsContextProps {
     selectedDate: string,
     status: boolean | null,
   ) => Promise<void>;
-  toggleStatusForCrew: (
-    crewId: string,
+  setStatusForDateAllCrews: (
     date: string,
-    toggleTo: boolean,
-  ) => Promise<void>;
-  toggleStatusForDateAllCrews: (
-    date: string,
-    toggleTo: boolean,
+    toggleTo: boolean | null,
   ) => Promise<void>;
   setUsersCache: React.Dispatch<React.SetStateAction<{ [key: string]: User }>>;
   loadingCrews: boolean;
@@ -78,7 +73,9 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
 
   const [crewIds, setCrewIds] = useState<string[]>([]);
   const [crews, setCrews] = useState<Crew[]>([]);
-  const [dateCounts, setDateCounts] = useState<{ [key: string]: number }>({});
+  const [dateCounts, setDateCounts] = useState<{
+    [key: string]: { available: number; unavailable: number };
+  }>({});
   const [dateMatches, setDateMatches] = useState<{ [key: string]: number }>({});
   const [dateMatchingCrews, setDateMatchingCrews] = useState<{
     [key: string]: string[];
@@ -286,11 +283,13 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     [usersCache, setUsersCache],
   );
 
-  const fetchUpStatuses = async (fetchedCrewIds: string[]) => {
+  const fetchStatuses = async (fetchedCrewIds: string[]) => {
     setLoadingStatuses(true);
-    const counts: { [key: string]: number } = {};
+    const counts: {
+      [key: string]: { available: number; unavailable: number };
+    } = {};
     weekDates.forEach((date) => {
-      counts[date] = 0;
+      counts[date] = { available: 0, unavailable: 0 };
     });
     try {
       const statusDocRefs = fetchedCrewIds.flatMap((crewId) =>
@@ -304,18 +303,19 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       statusSnapshots.forEach((statusSnap) => {
         if (statusSnap.exists()) {
           const statusData = statusSnap.data();
-          // Only count if explicitly set to true
-          if (statusData.upForGoingOutTonight === true) {
-            const date = statusSnap.ref.parent.parent?.id;
-            if (date && counts[date] !== undefined) {
-              counts[date] += 1;
+          const date = statusSnap.ref.parent.parent?.id;
+          if (date && counts[date] !== undefined) {
+            if (statusData.upForGoingOutTonight === true) {
+              counts[date].available += 1;
+            } else if (statusData.upForGoingOutTonight === false) {
+              counts[date].unavailable += 1;
             }
           }
         }
       });
       setDateCounts(counts);
     } catch (error) {
-      console.error('Error fetching up statuses:', error);
+      console.error('Error fetching member statuses:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',
@@ -500,96 +500,43 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
           timestamp: Timestamp.fromDate(new Date()),
         });
       }
+
+      // Update local state
+      setDateCounts((prev) => {
+        const currentCount = prev[selectedDate] || {
+          available: 0,
+          unavailable: 0,
+        };
+        const newCount = { ...currentCount };
+
+        // Remove previous status if it exists
+        if (statusSnap.exists()) {
+          const oldStatus = statusSnap.data()?.upForGoingOutTonight;
+          if (oldStatus === true) newCount.available--;
+          if (oldStatus === false) newCount.unavailable--;
+        }
+
+        // Add new status
+        if (status === true) newCount.available++;
+        if (status === false) newCount.unavailable++;
+
+        return {
+          ...prev,
+          [selectedDate]: newCount,
+        };
+      });
+
+      // Trigger matches refresh
+      setMatchesNeedsRefresh(true);
     } catch (error) {
       console.error('Error setting status explicitly:', error);
       throw error;
     }
   };
 
-  const toggleStatusForCrew = async (
-    crewId: string,
-    selectedDate: string,
-    toggleTo: boolean | null,
-  ) => {
-    try {
-      if (!user?.uid) throw new Error('User not authenticated');
-      const userStatusRef = doc(
-        db,
-        'crews',
-        crewId,
-        'statuses',
-        selectedDate,
-        'userStatuses',
-        user.uid,
-      );
-      const statusSnap = await getDoc(userStatusRef);
-      let newStatus: boolean | null = toggleTo;
-
-      // If the request isn’t explicitly a clear (null) action,
-      // check if the current status is already the same as toggleTo.
-      if (toggleTo !== null && statusSnap.exists()) {
-        const currentStatus = statusSnap.data().upForGoingOutTonight;
-        if (currentStatus === toggleTo) {
-          newStatus = null;
-        }
-      }
-
-      if (statusSnap.exists()) {
-        await updateDoc(userStatusRef, {
-          upForGoingOutTonight: newStatus,
-          timestamp: Timestamp.fromDate(new Date()),
-        });
-      } else {
-        await setDoc(userStatusRef, {
-          date: selectedDate,
-          upForGoingOutTonight: newStatus,
-          timestamp: Timestamp.fromDate(new Date()),
-        });
-      }
-
-      // Update local state counts based on the change.
-      setDateCounts((prev) => {
-        let newCount = prev[selectedDate] || 0;
-        const previousStatus = statusSnap.exists()
-          ? statusSnap.data().upForGoingOutTonight
-          : null;
-        if (previousStatus !== true && newStatus === true) {
-          newCount++;
-        } else if (previousStatus === true && newStatus !== true) {
-          newCount = Math.max(newCount - 1, 0);
-        }
-        return { ...prev, [selectedDate]: newCount };
-      });
-
-      setDateMatchingCrews((prev) => {
-        const updated = { ...prev };
-        if (newStatus === true) {
-          if (!updated[selectedDate]) updated[selectedDate] = [];
-          if (!updated[selectedDate].includes(crewId))
-            updated[selectedDate].push(crewId);
-        } else {
-          if (updated[selectedDate]) {
-            const index = updated[selectedDate].indexOf(crewId);
-            if (index !== -1) updated[selectedDate].splice(index, 1);
-          }
-        }
-        return updated;
-      });
-
-      setMatchesNeedsRefresh(true);
-    } catch (error) {
-      console.error('Error toggling status:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Could not update your status',
-      });
-    }
-  };
-
-  const toggleStatusForDateAllCrews = async (
+  const setStatusForDateAllCrews = async (
     date: string,
-    toggleTo: boolean,
+    toggleTo: boolean | null,
   ) => {
     if (!user?.uid) {
       Toast.show({
@@ -609,7 +556,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         return;
       }
       const selectedDateStr = date;
-      const newStatus = toggleTo;
+      const newStatus = toggleTo; // true, false, or null to clear
       const MAX_BATCH_SIZE = 10;
       const batches: string[][] = [];
       for (let i = 0; i < crewIds.length; i += MAX_BATCH_SIZE) {
@@ -640,20 +587,34 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
           await batch.commit();
         }),
       );
+      let statusText = '';
+      if (newStatus === true) {
+        statusText = 'available';
+      } else if (newStatus === false) {
+        statusText = 'unavailable';
+      } else {
+        statusText = 'cleared';
+      }
       Toast.show({
         type: 'success',
         text1: 'Success',
-        text2: `You have been marked as ${
-          newStatus ? 'up' : 'not up'
-        } for it on ${moment(selectedDateStr).format('MMMM Do, YYYY')}.`,
+        text2: `Your status has been set to ${statusText} across all crews for ${moment(
+          selectedDateStr,
+        ).format('MMMM Do, YYYY')}.`,
       });
+      // Update local UI state as needed.
       setDateCounts((prev) => ({
         ...prev,
-        [selectedDateStr]: newStatus ? crewIds.length : 0,
+        [selectedDateStr]:
+          newStatus === true
+            ? { available: crewIds.length, unavailable: 0 }
+            : newStatus === false
+              ? { available: 0, unavailable: crewIds.length }
+              : { available: 0, unavailable: 0 },
       }));
       setDateMatchingCrews((prev) => ({
         ...prev,
-        [selectedDateStr]: newStatus ? [...crewIds] : [],
+        [selectedDateStr]: newStatus === true ? [...crewIds] : [],
       }));
       setMatchesNeedsRefresh(true);
     } catch (error) {
@@ -785,7 +746,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
             }
           });
           subscribeToUsers(Array.from(allMemberIds));
-          await fetchUpStatuses(fetchedCrewIds);
+          await fetchStatuses(fetchedCrewIds);
           await fetchMatches(fetchedCrewIds);
           await buildInitialCrewEventsMap(fetchedCrewIds);
           setupCrewListeners(fetchedCrewIds);
@@ -836,8 +797,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         dateEventCrews,
         usersCache: memoizedUsersCache,
         setStatusForCrew,
-        toggleStatusForCrew,
-        toggleStatusForDateAllCrews,
+        setStatusForDateAllCrews,
         setUsersCache,
         loadingCrews,
         loadingStatuses,
