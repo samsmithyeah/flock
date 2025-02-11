@@ -46,7 +46,7 @@ const DateCard: React.FC<DateCardProps> = ({
 
   const getStatusText = () => {
     if (uniformAvailable) {
-      return `You're up for seeing for all ${total} of your crews`;
+      return `You're up for seeing all ${total} of your crews`;
     }
     if (uniformUnavailable) {
       return `You're not up for seeing any of your ${total} crews`;
@@ -55,7 +55,7 @@ const DateCard: React.FC<DateCardProps> = ({
       return `You haven't responded to any of your ${total} crews`;
     }
     if (!uniformAvailable && availableCount > 0 && !unavailableCount) {
-      return `You're up for seeing ${availableCount} of ${total} crew${total !== 1 ? 's' : ''} and haven't responded to the others`;
+      return `You're up for seeing ${availableCount} crew${availableCount !== 1 ? 's' : ''} but haven't responded to the other ${total - availableCount}`;
     }
     if (!uniformUnavailable && unavailableCount > 0 && !availableCount) {
       return `You're not up for seeing ${unavailableCount} crew${unavailableCount !== 1 ? 's' : ''} and haven't responded to the others`;
@@ -64,9 +64,19 @@ const DateCard: React.FC<DateCardProps> = ({
       !uniformAvailable &&
       !uniformUnavailable &&
       availableCount > 0 &&
-      unavailableCount > 0
+      unavailableCount > 0 &&
+      availableCount + unavailableCount < total
     ) {
-      return `You're up for seeing ${availableCount} crew${availableCount !== 1 ? 's' : ''}, don't want to see ${unavailableCount} crew${unavailableCount !== 1 ? 's' : ''} and haven't responded to the others`;
+      return `You're up for seeing ${availableCount} crew${availableCount !== 1 ? 's' : ''}, don't want to see ${unavailableCount} crew${unavailableCount !== 1 ? 's' : ''} and haven't responded to the other ${total - availableCount - unavailableCount}`;
+    }
+    if (
+      !uniformAvailable &&
+      !uniformUnavailable &&
+      availableCount > 0 &&
+      unavailableCount > 0 &&
+      availableCount + unavailableCount === total
+    ) {
+      return `You're up for seeing ${availableCount} crew${availableCount !== 1 ? 's' : ''} but don't want to see the other ${unavailableCount}`;
     }
 
     return `You're up for seeing ${availableCount} of ${total} crew${total !== 1 ? 's' : ''}`;
