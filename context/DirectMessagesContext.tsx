@@ -22,6 +22,7 @@ import {
   orderBy,
   setDoc,
   serverTimestamp,
+  getCountFromServer,
 } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
@@ -78,36 +79,37 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
   const fetchUnreadCount = useCallback(
     async (dmId: string): Promise<number> => {
       if (!user?.uid) return 0;
-      try {
+
+      // Use local state if available to get the lastRead value.
+      let lastRead: Timestamp | null = null;
+      const existingDM = dms.find((dm) => dm.id === dmId);
+      if (existingDM && existingDM.lastRead) {
+        lastRead = existingDM.lastRead[user.uid] || null;
+      } else {
+        // Fallback: fetch the DM document.
         const dmRef = doc(db, 'direct_messages', dmId);
         const dmDoc = await getDoc(dmRef);
-        if (!dmDoc.exists()) {
-          console.warn(`DM document ${dmId} does not exist.`);
-          return 0;
+        if (dmDoc.exists()) {
+          const dmData = dmDoc.data();
+          lastRead = dmData.lastRead ? dmData.lastRead[user.uid] : null;
         }
-        const dmData = dmDoc.data();
-        if (!dmData) return 0;
-        const lastRead = dmData.lastRead ? dmData.lastRead[user.uid] : null;
-        if (!lastRead) {
-          const messagesRef = collection(
-            db,
-            'direct_messages',
-            dmId,
-            'messages',
-          );
-          const allMessages = await getDocs(messagesRef);
-          return allMessages.size;
-        }
-        const messagesRef = collection(db, 'direct_messages', dmId, 'messages');
-        const msqQuery = query(messagesRef, where('createdAt', '>', lastRead));
-        const querySnapshot = await getDocs(msqQuery);
-        return querySnapshot.size;
-      } catch (error) {
-        console.error('Error fetching unread count:', error);
+      }
+
+      // Build the query on the messages subcollection.
+      const messagesRef = collection(db, 'direct_messages', dmId, 'messages');
+      const msgQuery = lastRead
+        ? query(messagesRef, where('createdAt', '>', lastRead))
+        : query(messagesRef);
+
+      try {
+        const countSnapshot = await getCountFromServer(msgQuery);
+        return countSnapshot.data().count;
+      } catch (error: any) {
+        console.error(`Error fetching unread count for DM ${dmId}:`, error);
         return 0;
       }
     },
-    [user?.uid],
+    [user?.uid, dms],
   );
 
   // Compute total unread messages across all DMs (excluding active chats)
