@@ -24,6 +24,7 @@ interface UserContextType {
   removeActiveChat: (chatId: string) => void;
   setBadgeCount: (count: number) => Promise<void>;
   isAdmin: boolean;
+  updateCrewOrder: (crewIds: string[]) => Promise<void>;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -163,6 +164,27 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     [user?.uid],
   );
 
+  const updateCrewOrder = useCallback(
+    async (crewIds: string[]) => {
+      if (!user?.uid) return;
+      const userDocRef = doc(db, 'users', user.uid);
+      try {
+        await updateDoc(userDocRef, {
+          crewOrder: crewIds,
+        });
+        setUser((prev) => (prev ? { ...prev, crewOrder: crewIds } : null));
+      } catch (error) {
+        console.error('Error updating crew order:', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Could not update crew order',
+        });
+      }
+    },
+    [user?.uid],
+  );
+
   const logout = async () => {
     try {
       setUser(null);
@@ -185,6 +207,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         removeActiveChat,
         setBadgeCount,
         isAdmin,
+        updateCrewOrder,
       }}
     >
       {children}

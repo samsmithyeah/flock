@@ -15,7 +15,7 @@ import {
   useNavigation,
   NavigationProp,
 } from '@react-navigation/native';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { arrayRemove, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { deleteCrew, db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
 import { useCrews } from '@/context/CrewsContext';
@@ -218,6 +218,11 @@ const CrewSettingsScreen: React.FC = () => {
           onPress: async () => {
             try {
               const crewRef = doc(db, 'crews', crewId);
+
+              // Remove the crew from the user's crew order list
+              await updateDoc(doc(db, 'users', user.uid), {
+                crewOrder: arrayRemove(crewId),
+              });
 
               // If the user is the owner of the crew
               if (user.uid === crew.ownerId) {

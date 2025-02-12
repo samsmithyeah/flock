@@ -21,10 +21,6 @@ export const useGlobalStyles = () => {
       backgroundColor: Colors.background,
       paddingBottom: insets.bottom - tabBarHeight,
     },
-    listContainer: {
-      marginTop: 16,
-      paddingBottom: tabBarHeight,
-    },
   });
 };
 

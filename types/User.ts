@@ -14,4 +14,5 @@ export interface User {
   country?: string;
   isOnline?: boolean;
   lastSeen?: Timestamp;
+  crewOrder?: string[];
 }

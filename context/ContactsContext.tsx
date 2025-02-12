@@ -64,7 +64,7 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
   useEffect(() => {
     // Subscribe to changes for any contacts that aren’t already subscribed.
     allContacts.forEach((contact) => {
-      if (!user) return;
+      if (!user?.uid) return;
       if (!userSubscriptionsRef.current[contact.uid]) {
         const unsubscribe = onSnapshot(
           doc(db, 'users', contact.uid),
@@ -100,7 +100,7 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
         delete userSubscriptionsRef.current[uid];
       }
     });
-  }, [allContacts, user]);
+  }, [allContacts, user?.uid]);
 
   useEffect(() => {
     // When the ContactsContext unmounts, clean up all subscriptions.
@@ -114,7 +114,7 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
 
   useEffect(() => {
     setCountry((user?.country ?? 'GB') as CountryCode);
-  }, [user]);
+  }, [user?.uid, user?.country]);
 
   // ------------------ CALLABLE FUNCTIONS ------------------
   // Call Cloud Function to update user's contacts in hashed form.
@@ -357,12 +357,12 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   useEffect(() => {
-    if (user) {
+    if (user?.uid) {
       console.log('🔁 useEffect triggered: Calling loadContacts.');
       loadContacts();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user?.uid]);
 
   const refreshContacts = async () => {
     console.log('🔄 Refreshing contacts...');

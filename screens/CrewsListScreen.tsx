@@ -18,17 +18,20 @@ import LoadingOverlay from '@/components/LoadingOverlay';
 import Toast from 'react-native-toast-message';
 import Icon from '@expo/vector-icons/MaterialIcons';
 import useGlobalStyles from '@/styles/globalStyles';
+import { useUser } from '@/context/UserContext';
 
 type CrewsListScreenProps = NativeStackScreenProps<NavParamList, 'CrewsList'>;
 
 const CrewsListScreen: React.FC<CrewsListScreenProps> = ({ navigation }) => {
   const { crews, usersCache, setUsersCache, loadingCrews, loadingStatuses } =
     useCrews();
+  const { user, updateCrewOrder } = useUser();
   const globalStyles = useGlobalStyles();
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string>(''); // State for search
   const [filteredCrews, setFilteredCrews] = useState<Crew[]>([]); // State for filtered crews
   const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(false); // Loading state for user data
+  const [orderedCrews, setOrderedCrews] = useState<Crew[]>([]);
 
   // Determine if overall loading is needed
   const isLoading = loadingCrews || loadingStatuses || isLoadingUsers;
@@ -36,14 +39,32 @@ const CrewsListScreen: React.FC<CrewsListScreenProps> = ({ navigation }) => {
   // Filter crews based on search query
   useEffect(() => {
     if (searchQuery.trim() === '') {
-      setFilteredCrews(crews);
+      setFilteredCrews(orderedCrews);
     } else {
-      const filtered = crews.filter((crew) =>
+      const filtered = orderedCrews.filter((crew) =>
         crew.name.toLowerCase().includes(searchQuery.toLowerCase()),
       );
       setFilteredCrews(filtered);
     }
-  }, [searchQuery, crews]);
+  }, [searchQuery, crews, orderedCrews]);
+
+  // Initialize ordered crews using user's saved order
+  useEffect(() => {
+    if (crews.length > 0) {
+      if (user?.crewOrder) {
+        // Create ordered array based on saved order, putting any new crews at the end
+        const orderedCrewsList = [
+          ...user.crewOrder
+            .map((id) => crews.find((c) => c.id === id))
+            .filter((c): c is Crew => c !== undefined),
+          ...crews.filter((c) => !user.crewOrder?.includes(c.id)),
+        ];
+        setOrderedCrews(orderedCrewsList);
+      } else {
+        setOrderedCrews(crews);
+      }
+    }
+  }, [crews, user?.crewOrder]);
 
   // Fetch user data for crew members
   useEffect(() => {
@@ -108,6 +129,11 @@ const CrewsListScreen: React.FC<CrewsListScreenProps> = ({ navigation }) => {
     }
   }, [crews, usersCache, setUsersCache]);
 
+  const handleOrderChange = (newOrder: Crew[]) => {
+    setOrderedCrews(newOrder);
+    updateCrewOrder(newOrder.map((crew) => crew.id));
+  };
+
   const handleCrewCreated = (crewId: string) => {
     console.log('Crew created:', crewId);
     setIsModalVisible(false);
@@ -157,7 +183,12 @@ const CrewsListScreen: React.FC<CrewsListScreenProps> = ({ navigation }) => {
         {crews.length === 0 ? (
           renderEmptyState()
         ) : (
-          <CrewList crews={filteredCrews} usersCache={usersCache} />
+          <CrewList
+            crews={filteredCrews}
+            usersCache={usersCache}
+            orderEditable={!searchQuery.trim() && crews.length > 1}
+            onOrderChange={handleOrderChange}
+          />
         )}
 
         <CreateCrewModal
