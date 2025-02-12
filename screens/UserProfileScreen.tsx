@@ -168,9 +168,14 @@ const UserProfileScreen: React.FC<Props> = ({ navigation }) => {
       />
 
       <View style={styles.infoContainer}>
-        <InfoItem label="Name" value={`${user.firstName} ${user.lastName}`} />
-        <InfoItem label="Display name" value={user.displayName || 'N/A'} />
-        <InfoItem label="Email address" value={user.email || 'N/A'} />
+        <View style={styles.infoItem}>
+          <Text style={styles.infoLabel}>Display name:</Text>
+          <Text style={styles.infoValue}>{user.displayName}</Text>
+        </View>
+        <View style={styles.infoItem}>
+          <Text style={styles.infoLabel}>Email address:</Text>
+          <Text style={styles.infoValue}>{user.email}</Text>
+        </View>
       </View>
 
       <View style={styles.buttonContainer}>
@@ -189,20 +194,6 @@ const UserProfileScreen: React.FC<Props> = ({ navigation }) => {
     </View>
   );
 };
-
-// Reusable component for displaying label-value pairs
-interface InfoItemProps {
-  label: string;
-  value: string;
-}
-
-const InfoItem: React.FC<InfoItemProps> = ({ label, value }) => (
-  <View style={styles.infoItem}>
-    <Text style={styles.infoLabel}>{label}:</Text>
-    <Text style={styles.infoValue}>{value}</Text>
-  </View>
-);
-
 export default UserProfileScreen;
 
 const { width } = Dimensions.get('window');

@@ -402,18 +402,18 @@ const AddMembersScreen: React.FC<AddMembersScreenRouteProp> = ({
           />
         </View>
 
-        {/* Add via Email Text */}
-        <Text style={styles.addViaEmailText}>
-          Or add with their email address:
-        </Text>
-        {/* Button to Open Email Invitation Modal */}
-        <CustomButton
-          title="Add a new member"
-          onPress={openEmailModal}
-          accessibilityLabel="Add member with email address"
-          accessibilityHint="Opens a modal to invite a member by their email address"
-          variant="secondary"
-        />
+        <View style={styles.addViaEmailContainer}>
+          <Text style={styles.addViaEmailText}>
+            Or add someone not in your contacts with their email address:
+          </Text>
+          <CustomButton
+            title="Invite with email address"
+            onPress={openEmailModal}
+            accessibilityLabel="Add member with email address"
+            accessibilityHint="Opens a modal to invite a member by their email address"
+            variant="secondary"
+          />
+        </View>
 
         {/* Invitation Modal */}
         <CustomModal
@@ -460,5 +460,8 @@ const styles = StyleSheet.create({
   },
   membersList: {
     flex: 1,
+  },
+  addViaEmailContainer: {
+    marginBottom: 16,
   },
 });
