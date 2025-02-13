@@ -24,7 +24,6 @@ import {
   setDoc,
   updateDoc,
   orderBy,
-  FirestoreError,
 } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useUser } from '@/context/UserContext';

@@ -21,8 +21,6 @@ import LoadingOverlay from '@/components/LoadingOverlay';
 
 const EditUserProfileModal: React.FC = () => {
   const { user, setUser, logout, isAdmin } = useUser();
-  const [firstName, setFirstName] = useState<string>(user?.firstName || '');
-  const [lastName, setLastName] = useState<string>(user?.lastName || '');
   const [displayName, setDisplayName] = useState<string>(
     user?.displayName || '',
   );
@@ -46,11 +44,11 @@ const EditUserProfileModal: React.FC = () => {
   const handleSave = async () => {
     if (saving) return;
 
-    if (!firstName.trim() || !lastName.trim() || !displayName.trim()) {
+    if (!displayName.trim()) {
       Toast.show({
         type: 'error',
         text1: 'Validation Error',
-        text2: 'First name, last name, and display name cannot be empty.',
+        text2: 'Display name cannot be empty.',
       });
       return;
     }
@@ -59,16 +57,12 @@ const EditUserProfileModal: React.FC = () => {
     try {
       const userRef = doc(db, 'users', user.uid);
       await updateDoc(userRef, {
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
         displayName: displayName.trim(),
         photoURL: photoURL.trim(),
       });
 
       setUser({
         ...user,
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
         displayName: displayName.trim(),
         photoURL: photoURL.trim(),
       });
@@ -105,8 +99,6 @@ const EditUserProfileModal: React.FC = () => {
           text: 'Yes',
           onPress: () => {
             // Reset fields
-            setFirstName(user.firstName || '');
-            setLastName(user.lastName || '');
             setDisplayName(user.displayName || '');
             setPhotoURL(user.photoURL || '');
             navigation.goBack();
@@ -232,26 +224,6 @@ const EditUserProfileModal: React.FC = () => {
 
           <View style={styles.formContainer}>
             <CustomTextInput
-              value={firstName}
-              onChangeText={setFirstName}
-              placeholder="Enter your first name"
-              autoCapitalize="words"
-              returnKeyType="next"
-              hasBorder
-              labelText="First name"
-            />
-
-            <CustomTextInput
-              value={lastName}
-              onChangeText={setLastName}
-              placeholder="Enter your last name"
-              autoCapitalize="words"
-              returnKeyType="next"
-              hasBorder
-              labelText="Last name"
-            />
-
-            <CustomTextInput
               value={displayName}
               onChangeText={setDisplayName}
               placeholder="Enter your display name"
@@ -292,34 +264,18 @@ const EditUserProfileModal: React.FC = () => {
             />
           </View>
 
-          {/* DELETE OWN ACCOUNT BUTTON */}
-          <View style={{ marginTop: 20, width: '100%' }}>
-            <CustomButton
-              title="Delete account"
-              onPress={handleDeleteOwnAccount}
-              loading={saving}
-              variant="danger"
-              icon={{
-                name: 'trash-outline',
-                size: 24,
-              }}
-              accessibilityLabel="Delete your account"
-              accessibilityHint="Permanently delete your account"
-            />
-          </View>
-
           {/* ADMIN-ONLY: DELETE ANOTHER USER */}
           {isAdmin && (
-            <View style={{ marginTop: 30, width: '100%' }}>
+            <View style={styles.adminSection}>
               <CustomTextInput
                 value={adminTargetUserId}
                 onChangeText={setAdminTargetUserId}
                 placeholder="Enter target user UID"
-                labelText="Delete Another User (Admin)"
+                labelText="Delete another user (admin only)"
                 hasBorder
               />
               <CustomButton
-                title="Delete Another User"
+                title="Delete another user"
                 onPress={handleDeleteOtherUser}
                 loading={saving}
                 variant="danger"
@@ -333,6 +289,22 @@ const EditUserProfileModal: React.FC = () => {
             </View>
           )}
         </ScrollView>
+
+        {/* DELETE OWN ACCOUNT BUTTON - Moved outside ScrollView */}
+        <View style={styles.deleteButtonContainer}>
+          <CustomButton
+            title="Delete account"
+            onPress={handleDeleteOwnAccount}
+            loading={saving}
+            variant="danger"
+            icon={{
+              name: 'trash-outline',
+              size: 24,
+            }}
+            accessibilityLabel="Delete your account"
+            accessibilityHint="Permanently delete your account"
+          />
+        </View>
       </KeyboardAvoidingView>
     </>
   );
@@ -347,6 +319,7 @@ const styles = StyleSheet.create({
   scrollContainer: {
     padding: 20,
     alignItems: 'center',
+    paddingBottom: 100, // Add padding to account for delete button
   },
   loaderContainer: {
     flex: 1,
@@ -363,5 +336,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     width: '100%',
     marginBottom: 100,
+  },
+  adminSection: {
+    marginTop: 30,
+    width: '100%',
+  },
+  deleteButtonContainer: {
+    position: 'absolute',
+    bottom: 40,
+    left: 20,
+    right: 20,
   },
 });

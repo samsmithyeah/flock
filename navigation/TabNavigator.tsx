@@ -39,6 +39,27 @@ const TabNavigator: React.FC = () => {
       screenOptions={{
         headerShown: false,
       }}
+      screenListeners={({ navigation }) => ({
+        state: (e) => {
+          const routes = e.data.state?.routes;
+          // Find the currently active tab route
+          const activeTabIndex = e.data.state?.index ?? 0;
+          const currentTab = routes?.[activeTabIndex];
+
+          const isModalOpen = currentTab?.state?.routes?.some((route) => {
+            console.log('Checking route:', route.name);
+            return (
+              route.name === 'AddMembers' || route.name === 'EditUserProfile'
+            );
+          });
+
+          navigation.setOptions({
+            tabBarStyle: {
+              display: isModalOpen ? 'none' : 'flex',
+            },
+          });
+        },
+      })}
     >
       <Tab.Screen
         name="DashboardStack"

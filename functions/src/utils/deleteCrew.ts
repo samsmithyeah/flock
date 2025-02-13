@@ -13,7 +13,7 @@ export const deleteCrew = https.onCall(async (request: https.CallableRequest<Del
   console.log('deleteCrew called with data:', data);
   console.log('deleteCrew called with auth:', auth);
 
-  // 1. Authentication check
+  // Authentication check
   if (!auth || !auth.uid) {
     console.error('Unauthenticated or missing auth.uid in request.');
     throw new https.HttpsError(
@@ -60,7 +60,7 @@ export const deleteCrew = https.onCall(async (request: https.CallableRequest<Del
   }
 
   try {
-    // 3. Delete invitations
+    // Delete invitations
     const invitationsRef = admin.firestore().collection('invitations').where('crewId', '==', crewId);
     const invitationsSnapshot = await invitationsRef.get();
 
@@ -71,7 +71,17 @@ export const deleteCrew = https.onCall(async (request: https.CallableRequest<Del
 
     await batch.commit();
 
-    // 4. Recursively delete the crew document
+    // Delete crew ID from each crew member's crew order
+    const membersRef = admin.firestore().collection('users').where('crewOrder', 'array-contains', crewId);
+    const membersSnapshot = await membersRef.get();
+    membersSnapshot.forEach((doc) => {
+      const userRef = admin.firestore().collection('users').doc(doc.id);
+      userRef.update({
+        crewOrder: admin.firestore.FieldValue.arrayRemove(crewId),
+      });
+    });
+
+    // Recursively delete the crew document
     await admin.firestore().recursiveDelete(crewRef);
 
     return { success: true };
