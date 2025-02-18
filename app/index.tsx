@@ -15,6 +15,7 @@ import Toast, {
 } from 'react-native-toast-message';
 import { LogBox, View, StyleSheet } from 'react-native';
 import App from './App';
+import { StatusBar } from 'expo-status-bar';
 
 LogBox.ignoreLogs([
   'Sending `onAnimatedValueUpdate` with no listeners registered.',
@@ -90,6 +91,7 @@ const Root: React.FC = () => {
           </CrewsProvider>
         </ContactsProvider>
       </UserProvider>
+      <StatusBar style="dark" />
       <Toast config={toastConfig} />
     </>
   );
