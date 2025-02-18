@@ -340,7 +340,10 @@ const CrewSettingsScreen: React.FC = () => {
     setIsUpdatingName(true);
 
     try {
-      await updateDoc(doc(db, 'crews', crewId), { name: newCrewName.trim() });
+      await updateDoc(doc(db, 'crews', crewId), {
+        name: newCrewName.trim(),
+        updatedBy: user?.uid,
+      });
       setCrew((prev) => (prev ? { ...prev, name: newCrewName.trim() } : prev));
       setIsEditNameModalVisible(false);
       Toast.show({
@@ -394,6 +397,7 @@ const CrewSettingsScreen: React.FC = () => {
     try {
       await updateDoc(doc(db, 'crews', crewId), {
         activity: newActivity.trim(),
+        updatedBy: user?.uid,
       });
       setCrew((prev) =>
         prev ? { ...prev, activity: newActivity.trim() } : prev,
@@ -437,7 +441,10 @@ const CrewSettingsScreen: React.FC = () => {
               if (crewId) {
                 try {
                   const crewRef = doc(db, 'crews', crewId);
-                  await updateDoc(crewRef, { iconUrl: newUrl });
+                  await updateDoc(crewRef, {
+                    iconUrl: newUrl,
+                    updatedBy: user?.uid,
+                  });
                   console.log(
                     'iconUrl successfully updated in Firestore:',
                     newUrl,

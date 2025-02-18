@@ -5,6 +5,9 @@ import { notifyCrewOnStatusChange } from './notifications/notifyCrewOnStatusChan
 import { notifyUserOnCrewInvitation } from './notifications/notifyUserOnCrewInvitation';
 import { notifyCrewMembersOnMemberLeave } from './notifications/notifyCrewMembersOnMemberLeave';
 import { notifyCrewOnThreeUp } from './notifications/notifyCrewOnThreeUp';
+import { notifyCrewMembersOnCrewActivityUpdate } from './notifications/notifyCrewMembersOnActivityUpdate';
+import { notifyCrewMembersOnCrewPhotoUpdate } from './notifications/notifyCrewMembersOnCrewPhotoUpdate';
+import { notifyCrewMembersOnCrewNameUpdate } from './notifications/notifyCrewMembersOnCrewNameUpdate';
 import { deleteCrew } from './utils/deleteCrew';
 import { notifyUserOnNewDMMessage } from './notifications/notifyUserOnNewDMMessage';
 import { notifyUsersOnNewGroupMessage } from './notifications/notifyUsersOnNewGroupMessage';
@@ -25,6 +28,9 @@ export {
   notifyCrewOnStatusChange,
   notifyUserOnCrewInvitation,
   notifyCrewOnThreeUp,
+  notifyCrewMembersOnCrewActivityUpdate,
+  notifyCrewMembersOnCrewPhotoUpdate,
+  notifyCrewMembersOnCrewNameUpdate,
   deleteCrew,
   notifyUserOnNewDMMessage,
   notifyUsersOnNewGroupMessage,

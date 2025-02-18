@@ -83,22 +83,25 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
         setFormError('User data not found.');
       }
     } catch (error: unknown) {
-      console.error('Login Error:', error);
       if (error instanceof FirebaseError) {
         switch (error.code) {
           case 'auth/user-not-found':
             setFormError('No account found for this email.');
-            break;
+            return;
           case 'auth/wrong-password':
             setFormError('Incorrect password.');
-            break;
+            return;
           case 'auth/invalid-email':
             setFormError('Invalid email address.');
-            break;
+            return;
+          case 'auth/invalid-credential':
+            setFormError('Invalid credentials. Please try again.');
+            return;
           default:
             setFormError('Failed to log in. Please try again.');
         }
       }
+      console.error('Login Error:', error);
     } finally {
       setLoading(false);
     }

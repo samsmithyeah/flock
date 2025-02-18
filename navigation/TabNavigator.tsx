@@ -41,21 +41,27 @@ const TabNavigator: React.FC = () => {
       }}
       screenListeners={({ navigation }) => ({
         state: (e) => {
-          const routes = e.data.state?.routes;
-          // Find the currently active tab route
-          const activeTabIndex = e.data.state?.index ?? 0;
+          const state = e.data.state;
+          if (!state) {
+            console.log('No state found in event data.');
+            return;
+          }
+          const routes = state.routes;
+          const activeTabIndex = state.index ?? 0;
           const currentTab = routes?.[activeTabIndex];
+          const nestedState = currentTab?.state;
 
-          const isModalOpen = currentTab?.state?.routes?.some((route) => {
-            console.log('Checking route:', route.name);
-            return (
-              route.name === 'AddMembers' || route.name === 'EditUserProfile'
-            );
-          });
+          // Check only the active nested route.
+          const activeNestedIndex = nestedState?.index ?? 0;
+          const activeNestedRoute = nestedState?.routes?.[activeNestedIndex];
+
+          const isModalActive =
+            activeNestedRoute?.name === 'AddMembers' ||
+            activeNestedRoute?.name === 'EditUserProfile';
 
           navigation.setOptions({
             tabBarStyle: {
-              display: isModalOpen ? 'none' : 'flex',
+              display: isModalActive ? 'none' : 'flex',
             },
           });
         },
