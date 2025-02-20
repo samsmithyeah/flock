@@ -17,13 +17,12 @@ import { InvitationsProvider } from '@/context/InvitationsContext';
 import { CrewDateChatProvider } from '@/context/CrewDateChatContext';
 import { DirectMessagesProvider } from '@/context/DirectMessagesContext';
 import { BadgeCountProvider } from '@/context/BadgeCountContext';
+import GlobalSetup from './GlobalSetup';
 
-// If you need to ignore any log warnings:
 LogBox.ignoreLogs([
   'Sending `onAnimatedValueUpdate` with no listeners registered.',
 ]);
 
-// Your custom toast config:
 const toastConfig = {
   success: (props: ToastProps) => (
     <BaseToast
@@ -73,6 +72,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <Providers>
+        <GlobalSetup />
         <View style={styles.container}>
           <Slot />
         </View>
