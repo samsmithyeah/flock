@@ -1,13 +1,9 @@
-// App.tsx
 import React, { useEffect, useRef } from 'react';
+import { ExpoRoot, useRouter } from 'expo-router';
 import * as Notifications from 'expo-notifications';
-import AppNavigator from '@/navigation/AppNavigator';
-import { StackNavigationProp } from '@react-navigation/stack';
-import { useNavigation } from '@react-navigation/native';
-import { useUser } from '@/context/UserContext';
-import { NavParamList } from '@/navigation/AppNavigator';
 import * as Sentry from '@sentry/react-native';
 import { captureConsoleIntegration } from '@sentry/core';
+import { useUser } from '@/context/UserContext';
 
 Sentry.init({
   dsn: 'https://ea17b86dea77e3f6b37bd8ad04223206@o4508365591281664.ingest.de.sentry.io/4508365591674960',
@@ -15,7 +11,6 @@ Sentry.init({
   tracesSampleRate: 1.0,
 });
 
-// Configure notification handler
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -24,21 +19,30 @@ Notifications.setNotificationHandler({
   }),
 });
 
-const App: React.FC = () => {
+// Create a dummy context that mimics a require context.
+// A proper require context is a function that has additional properties:
+// keys, resolve, and id.
+function dummyRequireContext(id: string) {
+  throw new Error('Module not found: ' + id);
+}
+dummyRequireContext.keys = () => [];
+dummyRequireContext.resolve = (id: string) => id;
+dummyRequireContext.id = 'dummy';
+
+function AppWrapper() {
   const { user } = useUser();
-  const notificationListener = useRef<any>(null);
-  const responseListener = useRef<any>(null);
-  const navigation = useNavigation<StackNavigationProp<NavParamList>>();
+  const router = useRouter();
+  const notificationListener = useRef<Notifications.Subscription | null>(null);
+  const responseListener = useRef<Notifications.Subscription | null>(null);
 
   useEffect(() => {
     if (!user) return;
-    // Listen to incoming notifications while the app is foregrounded
+
     notificationListener.current =
       Notifications.addNotificationReceivedListener((notification) => {
         console.log('Notification Received:', notification);
       });
 
-    // Listen to notification responses (when user taps on a notification)
     responseListener.current =
       Notifications.addNotificationResponseReceivedListener((response) => {
         console.log('Notification Response:', response);
@@ -48,62 +52,58 @@ const App: React.FC = () => {
         switch (screen) {
           case 'Crew':
             if (crewId) {
-              navigation.navigate('CrewsStack', {
-                screen,
-                params: { crewId, ...(date && { date }) },
-                initial: false,
+              router.push({
+                pathname: '/(main)/crews/[crewId]',
+                params: { crewId, ...(date ? { date } : {}) },
               });
             }
             break;
           case 'CrewDateChat':
             if (chatId) {
-              const crewId = chatId.split('_')[0];
-              const date = chatId.split('_')[1];
-              navigation.navigate('ChatsStack', {
-                screen,
-                params: { id: chatId, crewId, date },
-                initial: false,
+              const [crewId, chatDate] = chatId.split('_');
+              router.push({
+                pathname: '/(main)/crews/crew-date-chat',
+                params: { id: chatId, crewId, date: chatDate },
               });
             }
             break;
           case 'DMChat':
             if (senderId) {
               console.log('Navigating to DMChat');
-              console.log('Sender ID:', senderId);
-              navigation.navigate('ChatsStack', {
-                screen,
+              router.push({
+                pathname: '/(main)/chats/dm-chat',
                 params: { otherUserId: senderId },
-                initial: false,
               });
             }
             break;
           case 'OtherUserProfile':
             if (userId) {
-              navigation.navigate('ContactsStack', {
-                screen,
+              router.push({
+                pathname: '/(main)/contacts/other-user-profile',
                 params: { userId },
-                initial: false,
               });
             }
             break;
           default:
-            if (screen) {
-              navigation.navigate(screen);
-            } else {
-              console.log('No screen to navigate to');
-            }
+            console.warn(
+              `Unknown screen "${screen}" received in notification.`,
+            );
         }
       });
 
     return () => {
-      Notifications.removeNotificationSubscription(
-        notificationListener.current,
-      );
-      Notifications.removeNotificationSubscription(responseListener.current);
+      if (notificationListener.current) {
+        Notifications.removeNotificationSubscription(
+          notificationListener.current,
+        );
+      }
+      if (responseListener.current) {
+        Notifications.removeNotificationSubscription(responseListener.current);
+      }
     };
-  }, [user]);
+  }, [user, router]);
 
-  return <AppNavigator />;
-};
+  return <ExpoRoot context={dummyRequireContext} />;
+}
 
-export default Sentry.wrap(App);
+export default Sentry.wrap(AppWrapper);

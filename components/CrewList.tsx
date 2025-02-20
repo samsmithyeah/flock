@@ -1,6 +1,6 @@
 // components/CrewList.tsx
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { TouchableOpacity, Text, View, StyleSheet } from 'react-native';
 import DraggableFlatList, {
   ScaleDecorator,
@@ -29,10 +29,6 @@ const CrewList: React.FC<CrewListProps> = ({
   onOrderChange,
 }) => {
   const navigation = useNavigation<NativeStackNavigationProp<NavParamList>>();
-
-  useEffect(() => {
-    console.log('currentDate in CrewList:', currentDate);
-  }, [currentDate]);
 
   return (
     <View style={styles.container}>

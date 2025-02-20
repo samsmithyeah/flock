@@ -95,6 +95,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
   const [matchesNeedsRefresh, setMatchesNeedsRefresh] = useState(false);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [crewEventsMap, setCrewEventsMap] = useState<{
     [crewId: string]: { [date: string]: number };
   }>({});
