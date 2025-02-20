@@ -1,0 +1,18 @@
+diff --git a/node_modules/react-native-country-codes-picker/index.tsx b/node_modules/react-native-country-codes-picker/index.tsx
+index 6464ae1..88fbf62 100644
+--- a/node_modules/react-native-country-codes-picker/index.tsx
++++ b/node_modules/react-native-country-codes-picker/index.tsx
+@@ -437,9 +437,11 @@ export const CountryList = ({
+ };
+ 
+ 
+-type StyleKeys = 'container' | 'modal' | 'modalInner' | 'searchBar' | 'countryMessage' | 'line';
++type ViewStyleKeys = 'container' | 'modal' | 'modalInner' | 'countryMessage' | 'line';
++type TextStyleKeys = 'searchBar';
++type StylesType = { [key in ViewStyleKeys]: ViewStyle } & { [key in TextStyleKeys]: TextStyle };
+ 
+-const styles: { [key in StyleKeys]: ViewStyle } = {
++const styles: StylesType = {
+     container: {
+         flex: 1,
+         position: 'absolute',

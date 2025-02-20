@@ -97,28 +97,20 @@ const UserProfileScreen: React.FC = () => {
   }, [navigation]);
 
   const handleLogout = async () => {
-    try {
-      Alert.alert('Log out', 'Are you sure you want to log out?', [
-        {
-          text: 'Cancel',
-          style: 'cancel',
+    Alert.alert('Log out', 'Are you sure you want to log out?', [
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      },
+      {
+        text: 'Log out',
+        style: 'destructive',
+        onPress: async () => {
+          setLoading(true);
+          await logout();
         },
-        {
-          text: 'Log out',
-          style: 'destructive',
-          onPress: async () => {
-            await logout();
-          },
-        },
-      ]);
-    } catch (error) {
-      console.error('Error logging out: ', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Failed to log out',
-      });
-    }
+      },
+    ]);
   };
 
   if (loading || !user) {
