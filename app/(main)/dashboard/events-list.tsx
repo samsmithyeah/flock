@@ -1,9 +1,9 @@
+// app/(main)/dashboard/events-list.tsx
+
 import React, { useEffect, useState, useLayoutEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useCrews } from '@/context/CrewsContext';
 import CrewList from '@/components/CrewList';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { NavParamList } from '@/navigation/AppNavigator';
 import { Crew } from '@/types/Crew';
 import { User } from '@/types/User';
 import { getDoc, doc } from 'firebase/firestore';
@@ -12,22 +12,18 @@ import LoadingOverlay from '@/components/LoadingOverlay';
 import Toast from 'react-native-toast-message';
 import useglobalStyles from '@/styles/globalStyles';
 import { getFormattedDay } from '@/utils/dateHelpers';
+import { useLocalSearchParams, useNavigation } from 'expo-router';
 
-type EventCrewsListScreenProps = NativeStackScreenProps<
-  NavParamList,
-  'EventCrewsList'
->;
-
-const EventCrewsListScreen: React.FC<EventCrewsListScreenProps> = ({
-  route,
-  navigation,
-}) => {
-  const { date } = route.params;
+const EventCrewsListScreen: React.FC = () => {
+  const { date } = useLocalSearchParams<{
+    date: string;
+  }>();
+  const navigation = useNavigation();
   const {
-    dateEventCrews, // <-- from CrewsContext
+    dateEventCrews,
     crews,
     loadingCrews,
-    loadingEvents, // <-- your context might have loadingEvents
+    loadingEvents,
     usersCache,
     setUsersCache,
   } = useCrews();

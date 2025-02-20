@@ -1,5 +1,5 @@
 // app/_layout.tsx
-import { useEffect, ReactNode } from 'react';
+import { ReactNode } from 'react';
 import { Slot } from 'expo-router';
 import { StyleSheet, View, LogBox } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -77,7 +77,6 @@ export default function RootLayout() {
           <Slot />
         </View>
       </Providers>
-
       <StatusBar style="dark" />
       <Toast config={toastConfig} />
     </GestureHandlerRootView>

@@ -9,9 +9,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Crew } from '@/types/Crew';
 import { User } from '@/types/User';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { NavParamList } from '@/navigation/AppNavigator';
+import { router } from 'expo-router';
 
 type CrewListProps = {
   crews: Crew[];
@@ -28,8 +26,6 @@ const CrewList: React.FC<CrewListProps> = ({
   orderEditable = false,
   onOrderChange,
 }) => {
-  const navigation = useNavigation<NativeStackNavigationProp<NavParamList>>();
-
   return (
     <View style={styles.container}>
       <DraggableFlatList
@@ -61,10 +57,9 @@ const CrewList: React.FC<CrewListProps> = ({
                 style={[styles.crewItem, isActive && styles.draggingItem]}
                 onLongPress={orderEditable ? drag : undefined}
                 onPress={() =>
-                  navigation.navigate('CrewsStack', {
-                    screen: 'Crew',
+                  router.push({
+                    pathname: '/crews/[crewId]',
                     params: { crewId: item.id, date: currentDate },
-                    initial: false,
                   })
                 }
                 disabled={isActive}

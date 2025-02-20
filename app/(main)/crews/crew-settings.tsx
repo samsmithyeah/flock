@@ -9,19 +9,12 @@ import {
   ScrollView,
   TouchableOpacity,
 } from 'react-native';
-import {
-  useRoute,
-  RouteProp,
-  useNavigation,
-  NavigationProp,
-} from '@react-navigation/native';
 import { arrayRemove, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { deleteCrew, db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
 import { useCrews } from '@/context/CrewsContext';
 import { User } from '@/types/User';
 import { Ionicons } from '@expo/vector-icons';
-import { NavParamList } from '@/navigation/AppNavigator';
 import ProfilePicturePicker from '@/components/ProfilePicturePicker';
 import MemberList from '@/components/MemberList';
 import { Crew } from '@/types/Crew';
@@ -31,16 +24,14 @@ import CustomModal from '@/components/CustomModal';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import Toast from 'react-native-toast-message';
 import useGlobalStyles from '@/styles/globalStyles';
-
-type CrewSettingsScreenRouteProp = RouteProp<NavParamList, 'CrewSettings'>;
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 
 const CrewSettingsScreen: React.FC = () => {
   const { user } = useUser();
   const { setCrews, setCrewIds, usersCache, subscribeToUsers } = useCrews();
   const globalStyles = useGlobalStyles();
-  const route = useRoute<CrewSettingsScreenRouteProp>();
-  const { crewId } = route.params;
-  const navigation = useNavigation<NavigationProp<NavParamList>>();
+  const { crewId } = useLocalSearchParams<{ crewId: string }>();
+  const navigation = useNavigation();
   const [crew, setCrew] = useState<Crew | null>(null);
   const [members, setMembers] = useState<User[]>([]);
   const [isEditNameModalVisible, setIsEditNameModalVisible] = useState(false);
@@ -84,7 +75,7 @@ const CrewSettingsScreen: React.FC = () => {
         } else {
           if (!isDeleting) {
             console.warn('Crew not found');
-            navigation.navigate('CrewsList');
+            router.push('/crews');
           }
         }
         setLoading(false);
@@ -168,7 +159,7 @@ const CrewSettingsScreen: React.FC = () => {
               );
               setCrewIds((prevIds) => prevIds.filter((id) => id !== crewId));
               if (data.success) {
-                navigation.navigate('CrewsList');
+                router.push('/crews');
                 Toast.show({
                   type: 'success',
                   text1: 'Crew deleted',
@@ -236,7 +227,7 @@ const CrewSettingsScreen: React.FC = () => {
                   setCrewIds((prevIds) =>
                     prevIds.filter((id) => id !== crewId),
                   );
-                  navigation.navigate('CrewsList');
+                  router.push('/crews');
                   Toast.show({
                     type: 'success',
                     text1: 'You have left the crew',
@@ -258,7 +249,7 @@ const CrewSettingsScreen: React.FC = () => {
                     memberIds: remainingMembers,
                   });
 
-                  navigation.navigate('CrewsList');
+                  router.push('/crews');
                   Toast.show({
                     type: 'success',
                     text1: 'You have left the crew',
@@ -283,7 +274,7 @@ const CrewSettingsScreen: React.FC = () => {
                 // Remove the crew ID from the user's list
                 setCrewIds((prevIds) => prevIds.filter((id) => id !== crewId));
 
-                navigation.navigate('CrewsList');
+                router.push('/crews');
                 Toast.show({
                   type: 'success',
                   text1: 'Success',
@@ -307,14 +298,16 @@ const CrewSettingsScreen: React.FC = () => {
   // Function to navigate to OtherUserProfileScreen
   const navigateToUserProfile = (selectedUser: User) => {
     if (selectedUser.uid === user?.uid) {
-      navigation.navigate('UserProfileStack', {
-        screen: 'UserProfile',
+      router.push({
+        pathname: '/profile',
         params: { userId: user.uid },
-        initial: false,
       });
       return;
     }
-    navigation.navigate('OtherUserProfile', { userId: selectedUser.uid });
+    router.push({
+      pathname: '/contacts/other-user-profile',
+      params: { userId: selectedUser.uid },
+    });
   };
 
   // Function to handle crew name update
@@ -503,7 +496,10 @@ const CrewSettingsScreen: React.FC = () => {
             <TouchableOpacity
               style={styles.addButtonInline}
               onPress={() =>
-                navigation.navigate('AddMembers', { crewId: crewId })
+                router.push({
+                  pathname: '/crews/add-members',
+                  params: { crewId: crewId },
+                })
               }
               accessibilityLabel="Add Member"
             >

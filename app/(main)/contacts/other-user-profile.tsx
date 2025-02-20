@@ -1,28 +1,18 @@
-import React, { useEffect, useLayoutEffect, useState } from 'react';
+// app/(main)/contacts/other-user-profile.tsx
+
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import {
-  RouteProp,
-  useRoute,
-  useNavigation,
-  NavigationProp,
-} from '@react-navigation/native';
 import { User } from '@/types/User';
 import ProfilePicturePicker from '@/components/ProfilePicturePicker';
-import { NavParamList } from '@/navigation/AppNavigator';
 import CustomButton from '@/components/CustomButton';
 import Colors from '@/styles/colors';
 import moment from 'moment';
 import { useCrews } from '@/context/CrewsContext';
-
-type OtherUserProfileScreenRouteProp = RouteProp<
-  NavParamList,
-  'OtherUserProfile'
->;
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 
 const OtherUserProfileScreen: React.FC = () => {
-  const route = useRoute<OtherUserProfileScreenRouteProp>();
-  const navigation = useNavigation<NavigationProp<NavParamList>>();
-  const { userId } = route.params;
+  const navigation = useNavigation();
+  const { userId } = useLocalSearchParams<{ userId: string }>();
   const { usersCache, setUsersCache, fetchUserDetails } = useCrews();
 
   const [userProfile, setUserProfile] = useState<User | null>(null);
@@ -48,12 +38,10 @@ const OtherUserProfileScreen: React.FC = () => {
     }
   }, [userId, usersCache, setUsersCache, fetchUserDetails]);
 
-  useLayoutEffect(() => {
-    if (userProfile) {
-      navigation.setOptions({
-        title: userProfile.displayName || 'User Profile',
-      });
-    }
+  useEffect(() => {
+    navigation.setOptions({
+      title: userProfile?.displayName || 'User Profile',
+    });
   }, [navigation, userProfile]);
 
   if (loading) {
@@ -126,8 +114,12 @@ const OtherUserProfileScreen: React.FC = () => {
         <CustomButton
           title={`Send a message to ${userProfile.displayName}`}
           onPress={() =>
-            navigation.navigate('DMChat', {
-              otherUserId: userProfile.uid,
+            router.push({
+              pathname: '/chats/dm-chat',
+
+              params: {
+                otherUserId: userProfile.uid,
+              },
             })
           }
           icon={{

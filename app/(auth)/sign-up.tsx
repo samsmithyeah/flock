@@ -1,4 +1,4 @@
-// screens/SignUpScreen.tsx
+// app/(auth)/sign-up.tsx
 
 import React, { useState } from 'react';
 import {
@@ -25,18 +25,10 @@ import {
   updateProfile,
 } from 'firebase/auth';
 import Colors from '@/styles/colors';
-import { NavParamList } from '@/navigation/AppNavigator';
 import GoogleLoginButton from '@/components/GoogleLoginButton';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { router } from 'expo-router';
 
-type SignUpScreenNavigationProps = NativeStackScreenProps<
-  NavParamList,
-  'SignUp'
->;
-
-const SignUpScreen: React.FC<SignUpScreenNavigationProps> = ({
-  navigation,
-}) => {
+const SignUpScreen: React.FC = () => {
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [firstName, setFirstName] = useState<string>('');
@@ -117,8 +109,11 @@ const SignUpScreen: React.FC<SignUpScreenNavigationProps> = ({
       await addUserToFirestore(updatedUser);
       await registerForPushNotificationsAsync(updatedUser);
 
-      // Navigate to PhoneVerificationScreen
-      navigation.replace('PhoneVerification', { uid: thisUser.uid });
+      // Navigate to phone verification screen
+      router.push({
+        pathname: '/phone-verification',
+        params: { uid: thisUser.uid },
+      });
     } catch (err: unknown) {
       console.error('Sign Up Error:', err);
       if (err instanceof Error) {
@@ -250,7 +245,7 @@ const SignUpScreen: React.FC<SignUpScreenNavigationProps> = ({
 
             <TouchableOpacity
               style={styles.loginContainer}
-              onPress={() => navigation.navigate('Login')}
+              onPress={() => router.push('/login')}
             >
               <Text style={styles.loginText}>Already have an account? </Text>
               <Text style={styles.loginLink}>Login</Text>

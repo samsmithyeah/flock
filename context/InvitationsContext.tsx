@@ -22,11 +22,9 @@ import { useUser } from '@/context/UserContext';
 import { Crew } from '@/types/Crew';
 import { User } from '@/types/User';
 import { InvitationWithDetails, Invitation } from '@/types/Invitation';
-import { StackNavigationProp } from '@react-navigation/stack';
-import { useNavigation } from '@react-navigation/native';
-import { NavParamList } from '@/navigation/AppNavigator';
 import Toast from 'react-native-toast-message';
 import { useCrews } from '@/context/CrewsContext';
+import { router } from 'expo-router';
 
 interface InvitationsContextType {
   invitations: InvitationWithDetails[];
@@ -49,7 +47,6 @@ export const InvitationsProvider: React.FC<InvitationsProviderProps> = ({
 }) => {
   const { user } = useUser();
   const { setCrews, setCrewIds } = useCrews();
-  const navigation = useNavigation<StackNavigationProp<NavParamList>>();
   const [invitations, setInvitations] = useState<InvitationWithDetails[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [crewsCache, setCrewsCache] = useState<{ [key: string]: Crew }>({});
@@ -233,12 +230,7 @@ export const InvitationsProvider: React.FC<InvitationsProviderProps> = ({
         text1: 'Invitation accepted',
         text2: `You have joined ${invitation.crew?.name}`,
       });
-
-      navigation.navigate('CrewsStack', {
-        screen: 'Crew',
-        params: { crewId: invitation.crewId },
-        initial: false,
-      });
+      router.push(`/crews/${invitation.crewId}`);
     } catch (error) {
       console.error('Error accepting invitation:', error);
       Toast.show({

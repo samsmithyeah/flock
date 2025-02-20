@@ -8,22 +8,15 @@ import {
   Text,
   Alert,
 } from 'react-native';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { NavParamList } from '@/navigation/AppNavigator';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '@/firebase';
 import CustomButton from '@/components/CustomButton';
 import CustomTextInput from '@/components/CustomTextInput';
 import Colors from '@/styles/colors';
+import { router, useNavigation } from 'expo-router';
 
-type ForgotPasswordProps = NativeStackScreenProps<
-  NavParamList,
-  'ForgotPassword'
->;
-
-const ForgotPasswordScreen: React.FC<ForgotPasswordProps> = ({
-  navigation,
-}) => {
+const ForgotPasswordScreen: React.FC = () => {
+  const navigation = useNavigation();
   const [email, setEmail] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
@@ -51,7 +44,7 @@ const ForgotPasswordScreen: React.FC<ForgotPasswordProps> = ({
         [
           {
             text: 'OK',
-            onPress: () => navigation.goBack(),
+            onPress: () => router.back(),
           },
         ],
       );

@@ -24,8 +24,7 @@ import { db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
 import CustomButton from '@/components/CustomButton';
 import { User } from '@/types/User';
-import { useRoute, RouteProp } from '@react-navigation/native';
-import { NavParamList } from '@/navigation/AppNavigator';
+import { useLocalSearchParams } from 'expo-router';
 
 const CELL_COUNT = 6;
 const { width } = Dimensions.get('window');
@@ -69,8 +68,7 @@ const PhoneVerificationScreen: React.FC = () => {
     name: 'United Kingdom',
   });
 
-  const route = useRoute<RouteProp<NavParamList, 'PhoneVerification'>>();
-  const { uid } = route.params;
+  const { uid } = useLocalSearchParams<{ uid: string }>();
 
   const [phoneNumber, setPhoneNumber] = useState<string>('');
   const [verificationCode, setVerificationCode] = useState<string>('');

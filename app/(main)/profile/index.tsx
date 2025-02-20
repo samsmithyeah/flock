@@ -15,23 +15,14 @@ import { db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
 import { User } from '@/types/User';
 import ProfilePicturePicker from '@/components/ProfilePicturePicker';
-import { StackNavigationProp } from '@react-navigation/stack';
-import { UserProfileStackParamList } from '@/navigation/UserProfileStackNavigator';
-import CustomButton from '@/components/CustomButton'; // Assuming CustomButton is a styled button
+import CustomButton from '@/components/CustomButton';
 import Toast from 'react-native-toast-message';
 import Colors from '@/styles/colors';
+import { router, useNavigation } from 'expo-router';
 
-type UserProfileScreenNavigationProp = StackNavigationProp<
-  UserProfileStackParamList,
-  'UserProfile'
->;
-
-type Props = {
-  navigation: UserProfileScreenNavigationProp;
-};
-
-const UserProfileScreen: React.FC<Props> = ({ navigation }) => {
+const UserProfileScreen: React.FC = () => {
   const { user, setUser, logout } = useUser();
+  const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -94,7 +85,7 @@ const UserProfileScreen: React.FC<Props> = ({ navigation }) => {
     navigation.setOptions({
       headerRight: () => (
         <TouchableOpacity
-          onPress={() => navigation.navigate('EditUserProfile')}
+          onPress={() => router.push('/profile/edit')}
           style={styles.headerButton}
           accessibilityLabel="Edit Profile"
           accessibilityHint="Open profile edit screen"

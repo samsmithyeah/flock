@@ -4,8 +4,6 @@ import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useCrews } from '@/context/CrewsContext';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { NavParamList } from '@/navigation/AppNavigator';
 import ScreenTitle from '@/components/ScreenTitle';
 import CrewList from '@/components/CrewList';
 import CreateCrewModal from '@/components/CreateCrewModal';
@@ -19,10 +17,9 @@ import Toast from 'react-native-toast-message';
 import Icon from '@expo/vector-icons/MaterialIcons';
 import useGlobalStyles from '@/styles/globalStyles';
 import { useUser } from '@/context/UserContext';
+import { router } from 'expo-router';
 
-type CrewsListScreenProps = NativeStackScreenProps<NavParamList, 'CrewsList'>;
-
-const CrewsListScreen: React.FC<CrewsListScreenProps> = ({ navigation }) => {
+const CrewsListScreen: React.FC = () => {
   const { crews, usersCache, setUsersCache, loadingCrews, loadingStatuses } =
     useCrews();
   const { user, updateCrewOrder } = useUser();
@@ -142,7 +139,10 @@ const CrewsListScreen: React.FC<CrewsListScreenProps> = ({ navigation }) => {
       text1: 'Success',
       text2: 'Crew created successfully',
     });
-    navigation.navigate('AddMembers', { crewId });
+    router.push({
+      pathname: '/crews/add-members',
+      params: { crewId },
+    });
   };
 
   // Render the empty state UI

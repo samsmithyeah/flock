@@ -1,4 +1,4 @@
-// screens/ChatsListScreen.tsx
+// // app/(main)/chats/index.tsx
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
@@ -12,9 +12,6 @@ import {
 import { useDirectMessages } from '@/context/DirectMessagesContext';
 import { useCrewDateChat } from '@/context/CrewDateChatContext';
 import { useCrews } from '@/context/CrewsContext';
-import { useNavigation, useIsFocused } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { NavParamList } from '@/navigation/AppNavigator';
 import {
   getDoc,
   doc,
@@ -32,6 +29,7 @@ import CustomSearchInput from '@/components/CustomSearchInput';
 import ProfilePicturePicker from '@/components/ProfilePicturePicker';
 import { storage } from '@/storage';
 import useGlobalStyles from '@/styles/globalStyles';
+import { router, useNavigation } from 'expo-router';
 
 interface CombinedChat {
   id: string;
@@ -60,8 +58,8 @@ const ChatsListScreen: React.FC = () => {
   const { crews, usersCache, fetchCrew } = useCrews();
   const { user } = useUser();
   const globalStyles = useGlobalStyles();
-  const navigation = useNavigation<NativeStackNavigationProp<NavParamList>>();
-  const isFocused = useIsFocused();
+  const navigation = useNavigation();
+  const isFocused = navigation.isFocused();
 
   const [combinedChats, setCombinedChats] = useState<CombinedChat[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -392,12 +390,18 @@ const ChatsListScreen: React.FC = () => {
       if (chatType === 'direct') {
         const otherUserId = chatId.split('_').find((uid) => uid !== user?.uid);
         if (otherUserId) {
-          navigation.navigate('DMChat', { otherUserId });
+          router.push({
+            pathname: '/chats/dm-chat',
+            params: { otherUserId },
+          });
         }
       } else {
         const crewId = chatId.split('_')[0];
         const date = chatId.split('_')[1];
-        navigation.navigate('CrewDateChat', { crewId, date, id: chatId });
+        router.push({
+          pathname: '/chats/crew-date-chat',
+          params: { crewId, date, id: chatId },
+        });
       }
     },
     [navigation, user?.uid],

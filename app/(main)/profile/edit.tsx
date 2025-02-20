@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -8,8 +8,9 @@ import {
   Platform,
   ScrollView,
   Keyboard,
+  TouchableOpacity,
+  Text,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db, deleteAccount } from '@/firebase';
 import { useUser } from '@/context/UserContext';
@@ -18,6 +19,7 @@ import CustomButton from '@/components/CustomButton';
 import CustomTextInput from '@/components/CustomTextInput';
 import Toast from 'react-native-toast-message';
 import LoadingOverlay from '@/components/LoadingOverlay';
+import { router, useNavigation } from 'expo-router';
 
 const EditUserProfileModal: React.FC = () => {
   const { user, setUser, logout, isAdmin } = useUser();
@@ -32,6 +34,39 @@ const EditUserProfileModal: React.FC = () => {
   const [adminTargetUserId, setAdminTargetUserId] = useState<string>('');
 
   const navigation = useNavigation();
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={handleSave}
+          disabled={saving || !displayName.trim()}
+          accessibilityLabel="Save Profile"
+          accessibilityHint="Save your updated profile information"
+        >
+          <Text
+            style={{
+              color: saving || !displayName.trim() ? '#999' : '#1e90ff',
+              fontSize: 16,
+            }}
+          >
+            Save
+          </Text>
+        </TouchableOpacity>
+      ),
+      headerLeft: () => (
+        <TouchableOpacity
+          onPress={handleCancel}
+          accessibilityLabel="Cancel"
+          accessibilityHint="Discard changes and close the edit screen"
+        >
+          <Text style={{ color: '#1e90ff', fontSize: 16 }}>Cancel</Text>
+        </TouchableOpacity>
+      ),
+      title: 'Edit profile',
+      presentation: 'modal',
+    });
+  }, [navigation, displayName, saving]);
 
   if (!user) {
     return (
@@ -72,7 +107,7 @@ const EditUserProfileModal: React.FC = () => {
         text1: 'Profile updated',
         text2: 'Your profile has been updated successfully.',
       });
-      navigation.goBack();
+      router.back();
       Keyboard.dismiss();
     } catch (error) {
       console.error('Error updating profile:', error);
@@ -101,7 +136,7 @@ const EditUserProfileModal: React.FC = () => {
             // Reset fields
             setDisplayName(user.displayName || '');
             setPhotoURL(user.photoURL || '');
-            navigation.goBack();
+            router.back();
           },
         },
       ],
@@ -234,36 +269,6 @@ const EditUserProfileModal: React.FC = () => {
             />
           </View>
 
-          <View style={styles.actionButtonsContainer}>
-            <CustomButton
-              title="Save"
-              onPress={handleSave}
-              loading={saving}
-              variant="primary"
-              icon={{
-                name: 'save-outline',
-                size: 24,
-                color: '#FFFFFF',
-              }}
-              disabled={saving || !displayName.trim()}
-              accessibilityLabel="Save Profile"
-              accessibilityHint="Save your updated profile information"
-            />
-
-            <CustomButton
-              title="Cancel"
-              onPress={handleCancel}
-              loading={saving}
-              variant="secondary"
-              icon={{
-                name: 'close-outline',
-                size: 24,
-              }}
-              accessibilityLabel="Cancel Editing"
-              accessibilityHint="Discard changes and close the edit screen"
-            />
-          </View>
-
           {/* ADMIN-ONLY: DELETE ANOTHER USER */}
           {isAdmin && (
             <View style={styles.adminSection}>
@@ -329,13 +334,6 @@ const styles = StyleSheet.create({
   formContainer: {
     width: '100%',
     marginTop: 10,
-  },
-  actionButtonsContainer: {
-    flexDirection: 'row',
-    marginTop: 20,
-    justifyContent: 'space-between',
-    width: '100%',
-    marginBottom: 100,
   },
   adminSection: {
     marginTop: 30,

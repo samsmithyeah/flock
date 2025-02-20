@@ -9,20 +9,13 @@ import {
 import { useCrews } from '@/context/CrewsContext';
 import DateCard from '@/components/DateCard';
 import moment from 'moment';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { NavParamList } from '@/navigation/AppNavigator';
-import { useNavigation } from '@react-navigation/native';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import Toast from 'react-native-toast-message';
 import ScreenTitle from '@/components/ScreenTitle';
 import CreateCrewModal from '@/components/CreateCrewModal';
 import Icon from '@expo/vector-icons/MaterialIcons';
 import useglobalStyles from '@/styles/globalStyles';
-
-type DashboardScreenNavigationProp = NativeStackNavigationProp<
-  NavParamList,
-  'Home'
->;
+import { router } from 'expo-router';
 
 const DashboardScreen: React.FC = () => {
   const {
@@ -42,8 +35,6 @@ const DashboardScreen: React.FC = () => {
   const [isCreateModalVisible, setIsCreateModalVisible] =
     useState<boolean>(false);
   const [weekDates, setWeekDates] = useState<string[]>([]);
-
-  const navigation = useNavigation<DashboardScreenNavigationProp>();
 
   useEffect(() => {
     const days: string[] = [];
@@ -73,12 +64,18 @@ const DashboardScreen: React.FC = () => {
 
   // Opens MatchesList screen
   const handlePressMatches = (date: string) => {
-    navigation.navigate('MatchesList', { date });
+    router.push({
+      pathname: '/dashboard/matches-list',
+      params: { date },
+    });
   };
 
   // NEW: Opens EventCrewsList screen for that date
   const handlePressEvents = (date: string) => {
-    navigation.navigate('EventCrewsList', { date });
+    router.push({
+      pathname: '/dashboard/events-list',
+      params: { date },
+    });
   };
 
   const openCreateCrewModal = () => {
@@ -96,10 +93,9 @@ const DashboardScreen: React.FC = () => {
       text1: 'Success',
       text2: 'Crew created successfully',
     });
-    navigation.navigate('CrewsStack', {
-      screen: 'AddMembers',
+    router.push({
+      pathname: '/crews/add-members',
       params: { crewId },
-      initial: false,
     });
   };
 

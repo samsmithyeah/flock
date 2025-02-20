@@ -11,12 +11,6 @@ import {
   Modal,
 } from 'react-native';
 import {
-  useRoute,
-  RouteProp,
-  useNavigation,
-  NavigationProp,
-} from '@react-navigation/native';
-import {
   doc,
   collection,
   onSnapshot,
@@ -28,7 +22,6 @@ import { db, pokeCrew } from '@/firebase';
 import { useUser } from '@/context/UserContext';
 import { User } from '@/types/User';
 import { MaterialIcons } from '@expo/vector-icons';
-import { NavParamList } from '@/navigation/AppNavigator';
 import { Crew } from '@/types/Crew';
 import CrewHeader from '@/components/CrewHeader';
 import { useCrews } from '@/context/CrewsContext';
@@ -48,15 +41,14 @@ import {
   updateEventInCrew,
 } from '@/utils/addEventToCrew';
 import { CrewEvent } from '@/types/CrewEvent';
-
-type CrewScreenRouteProp = RouteProp<NavParamList, 'Crew'>;
+import { useLocalSearchParams, useNavigation, router } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.75;
 const CARD_MARGIN = 16;
 const TOTAL_CARD_WIDTH = CARD_WIDTH + CARD_MARGIN;
 
-// Helper to get all dates between two dates (inclusive)
+// Helper: return an array of dates between start and end (inclusive)
 const getDatesBetween = (start: string, end: string): string[] => {
   const dates: string[] = [];
   let current = moment(start, 'YYYY-MM-DD');
@@ -69,9 +61,12 @@ const getDatesBetween = (start: string, end: string): string[] => {
 };
 
 const CrewScreen: React.FC = () => {
-  const route = useRoute<CrewScreenRouteProp>();
-  const { crewId, date } = route.params;
-  const navigation = useNavigation<NavigationProp<NavParamList>>();
+  // Retrieve route parameters using expo-router hook
+  const { crewId, date } = useLocalSearchParams<{
+    crewId: string;
+    date?: string;
+  }>();
+  const navigation = useNavigation();
   const { user } = useUser();
   const { setStatusForCrew, usersCache, subscribeToUsers } = useCrews();
   const { addMemberToChat, removeMemberFromChat } = useCrewDateChat();
@@ -105,12 +100,14 @@ const CrewScreen: React.FC = () => {
     [day: string]: CrewEvent[];
   }>({});
 
+  // Set selected date if provided as a route param
   useEffect(() => {
     if (date) {
       setSelectedDate(date);
     }
   }, [date]);
 
+  // Calculate weekDates from startDate
   useEffect(() => {
     const days: string[] = [];
     for (let i = 0; i < 7; i++) {
@@ -144,7 +141,7 @@ const CrewScreen: React.FC = () => {
           setCrew(crewData);
           navigation.setOptions({ title: crewData.name });
         } else {
-          navigation.navigate('CrewsList');
+          router.push('/crews/');
         }
         setLoading(false);
       },
@@ -162,17 +159,17 @@ const CrewScreen: React.FC = () => {
       },
     );
 
-    return () => {
-      unsubscribeCrew();
-    };
+    return () => unsubscribeCrew();
   }, [crewId, user, navigation]);
 
+  // Subscribe to crew member data
   useEffect(() => {
     if (crew && crew.memberIds && crew.memberIds.length > 0) {
       subscribeToUsers(crew.memberIds);
     }
   }, [crew, subscribeToUsers]);
 
+  // Update members from cached users
   useEffect(() => {
     if (crew && crew.memberIds && crew.memberIds.length > 0) {
       const updatedMembers = crew.memberIds
@@ -286,12 +283,10 @@ const CrewScreen: React.FC = () => {
       unsubscribes.push(unsub);
     });
 
-    return () => {
-      unsubscribes.forEach((fn) => fn());
-    };
+    return () => unsubscribes.forEach((fn) => fn());
   }, [crewId, user, weekDates]);
 
-  // Scroll to selected date if it's in the current week
+  // Scroll to selected date if in current week
   useEffect(() => {
     if (selectedDate && weekDates.length > 0) {
       const dateIndex = weekDates.indexOf(selectedDate);
@@ -320,14 +315,12 @@ const CrewScreen: React.FC = () => {
 
   const isUserUpForDay = (day: string) => {
     if (!user) return undefined;
-    // Returns true, false or undefined/null (if no status exists)
     return statusesForWeek[day]?.[user.uid];
   };
 
   const getCrewActivity = () =>
     crew?.activity ? crew.activity.toLowerCase() : 'meeting up';
 
-  // Updated toggleDayStatus to accept a new status (true for available, false for not available)
   const toggleDayStatus = async (day: string, newStatus: boolean | null) => {
     if (!user?.uid || !crew) {
       Toast.show({
@@ -338,10 +331,8 @@ const CrewScreen: React.FC = () => {
       return;
     }
     const chatId = `${crewId}_${day}`;
-
     console.log('Toggling status for', day, 'to', newStatus);
     await setStatusForCrew(crewId, day, newStatus);
-
     if (newStatus) {
       await addMemberToChat(chatId, user.uid);
     } else {
@@ -374,7 +365,6 @@ const CrewScreen: React.FC = () => {
               const userIsAvailableOnAnyDate = eventDates.some((day) =>
                 isUserUpForDay(day),
               );
-
               if (userIsAvailableOnAnyDate) {
                 Alert.alert(
                   'Clear availability',
@@ -428,7 +418,6 @@ const CrewScreen: React.FC = () => {
           moment(start).format('YYYY-MM-DD'),
           moment(end).format('YYYY-MM-DD'),
         );
-
         await updateEventInCrew(crewId, editingEvent.id, user.uid, {
           title,
           startDate: start,
@@ -436,12 +425,10 @@ const CrewScreen: React.FC = () => {
           unconfirmed,
           location,
         });
-
         normalizedNewDates.forEach((day) => {
           setStatusForCrew(crewId, day, true);
           addMemberToChat(`${crewId}_${day}`, user.uid);
         });
-
         const removedDates = normalizedOldDates.filter(
           (day) => !normalizedNewDates.includes(day) && isUserUpForDay(day),
         );
@@ -454,6 +441,7 @@ const CrewScreen: React.FC = () => {
               {
                 text: 'Yes',
                 onPress: () => {
+                  if (!user) return;
                   removedDates.forEach((day) => {
                     setStatusForCrew(crewId, day, false);
                     removeMemberFromChat(`${crewId}_${day}`, user.uid);
@@ -508,7 +496,6 @@ const CrewScreen: React.FC = () => {
       });
       return;
     }
-
     Alert.alert(
       'Poke the others?',
       "Send a poke to members who haven't responded on this day yet?",
@@ -552,23 +539,24 @@ const CrewScreen: React.FC = () => {
   };
 
   const navigateToDayChat = (day: string) => {
-    navigation.navigate('ChatsStack', {
-      screen: 'CrewDateChat',
+    router.push({
+      pathname: '/chats/crew-date-chat',
       params: { crewId, date: day },
-      initial: false,
     });
   };
 
   const navigateToUserProfile = (selectedUser: User) => {
     if (!user) return;
     if (selectedUser.uid === user.uid) {
-      navigation.navigate('UserProfileStack', {
-        screen: 'UserProfile',
+      router.push({
+        pathname: '/profile',
         params: { userId: user.uid },
-        initial: false,
       });
     } else {
-      navigation.navigate('OtherUserProfile', { userId: selectedUser.uid });
+      router.push({
+        pathname: '/contacts/other-user-profile',
+        params: { userId: selectedUser.uid },
+      });
     }
   };
 
@@ -614,20 +602,24 @@ const CrewScreen: React.FC = () => {
     setScrolledToEnd(isNearEnd);
     setScrolledToStart(isNearStart);
   };
+
   const showNextWeekButton = scrolledToEnd;
 
   const handleCalendarDayPress = (dayObj: { dateString: string }) => {
     setCalendarVisible(false);
-    const chosenDate = dayObj.dateString;
-    setSelectedDate(chosenDate);
+    setSelectedDate(dayObj.dateString);
   };
 
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
         <TouchableOpacity
-          style={{ marginRight: 16 }}
-          onPress={() => navigation.navigate('CrewSettings', { crewId })}
+          onPress={() =>
+            router.push({
+              pathname: '/crews/crew-settings',
+              params: { crewId },
+            })
+          }
         >
           <MaterialIcons name="settings" size={24} color="black" />
         </TouchableOpacity>
@@ -636,7 +628,12 @@ const CrewScreen: React.FC = () => {
         ? () => (
             <CrewHeader
               crew={crew}
-              onPress={() => navigation.navigate('CrewSettings', { crewId })}
+              onPress={() =>
+                router.push({
+                  pathname: '/crews/crew-settings',
+                  params: { crewId },
+                })
+              }
             />
           )
         : 'Crew',

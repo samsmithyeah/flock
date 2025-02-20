@@ -1,4 +1,4 @@
-// screens/CrewDateChatScreen.tsx
+// app/(main)/chats/crew-date-chat.tsx
 
 import React, {
   useEffect,
@@ -21,8 +21,6 @@ import {
 import { useUser } from '@/context/UserContext';
 import { useCrewDateChat } from '@/context/CrewDateChatContext';
 import { useCrews } from '@/context/CrewsContext';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { NavParamList } from '@/navigation/AppNavigator';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { generateChatId } from '@/utils/chatHelpers';
 import {
@@ -36,34 +34,28 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  useIsFocused,
-  useNavigation,
-  NavigationProp,
-} from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { User } from '@/types/User';
 import ProfilePicturePicker from '@/components/ProfilePicturePicker';
 import { throttle } from 'lodash';
 import moment from 'moment';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-type CrewDateChatScreenProps = NativeStackScreenProps<
-  NavParamList,
-  'CrewDateChat'
->;
-type RouteParams = { crewId: string; date: string; id?: string };
+import { useLocalSearchParams, useNavigation } from 'expo-router';
 
 const TYPING_TIMEOUT = 1000;
 
-const CrewDateChatScreen: React.FC<CrewDateChatScreenProps> = ({ route }) => {
-  const { crewId, date, id } = route.params as RouteParams;
-  const navigation = useNavigation<NavigationProp<NavParamList>>();
+const CrewDateChatScreen: React.FC = () => {
+  const { crewId, date, id } = useLocalSearchParams<{
+    crewId: string;
+    date: string;
+    id?: string;
+  }>();
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { sendMessage, updateLastRead, messages, listenToMessages } =
     useCrewDateChat();
   const { crews, usersCache, setUsersCache } = useCrews();
-  const isFocused = useIsFocused();
+  const isFocused = navigation.isFocused();
   const tabBarHeight = useBottomTabBarHeight();
   const isFocusedRef = useRef(isFocused);
   const { user, addActiveChat, removeActiveChat } = useUser();

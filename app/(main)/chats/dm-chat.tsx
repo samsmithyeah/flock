@@ -20,8 +20,6 @@ import {
 import { useUser } from '@/context/UserContext';
 import { useDirectMessages } from '@/context/DirectMessagesContext';
 import { useCrews } from '@/context/CrewsContext';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { NavParamList } from '@/navigation/AppNavigator';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { generateDMConversationId } from '@/utils/chatHelpers';
 import {
@@ -34,29 +32,22 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  useIsFocused,
-  useNavigation,
-  NavigationProp,
-} from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { User } from '@/types/User';
 import ProfilePicturePicker from '@/components/ProfilePicturePicker';
 import { throttle } from 'lodash';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-type DMChatScreenProps = NativeStackScreenProps<NavParamList, 'DMChat'>;
-type RouteParams = { otherUserId: string };
+import { useLocalSearchParams, useNavigation } from 'expo-router';
 
 const TYPING_TIMEOUT = 1000;
 
-const DMChatScreen: React.FC<DMChatScreenProps> = ({ route }) => {
-  const { otherUserId } = route.params as RouteParams;
-  const navigation = useNavigation<NavigationProp<NavParamList>>();
+const DMChatScreen: React.FC = () => {
+  const { otherUserId } = useLocalSearchParams<{ otherUserId: string }>();
+  const navigation = useNavigation();
   const { sendMessage, updateLastRead, messages, listenToDMMessages } =
     useDirectMessages();
   const { usersCache, setUsersCache, fetchUserDetails } = useCrews();
-  const isFocused = useIsFocused();
+  const isFocused = navigation.isFocused();
   const tabBarHeight = useBottomTabBarHeight();
   const isFocusedRef = useRef(isFocused);
   const { user, addActiveChat, removeActiveChat } = useUser();

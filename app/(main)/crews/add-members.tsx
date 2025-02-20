@@ -1,8 +1,7 @@
 // screens/AddMembersScreen.tsx
 
-import React, { useEffect, useState, useMemo, useLayoutEffect } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { useRoute, RouteProp } from '@react-navigation/native';
 import {
   collection,
   query,
@@ -22,26 +21,18 @@ import CustomSearchInput from '@/components/CustomSearchInput';
 import CustomButton from '@/components/CustomButton';
 import CustomModal from '@/components/CustomModal';
 import CustomTextInput from '@/components/CustomTextInput';
-import { NavParamList } from '@/navigation/AppNavigator';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import Toast from 'react-native-toast-message';
 import { useContacts } from '@/context/ContactsContext';
+import { useLocalSearchParams, useNavigation, router } from 'expo-router';
 
 interface MemberWithStatus extends User {
   status?: 'member' | 'invited' | 'available';
 }
 
-type AddMembersScreenRouteProp = NativeStackScreenProps<
-  NavParamList,
-  'AddMembers'
->;
-
-const AddMembersScreen: React.FC<AddMembersScreenRouteProp> = ({
-  navigation,
-}) => {
-  const route = useRoute<RouteProp<NavParamList, 'AddMembers'>>();
-  const { crewId } = route.params;
+const AddMembersScreen: React.FC = () => {
+  const navigation = useNavigation();
+  const { crewId } = useLocalSearchParams<{ crewId: string }>();
   const { user } = useUser();
 
   const { allContacts, loading: contactsLoading } = useContacts();
@@ -122,7 +113,7 @@ const AddMembersScreen: React.FC<AddMembersScreenRouteProp> = ({
   }, [crewId, user, allContacts]);
 
   // Set up the navigation header with an "Invite" button
-  useLayoutEffect(() => {
+  useEffect(() => {
     navigation.setOptions({
       headerRight: () => (
         <TouchableOpacity
@@ -130,7 +121,6 @@ const AddMembersScreen: React.FC<AddMembersScreenRouteProp> = ({
           disabled={selectedMemberIds.length === 0}
           accessibilityLabel="Invite Selected Members to Crew"
           accessibilityHint="Invites the selected members to the crew"
-          style={{ marginRight: 16 }}
         >
           <Text
             style={{
@@ -142,7 +132,17 @@ const AddMembersScreen: React.FC<AddMembersScreenRouteProp> = ({
           </Text>
         </TouchableOpacity>
       ),
+      headerLeft: () => (
+        <TouchableOpacity
+          onPress={() => router.back()}
+          accessibilityLabel="Go Back"
+          accessibilityHint="Navigates back to the previous screen"
+        >
+          <Text style={{ color: '#1e90ff', fontSize: 16 }}>Cancel</Text>
+        </TouchableOpacity>
+      ),
       title: 'Add members',
+      presentation: 'modal',
     });
   }, [navigation, selectedMemberIds]);
 
@@ -159,10 +159,16 @@ const AddMembersScreen: React.FC<AddMembersScreenRouteProp> = ({
   // Function to navigate to OtherUserProfileScreen
   const navigateToUserProfile = (selectedUser: User | MemberWithStatus) => {
     if (selectedUser.uid === user?.uid) {
-      navigation.navigate('UserProfile', { userId: user.uid });
+      router.push({
+        pathname: '/profile',
+        params: { userId: user.uid },
+      });
       return;
     }
-    navigation.navigate('OtherUserProfile', { userId: selectedUser.uid });
+    router.push({
+      pathname: '/contacts/other-user-profile',
+      params: { userId: selectedUser.uid },
+    });
   };
 
   // Handle adding selected members to the crew
@@ -223,7 +229,10 @@ const AddMembersScreen: React.FC<AddMembersScreenRouteProp> = ({
         text1: 'Success',
         text2: successMessage(),
       });
-      navigation.navigate('Crew', { crewId });
+      router.push({
+        pathname: '/crews/[crewId]',
+        params: { crewId },
+      });
     } catch (error) {
       console.error('Error adding members:', error);
       Toast.show({
@@ -340,7 +349,7 @@ const AddMembersScreen: React.FC<AddMembersScreenRouteProp> = ({
         text2: 'Invitation sent successfully',
       });
       closeEmailModal();
-      navigation.goBack();
+      router.back();
     } catch (error) {
       console.error('Error adding member by email:', error);
       Toast.show({

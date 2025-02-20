@@ -1,4 +1,4 @@
-// screens/LoginScreen.tsx
+// // app/(auth)/login.tsx
 
 import React, { useState } from 'react';
 import {
@@ -11,12 +11,10 @@ import {
   Keyboard,
 } from 'react-native';
 import { auth, db } from '@/firebase';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import * as WebBrowser from 'expo-web-browser';
 import { Image } from 'expo-image';
 import GoogleLoginButton from '@/components/GoogleLoginButton';
-import { NavParamList } from '@/navigation/AppNavigator';
 import { useUser } from '@/context/UserContext';
 import CustomButton from '@/components/CustomButton';
 import CustomTextInput from '@/components/CustomTextInput';
@@ -25,8 +23,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { User } from '@/types/User';
 import { FirebaseError } from 'firebase/app';
 import { registerForPushNotificationsAsync } from '@/utils/AddUserToFirestore';
-
-type LoginScreenProps = NativeStackScreenProps<NavParamList, 'Login'>;
+import { router } from 'expo-router';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -34,7 +31,7 @@ const { height } = Dimensions.get('window');
 const BASE_HEIGHT = 852;
 const vs = (size: number) => (height / BASE_HEIGHT) * size;
 
-const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
+const LoginScreen: React.FC = () => {
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
@@ -74,7 +71,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
         if (!userData.phoneNumber) {
           // Redirect to PhoneVerificationScreen
-          navigation.replace('PhoneVerification', { uid: thisUser.uid });
+          router.push({
+            pathname: '/phone-verification',
+            params: { uid: thisUser.uid },
+          });
         } else {
           // Proceed to main app
           setUser(userData);
@@ -157,7 +157,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
           <TouchableOpacity
             style={styles.forgotPasswordContainer}
-            onPress={() => navigation.navigate('ForgotPassword')}
+            onPress={() => router.push('/forgot-password')}
           >
             <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
           </TouchableOpacity>
@@ -181,7 +181,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
           <TouchableOpacity
             style={styles.signupContainer}
-            onPress={() => navigation.navigate('SignUp')}
+            onPress={() => router.push('/sign-up')}
           >
             <Text style={styles.signupText}>Don't have an account? </Text>
             <Text style={styles.signupLink}>Sign up</Text>

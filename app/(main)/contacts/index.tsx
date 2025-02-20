@@ -1,25 +1,20 @@
-// src/screens/ContactsScreen.tsx
+// app/(main)/contacts/index.tsx
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useContacts } from '@/context/ContactsContext';
 import MemberList from '@/components/MemberList';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { NavParamList } from '@/navigation/AppNavigator';
 import { User } from '@/types/User';
 import ScreenTitle from '@/components/ScreenTitle';
 import useglobalStyles from '@/styles/globalStyles';
 import CustomSearchInput from '@/components/CustomSearchInput';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { Ionicons } from '@expo/vector-icons';
-
-type ContactsScreenProp = NativeStackNavigationProp<NavParamList, 'Contacts'>;
+import { router } from 'expo-router';
 
 const ContactsScreen: React.FC = () => {
   const { allContacts, loading, error, refreshContacts } = useContacts();
   const globalStyles = useglobalStyles();
-  const navigation = useNavigation<ContactsScreenProp>();
 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
@@ -39,7 +34,10 @@ const ContactsScreen: React.FC = () => {
   }, [searchQuery, allContacts]);
 
   const handleContactPress = (contact: User) => {
-    navigation.navigate('OtherUserProfile', { userId: contact.uid });
+    router.push({
+      pathname: '/contacts/other-user-profile',
+      params: { userId: contact.uid },
+    });
   };
 
   const renderEmptyState = () => (
