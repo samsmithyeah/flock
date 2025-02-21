@@ -42,35 +42,47 @@ export default function GlobalSetup() {
         switch (screen) {
           case 'Crew':
             if (crewId) {
-              router.push({
-                pathname: '/(main)/crews/[crewId]',
-                params: { crewId, ...(date ? { date } : {}) },
-              });
+              router.push(
+                {
+                  pathname: '/(main)/crews/[crewId]',
+                  params: { crewId, ...(date ? { date } : {}) },
+                },
+                { withAnchor: true },
+              );
             }
             break;
           case 'CrewDateChat':
             if (chatId) {
               const [crewId, chatDate] = chatId.split('_');
-              router.push({
-                pathname: '/(main)/chats/crew-date-chat',
-                params: { id: chatId, crewId, date: chatDate },
-              });
+              router.push(
+                {
+                  pathname: '/(main)/chats/crew-date-chat',
+                  params: { id: chatId, crewId, date: chatDate },
+                },
+                { withAnchor: true },
+              );
             }
             break;
           case 'DMChat':
             if (senderId) {
-              router.push({
-                pathname: '/(main)/chats/dm-chat',
-                params: { otherUserId: senderId },
-              });
+              router.push(
+                {
+                  pathname: '/(main)/chats/dm-chat',
+                  params: { otherUserId: senderId },
+                },
+                { withAnchor: true },
+              );
             }
             break;
           case 'OtherUserProfile':
             if (userId) {
-              router.push({
-                pathname: '/(main)/contacts/other-user-profile',
-                params: { userId },
-              });
+              router.push(
+                {
+                  pathname: '/(main)/contacts/other-user-profile',
+                  params: { userId },
+                },
+                { withAnchor: true },
+              );
             }
             break;
           default:

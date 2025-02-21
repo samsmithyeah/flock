@@ -38,6 +38,7 @@ import ProfilePicturePicker from '@/components/ProfilePicturePicker';
 import { throttle } from 'lodash';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
+import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 
 const TYPING_TIMEOUT = 1000;
 
@@ -47,9 +48,8 @@ const DMChatScreen: React.FC = () => {
   const { sendMessage, updateLastRead, messages, listenToDMMessages } =
     useDirectMessages();
   const { usersCache, setUsersCache, fetchUserDetails } = useCrews();
-  const isFocused = navigation.isFocused();
+  const isFocused = useIsFocused();
   const tabBarHeight = useBottomTabBarHeight();
-  const isFocusedRef = useRef(isFocused);
   const { user, addActiveChat, removeActiveChat } = useUser();
   const [otherUser, setOtherUser] = useState<User | null>(null);
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
@@ -60,10 +60,6 @@ const DMChatScreen: React.FC = () => {
     if (!user?.uid || !otherUserId) return '';
     return generateDMConversationId(user.uid, otherUserId);
   }, [user?.uid, otherUserId]);
-
-  useEffect(() => {
-    isFocusedRef.current = isFocused;
-  }, [isFocused]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -96,7 +92,7 @@ const DMChatScreen: React.FC = () => {
     if (usersCache[otherUserId]) {
       setOtherUser(usersCache[otherUserId]);
     } else {
-      console.log('Fetching user details from dmchatscreen for', otherUserId);
+      console.log('Fetching user details from DMChatScreen for', otherUserId);
       fetchUserDetails(otherUserId).then((user) => {
         setOtherUser(user);
       });
@@ -212,21 +208,22 @@ const DMChatScreen: React.FC = () => {
     [conversationId, sendMessage, updateTypingStatus, updateLastRead],
   );
 
-  useEffect(() => {
-    if (isFocused && conversationId) {
-      updateLastRead(conversationId);
-      addActiveChat(conversationId);
-    } else if (!isFocused && conversationId) {
-      removeActiveChat(conversationId);
-    }
-  }, [
-    isFocused,
-    conversationId,
-    updateLastRead,
-    addActiveChat,
-    removeActiveChat,
-  ]);
+  // Manage active chat state when screen gains/loses focus.
+  useFocusEffect(
+    useCallback(() => {
+      if (conversationId) {
+        updateLastRead(conversationId);
+        addActiveChat(conversationId);
+      }
+      return () => {
+        if (conversationId) {
+          removeActiveChat(conversationId);
+        }
+      };
+    }, [conversationId, updateLastRead, addActiveChat, removeActiveChat]),
+  );
 
+  // Handle AppState changes.
   const appState = useRef<AppStateStatus>(AppState.currentState);
   useEffect(() => {
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
@@ -239,8 +236,7 @@ const DMChatScreen: React.FC = () => {
         appState.current.match(/inactive|background/) &&
         nextAppState === 'active'
       ) {
-        if (isFocusedRef.current && conversationId)
-          addActiveChat(conversationId);
+        if (isFocused && conversationId) addActiveChat(conversationId);
       }
       appState.current = nextAppState;
     };
@@ -249,7 +245,7 @@ const DMChatScreen: React.FC = () => {
       handleAppStateChange,
     );
     return () => subscription.remove();
-  }, [conversationId, addActiveChat, removeActiveChat]);
+  }, [conversationId, isFocused, addActiveChat, removeActiveChat]);
 
   const renderAvatar = useCallback(() => {
     return (
@@ -263,7 +259,6 @@ const DMChatScreen: React.FC = () => {
     );
   }, [otherUser]);
 
-  // Custom input toolbar styled to resemble iOS.
   const renderInputToolbar = (props: any) => (
     <InputToolbar {...props} containerStyle={styles.inputToolbarContainer} />
   );

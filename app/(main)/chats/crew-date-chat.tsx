@@ -41,6 +41,7 @@ import { throttle } from 'lodash';
 import moment from 'moment';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
+import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 
 const TYPING_TIMEOUT = 1000;
 
@@ -55,9 +56,8 @@ const CrewDateChatScreen: React.FC = () => {
   const { sendMessage, updateLastRead, messages, listenToMessages } =
     useCrewDateChat();
   const { crews, usersCache, setUsersCache } = useCrews();
-  const isFocused = navigation.isFocused();
+  const isFocused = useIsFocused();
   const tabBarHeight = useBottomTabBarHeight();
-  const isFocusedRef = useRef(isFocused);
   const { user, addActiveChat, removeActiveChat } = useUser();
   const [otherMembers, setOtherMembers] = useState<User[]>([]);
   const [crew, setCrew] = useState<{ name: string; iconUrl?: string } | null>(
@@ -66,10 +66,6 @@ const CrewDateChatScreen: React.FC = () => {
   const [otherUsersTyping, setOtherUsersTyping] = useState<{
     [key: string]: boolean;
   }>({});
-
-  useEffect(() => {
-    isFocusedRef.current = isFocused;
-  }, [isFocused]);
 
   const chatId = useMemo(() => {
     if (id) return id;
@@ -278,11 +274,8 @@ const CrewDateChatScreen: React.FC = () => {
               if (isTyping && lastUpdate) {
                 const now = Date.now();
                 const lastUpdateMillis = (lastUpdate as Timestamp).toMillis();
-                if (now - lastUpdateMillis < TYPING_TIMEOUT) {
-                  updatedTypingStatus[uid] = true;
-                } else {
-                  updatedTypingStatus[uid] = false;
-                }
+                updatedTypingStatus[uid] =
+                  now - lastUpdateMillis < TYPING_TIMEOUT;
               } else {
                 updatedTypingStatus[uid] = false;
               }
@@ -317,15 +310,22 @@ const CrewDateChatScreen: React.FC = () => {
     [chatId, sendMessage, updateTypingStatus, updateLastRead],
   );
 
-  useEffect(() => {
-    if (isFocused && chatId) {
-      updateLastRead(chatId);
-      addActiveChat(chatId);
-    } else if (!isFocused && chatId) {
-      removeActiveChat(chatId);
-    }
-  }, [isFocused, chatId, updateLastRead, addActiveChat, removeActiveChat]);
+  // Manage active chat state when screen gains/loses focus.
+  useFocusEffect(
+    useCallback(() => {
+      if (chatId) {
+        updateLastRead(chatId);
+        addActiveChat(chatId);
+      }
+      return () => {
+        if (chatId) {
+          removeActiveChat(chatId);
+        }
+      };
+    }, [chatId, updateLastRead, addActiveChat, removeActiveChat]),
+  );
 
+  // Handle AppState changes.
   const appState = useRef<AppStateStatus>(AppState.currentState);
   useEffect(() => {
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
@@ -338,7 +338,7 @@ const CrewDateChatScreen: React.FC = () => {
         appState.current.match(/inactive|background/) &&
         nextAppState === 'active'
       ) {
-        if (isFocusedRef.current && chatId) addActiveChat(chatId);
+        if (isFocused && chatId) addActiveChat(chatId);
       }
       appState.current = nextAppState;
     };
@@ -347,7 +347,7 @@ const CrewDateChatScreen: React.FC = () => {
       handleAppStateChange,
     );
     return () => subscription.remove();
-  }, [chatId, addActiveChat, removeActiveChat]);
+  }, [chatId, isFocused, addActiveChat, removeActiveChat]);
 
   const typingUserIds = useMemo(
     () => Object.keys(otherUsersTyping).filter((uid) => otherUsersTyping[uid]),
