@@ -539,24 +539,33 @@ const CrewScreen: React.FC = () => {
   };
 
   const navigateToDayChat = (day: string) => {
-    router.push({
-      pathname: '/chats/crew-date-chat',
-      params: { crewId, date: day },
-    });
+    router.push(
+      {
+        pathname: '/chats/crew-date-chat',
+        params: { crewId, date: day },
+      },
+      { withAnchor: true },
+    );
   };
 
   const navigateToUserProfile = (selectedUser: User) => {
     if (!user) return;
     if (selectedUser.uid === user.uid) {
-      router.push({
-        pathname: '/profile',
-        params: { userId: user.uid },
-      });
+      router.push(
+        {
+          pathname: '/profile',
+          params: { userId: user.uid },
+        },
+        { withAnchor: true },
+      );
     } else {
-      router.push({
-        pathname: '/contacts/other-user-profile',
-        params: { userId: selectedUser.uid },
-      });
+      router.push(
+        {
+          pathname: '/contacts/other-user-profile',
+          params: { userId: selectedUser.uid },
+        },
+        { withAnchor: true },
+      );
     }
   };
 

@@ -114,13 +114,15 @@ const OtherUserProfileScreen: React.FC = () => {
         <CustomButton
           title={`Send a message to ${userProfile.displayName}`}
           onPress={() =>
-            router.push({
-              pathname: '/chats/dm-chat',
-
-              params: {
-                otherUserId: userProfile.uid,
+            router.push(
+              {
+                pathname: '/chats/dm-chat',
+                params: {
+                  otherUserId: userProfile.uid,
+                },
               },
-            })
+              { withAnchor: true },
+            )
           }
           icon={{
             name: 'chatbubble-ellipses-outline',

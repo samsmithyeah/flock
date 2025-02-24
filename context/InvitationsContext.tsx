@@ -230,7 +230,7 @@ export const InvitationsProvider: React.FC<InvitationsProviderProps> = ({
         text1: 'Invitation accepted',
         text2: `You have joined ${invitation.crew?.name}`,
       });
-      router.push(`/crews/${invitation.crewId}`);
+      router.push(`/crews/${invitation.crewId}`, { withAnchor: true });
     } catch (error) {
       console.error('Error accepting invitation:', error);
       Toast.show({

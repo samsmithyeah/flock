@@ -295,19 +295,24 @@ const CrewSettingsScreen: React.FC = () => {
     );
   };
 
-  // Function to navigate to OtherUserProfileScreen
   const navigateToUserProfile = (selectedUser: User) => {
     if (selectedUser.uid === user?.uid) {
-      router.push({
-        pathname: '/profile',
-        params: { userId: user.uid },
-      });
+      router.push(
+        {
+          pathname: '/profile',
+          params: { userId: user.uid },
+        },
+        { withAnchor: true },
+      );
       return;
     }
-    router.push({
-      pathname: '/contacts/other-user-profile',
-      params: { userId: selectedUser.uid },
-    });
+    router.push(
+      {
+        pathname: '/contacts/other-user-profile',
+        params: { userId: selectedUser.uid },
+      },
+      { withAnchor: true },
+    );
   };
 
   // Function to handle crew name update

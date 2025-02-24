@@ -93,10 +93,13 @@ const DashboardScreen: React.FC = () => {
       text1: 'Success',
       text2: 'Crew created successfully',
     });
-    router.push({
-      pathname: '/crews/add-members',
-      params: { crewId },
-    });
+    router.push(
+      {
+        pathname: '/crews/add-members',
+        params: { crewId },
+      },
+      { withAnchor: true },
+    );
   };
 
   const renderDayItem = ({ item }: { item: string }) => {
