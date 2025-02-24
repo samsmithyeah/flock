@@ -1,4 +1,4 @@
-// screens/CrewsListScreen.tsx
+// app/(main)/crews/index.tsx
 
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
@@ -8,10 +8,7 @@ import ScreenTitle from '@/components/ScreenTitle';
 import CrewList from '@/components/CrewList';
 import CreateCrewModal from '@/components/CreateCrewModal';
 import { Crew } from '@/types/Crew';
-import { User } from '@/types/User';
 import CustomSearchInput from '@/components/CustomSearchInput';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/firebase';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import Toast from 'react-native-toast-message';
 import Icon from '@expo/vector-icons/MaterialIcons';
@@ -20,7 +17,7 @@ import { useUser } from '@/context/UserContext';
 import { router } from 'expo-router';
 
 const CrewsListScreen: React.FC = () => {
-  const { crews, usersCache, setUsersCache, loadingCrews, loadingStatuses } =
+  const { crews, usersCache, loadingCrews, loadingStatuses, subscribeToUsers } =
     useCrews();
   const { user, updateCrewOrder } = useUser();
   const globalStyles = useGlobalStyles();
@@ -63,68 +60,36 @@ const CrewsListScreen: React.FC = () => {
     }
   }, [crews, user?.crewOrder]);
 
-  // Fetch user data for crew members
+  // Subscribe to all crew members
   useEffect(() => {
-    if (!crews || crews.length === 0) return;
+    if (!crews?.length) return;
 
-    // Collect all unique memberIds from the crews
-    const allMemberIds = crews.reduce<string[]>(
-      (acc, crew) => acc.concat(crew.memberIds),
-      [],
-    );
-    const uniqueMemberIds = Array.from(new Set(allMemberIds));
+    const memberIds = new Set<string>();
+    crews.forEach((crew) => {
+      crew.memberIds.forEach((id) => memberIds.add(id));
+    });
 
-    // Determine which memberIds are not in the cache
-    const memberIdsToFetch = uniqueMemberIds.filter((uid) => !usersCache[uid]);
+    setIsLoadingUsers(true);
 
-    if (memberIdsToFetch.length > 0) {
-      setIsLoadingUsers(true);
-      const fetchUsers = async () => {
-        try {
-          const userPromises = memberIdsToFetch.map(async (uid) => {
-            const userDoc = await getDoc(doc(db, 'users', uid));
-            if (userDoc.exists()) {
-              return {
-                uid: userDoc.id,
-                ...(userDoc.data() as Omit<User, 'uid'>),
-              } as User;
-            }
-            // Handle case where user document doesn't exist
-            return {
-              uid,
-              displayName: 'Unknown User',
-              email: '',
-              firstName: 'Unknown', // Assuming these fields
-              lastName: '',
-              photoURL: '',
-            } as User;
-          });
+    (async () => {
+      try {
+        await subscribeToUsers(Array.from(memberIds));
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setIsLoadingUsers(false);
+      }
+    })();
+  }, [crews, subscribeToUsers]);
 
-          const usersData = await Promise.all(userPromises);
-
-          // Update the users cache
-          setUsersCache((prevCache) => {
-            const newCache = { ...prevCache };
-            usersData.forEach((userData) => {
-              newCache[userData.uid] = userData;
-            });
-            return newCache;
-          });
-        } catch (error) {
-          console.error('Error fetching user data:', error);
-          Toast.show({
-            type: 'error',
-            text1: 'Error',
-            text2: 'Could not fetch user data',
-          });
-        } finally {
-          setIsLoadingUsers(false);
-        }
-      };
-
-      fetchUsers();
-    }
-  }, [crews, usersCache, setUsersCache]);
+  useEffect(() => {
+    setFilteredCrews((prevFiltered) => {
+      if (searchQuery.trim() === '') {
+        return [...orderedCrews];
+      }
+      return [...prevFiltered];
+    });
+  }, [usersCache, orderedCrews, searchQuery]);
 
   const handleOrderChange = (newOrder: Crew[]) => {
     setOrderedCrews(newOrder);
