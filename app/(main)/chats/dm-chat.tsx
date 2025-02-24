@@ -1,4 +1,4 @@
-// screens/DMChatScreen.tsx
+// app/(main)/chats/dm-chat.tsx
 
 import React, {
   useEffect,
@@ -47,7 +47,7 @@ const DMChatScreen: React.FC = () => {
   const navigation = useNavigation();
   const { sendMessage, updateLastRead, messages, listenToDMMessages } =
     useDirectMessages();
-  const { usersCache, setUsersCache, fetchUserDetails } = useCrews();
+  const { usersCache, fetchUserDetails } = useCrews();
   const isFocused = useIsFocused();
   const tabBarHeight = useBottomTabBarHeight();
   const { user, addActiveChat, removeActiveChat } = useUser();
@@ -61,6 +61,7 @@ const DMChatScreen: React.FC = () => {
     return generateDMConversationId(user.uid, otherUserId);
   }, [user?.uid, otherUserId]);
 
+  // Listen for typing status updates.
   useEffect(() => {
     if (!conversationId) return;
     const convoRef = doc(db, 'direct_messages', conversationId);
@@ -88,17 +89,19 @@ const DMChatScreen: React.FC = () => {
     return () => unsubscribe();
   }, [conversationId, otherUserId]);
 
+  // Fetch details for the other user.
   useEffect(() => {
     if (usersCache[otherUserId]) {
       setOtherUser(usersCache[otherUserId]);
     } else {
       console.log('Fetching user details from DMChatScreen for', otherUserId);
-      fetchUserDetails(otherUserId).then((user) => {
-        setOtherUser(user);
+      fetchUserDetails(otherUserId).then((userData) => {
+        setOtherUser(userData);
       });
     }
-  }, [otherUserId, usersCache, setUsersCache, fetchUserDetails]);
+  }, [otherUserId, usersCache, fetchUserDetails]);
 
+  // Set navigation options.
   useLayoutEffect(() => {
     if (otherUser) {
       navigation.setOptions({
@@ -108,7 +111,10 @@ const DMChatScreen: React.FC = () => {
     }
   }, [navigation, otherUser, insets.top]);
 
-  let typingTimeout: NodeJS.Timeout;
+  // Use a ref for the typing timeout to ensure proper cleanup.
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Throttled function to update typing status.
   const updateTypingStatus = useMemo(
     () =>
       throttle(async (isTyping: boolean) => {
@@ -147,12 +153,16 @@ const DMChatScreen: React.FC = () => {
       const isTyping = text.length > 0;
       updateTypingStatus(isTyping);
       if (isTyping) {
-        if (typingTimeout) clearTimeout(typingTimeout);
-        typingTimeout = setTimeout(() => {
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(() => {
           updateTypingStatus(false);
+          typingTimeoutRef.current = null;
         }, TYPING_TIMEOUT);
       } else {
-        if (typingTimeout) clearTimeout(typingTimeout);
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = null;
+        }
       }
     },
     [updateTypingStatus],
@@ -182,13 +192,7 @@ const DMChatScreen: React.FC = () => {
         },
       }))
       .reverse();
-  }, [
-    conversationMessages,
-    user?.uid,
-    user?.displayName,
-    user?.photoURL,
-    otherUser,
-  ]);
+  }, [conversationMessages, user, otherUser]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -208,7 +212,7 @@ const DMChatScreen: React.FC = () => {
     [conversationId, sendMessage, updateTypingStatus, updateLastRead],
   );
 
-  // Manage active chat state when screen gains/loses focus.
+  // Manage active chat state using focus.
   useFocusEffect(
     useCallback(() => {
       if (conversationId) {
@@ -216,36 +220,50 @@ const DMChatScreen: React.FC = () => {
         addActiveChat(conversationId);
       }
       return () => {
-        if (conversationId) {
-          removeActiveChat(conversationId);
-        }
+        if (conversationId) removeActiveChat(conversationId);
       };
     }, [conversationId, updateLastRead, addActiveChat, removeActiveChat]),
   );
 
-  // Handle AppState changes.
-  const appState = useRef<AppStateStatus>(AppState.currentState);
+  // Handle AppState changes:
+  // Remove active chat when the app goes to background,
+  // and re-add it when returning to active if the screen is focused.
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   useEffect(() => {
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      const prevAppState = appStateRef.current;
       if (
-        appState.current.match(/active/) &&
-        nextAppState.match(/inactive|background/)
+        prevAppState === 'active' &&
+        (nextAppState === 'inactive' || nextAppState === 'background')
       ) {
         if (conversationId) removeActiveChat(conversationId);
-      } else if (
-        appState.current.match(/inactive|background/) &&
+      }
+      if (
+        (prevAppState === 'inactive' || prevAppState === 'background') &&
         nextAppState === 'active'
       ) {
-        if (isFocused && conversationId) addActiveChat(conversationId);
+        if (isFocused && conversationId) {
+          addActiveChat(conversationId);
+          updateLastRead(conversationId);
+        }
       }
-      appState.current = nextAppState;
+      appStateRef.current = nextAppState;
     };
+
     const subscription = AppState.addEventListener(
       'change',
       handleAppStateChange,
     );
-    return () => subscription.remove();
-  }, [conversationId, isFocused, addActiveChat, removeActiveChat]);
+    return () => {
+      subscription.remove();
+    };
+  }, [
+    conversationId,
+    isFocused,
+    addActiveChat,
+    removeActiveChat,
+    updateLastRead,
+  ]);
 
   const renderAvatar = useCallback(() => {
     return (
@@ -268,7 +286,7 @@ const DMChatScreen: React.FC = () => {
     <View style={styles.container}>
       <GiftedChat
         messages={giftedChatMessages}
-        onSend={(messages) => onSend(messages)}
+        onSend={onSend}
         user={{
           _id: user?.uid || '',
           name: user?.displayName || 'You',

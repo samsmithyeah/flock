@@ -87,15 +87,23 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
       if (!user?.uid) return;
       const userDocRef = doc(db, 'users', user.uid);
       if (nextAppState === 'active') {
-        await updateDoc(userDocRef, {
-          isOnline: true,
-          lastSeen: serverTimestamp(),
-        });
+        try {
+          await updateDoc(userDocRef, {
+            isOnline: true,
+            lastSeen: serverTimestamp(),
+          });
+        } catch (error) {
+          console.error('Error updating user online status:', error);
+        }
       } else {
-        await updateDoc(userDocRef, {
-          isOnline: false,
-          lastSeen: serverTimestamp(),
-        });
+        try {
+          await updateDoc(userDocRef, {
+            isOnline: false,
+            lastSeen: serverTimestamp(),
+          });
+        } catch (error) {
+          console.error('Error updating user online status:', error);
+        }
       }
     };
 
