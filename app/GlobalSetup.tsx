@@ -85,6 +85,9 @@ export default function GlobalSetup() {
               );
             }
             break;
+          case 'Invitations':
+            router.push('/(main)/invitations');
+            break;
           default:
             console.warn(
               `Unknown screen "${screen}" received in notification.`,

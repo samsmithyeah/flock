@@ -141,8 +141,6 @@ const AddMembersScreen: React.FC = () => {
           <Text style={{ color: '#1e90ff', fontSize: 16 }}>Cancel</Text>
         </TouchableOpacity>
       ),
-      title: 'Add members',
-      presentation: 'modal',
     });
   }, [navigation, selectedMemberIds]);
 
@@ -229,7 +227,7 @@ const AddMembersScreen: React.FC = () => {
         text1: 'Success',
         text2: successMessage(),
       });
-      router.push({
+      router.replace({
         pathname: '/crews/[crewId]',
         params: { crewId },
       });
