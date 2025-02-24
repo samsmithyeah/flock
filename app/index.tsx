@@ -1,110 +1,19 @@
+// app/index.tsx
 import React from 'react';
-import { UserProvider } from '@/context/UserContext';
-import { CrewsProvider } from '@/context/CrewsContext';
-import { ContactsProvider } from '@/context/ContactsContext';
-import { InvitationsProvider } from '@/context/InvitationsContext';
-import { CrewDateChatProvider } from '@/context/CrewDateChatContext';
-import { DirectMessagesProvider } from '@/context/DirectMessagesContext';
-import { BadgeCountProvider } from '@/context/BadgeCountContext';
-import { registerRootComponent } from 'expo';
-import Toast, {
-  BaseToast,
-  ErrorToast,
-  InfoToast,
-  ToastProps,
-} from 'react-native-toast-message';
-import { LogBox, View, StyleSheet } from 'react-native';
-import App from './App';
+import { useRootNavigationState, Redirect } from 'expo-router';
+import { useUser } from '@/context/UserContext';
 
-LogBox.ignoreLogs([
-  'Sending `onAnimatedValueUpdate` with no listeners registered.',
-]);
+export default function Index() {
+  const { user } = useUser();
+  const rootNavigationState = useRootNavigationState();
 
-const toastConfig = {
-  success: (props: ToastProps) => (
-    <BaseToast
-      {...props}
-      text1Style={{
-        fontSize: 15,
-        fontWeight: '400',
-      }}
-      text2Style={{
-        fontSize: 13,
-      }}
-      style={{
-        borderLeftColor: '#008000',
-      }}
-    />
-  ),
+  // Wait until the navigation is fully initialized.
+  if (!rootNavigationState?.key) return null;
 
-  error: (props: ToastProps) => (
-    <ErrorToast
-      {...props}
-      text1Style={{
-        fontSize: 15,
-        fontWeight: '400',
-      }}
-      text2Style={{
-        fontSize: 13,
-      }}
-      style={{
-        borderLeftColor: '#FF0000',
-      }}
-    />
-  ),
-
-  info: (props: ToastProps) => (
-    <InfoToast
-      {...props}
-      text1Style={{
-        fontSize: 15,
-        fontWeight: '400',
-      }}
-      text2Style={{
-        fontSize: 13,
-      }}
-      style={{
-        borderLeftColor: '#FFA500',
-      }}
-    />
-  ),
-};
-
-const Root: React.FC = () => {
-  return (
-    <>
-      <UserProvider>
-        <ContactsProvider>
-          <CrewsProvider>
-            <InvitationsProvider>
-              <CrewDateChatProvider>
-                <DirectMessagesProvider>
-                  <BadgeCountProvider>
-                    <View style={styles.container}>
-                      <App />
-                    </View>
-                  </BadgeCountProvider>
-                </DirectMessagesProvider>
-              </CrewDateChatProvider>
-            </InvitationsProvider>
-          </CrewsProvider>
-        </ContactsProvider>
-      </UserProvider>
-      <Toast config={toastConfig} />
-    </>
+  // Redirect based on the auth state.
+  return user ? (
+    <Redirect href="/(main)/crews" />
+  ) : (
+    <Redirect href="/(auth)/login" />
   );
-};
-
-const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-});
-
-export default Root;
-
-registerRootComponent(App);
+}

@@ -14,6 +14,7 @@ import Toast from 'react-native-toast-message';
 import * as Notifications from 'expo-notifications';
 import { getIdTokenResult } from 'firebase/auth';
 import { User } from '@/types/User';
+import { router } from 'expo-router';
 
 interface UserContextType {
   user: User | null;
@@ -86,15 +87,23 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
       if (!user?.uid) return;
       const userDocRef = doc(db, 'users', user.uid);
       if (nextAppState === 'active') {
-        await updateDoc(userDocRef, {
-          isOnline: true,
-          lastSeen: serverTimestamp(),
-        });
+        try {
+          await updateDoc(userDocRef, {
+            isOnline: true,
+            lastSeen: serverTimestamp(),
+          });
+        } catch (error) {
+          console.error('Error updating user online status:', error);
+        }
       } else {
-        await updateDoc(userDocRef, {
-          isOnline: false,
-          lastSeen: serverTimestamp(),
-        });
+        try {
+          await updateDoc(userDocRef, {
+            isOnline: false,
+            lastSeen: serverTimestamp(),
+          });
+        } catch (error) {
+          console.error('Error updating user online status:', error);
+        }
       }
     };
 
@@ -190,7 +199,18 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
       setUser(null);
       await auth.signOut();
       setActiveChats(new Set());
+      Toast.show({
+        type: 'success',
+        text1: 'Logged out',
+        text2: 'You have successfully logged out',
+      });
+      router.replace('/(auth)/login');
     } catch (error) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to log out',
+      });
       console.error('Logout Error:', error);
       throw error;
     }

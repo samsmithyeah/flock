@@ -10,12 +10,10 @@ import {
 import CustomButton from '@/components/CustomButton';
 import Toast from 'react-native-toast-message';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { NavParamList } from '@/navigation/AppNavigator';
 import { User } from '@/types/User';
 import { doc, getDoc } from 'firebase/firestore';
 import { useUser } from '@/context/UserContext';
+import { router } from 'expo-router';
 
 GoogleSignin.configure({
   webClientId:
@@ -26,7 +24,6 @@ GoogleSignin.configure({
 const GoogleLoginButton: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const { setUser } = useUser();
-  const navigation = useNavigation<NativeStackNavigationProp<NavParamList>>();
 
   const handleGoogleSignIn = async () => {
     console.log('Google Sign In');
@@ -47,8 +44,9 @@ const GoogleLoginButton: React.FC = () => {
           await registerForPushNotificationsAsync(userData);
 
           if (!userData.phoneNumber) {
-            navigation.replace('PhoneVerification', {
-              uid: firebaseUser.uid,
+            router.push({
+              pathname: '/phone-verification',
+              params: { uid: firebaseUser.uid },
             });
           } else {
             setUser(userData);
@@ -71,8 +69,9 @@ const GoogleLoginButton: React.FC = () => {
             text1: 'Success',
             text2: 'Account created and logged in successfully!',
           });
-          navigation.replace('PhoneVerification', {
-            uid: firebaseUser.uid,
+          router.push({
+            pathname: '/phone-verification',
+            params: { uid: firebaseUser.uid },
           });
         }
       }

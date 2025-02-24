@@ -95,6 +95,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
   const [matchesNeedsRefresh, setMatchesNeedsRefresh] = useState(false);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [crewEventsMap, setCrewEventsMap] = useState<{
     [crewId: string]: { [date: string]: number };
   }>({});
@@ -146,27 +147,63 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     [user, setUsersCache],
   );
 
-  const subscribeToUsers = useCallback(
-    (uids: string[]) => {
-      try {
-        if (!Array.isArray(uids)) {
-          throw new Error('uids must be an array');
-        }
+  // Make sure new crews are subscribed to
+  const crewListenersRef = useRef<{ [crewId: string]: () => void }>({});
 
-        uids.forEach((uid) => {
+  useEffect(() => {
+    crewIds.forEach((crewId) => {
+      if (!crewListenersRef.current[crewId]) {
+        const crewRef = doc(db, 'crews', crewId);
+        const unsubCrew = onSnapshot(
+          crewRef,
+          (docSnap) => {
+            if (docSnap.exists()) {
+              const updatedCrew = {
+                id: docSnap.id,
+                ...(docSnap.data() as Omit<Crew, 'id'>),
+              } as Crew;
+              setCrews((prevCrews) => {
+                const idx = prevCrews.findIndex((c) => c.id === updatedCrew.id);
+                if (idx !== -1) {
+                  const newCrews = [...prevCrews];
+                  newCrews[idx] = updatedCrew;
+                  return newCrews;
+                }
+                return [...prevCrews, updatedCrew];
+              });
+            } else {
+              setCrews((prev) => prev.filter((c) => c.id !== crewId));
+              setCrewIds((prev) => prev.filter((id) => id !== crewId));
+            }
+          },
+          (error) => {
+            if (error.code === 'permission-denied') return;
+            console.error('Error in crew snapshot for crewId', crewId, error);
+          },
+        );
+        crewListenersRef.current[crewId] = unsubCrew;
+      }
+    });
+  }, [crewIds]);
+
+  const subscribeToUsers = useCallback(
+    async (uids: string[]) => {
+      if (!Array.isArray(uids)) {
+        throw new Error('uids must be an array');
+      }
+      await Promise.all(
+        uids.map(async (uid) => {
           if (typeof uid !== 'string') {
             console.warn('Invalid uid type, expected string:', uid);
             return;
           }
           try {
-            subscribeToUser(uid);
+            await subscribeToUser(uid);
           } catch (err) {
             console.error(`Error subscribing to user ${uid}:`, err);
           }
-        });
-      } catch (error) {
-        console.error('Error in subscribeToUsers:', error);
-      }
+        }),
+      );
     },
     [subscribeToUser],
   );
