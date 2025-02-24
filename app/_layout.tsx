@@ -48,6 +48,15 @@ const toastConfig = {
       style={{ borderLeftColor: '#FFA500' }}
     />
   ),
+  notification: (props: ToastProps) => (
+    <InfoToast
+      {...props}
+      text1Style={{ fontSize: 15, fontWeight: '400' }}
+      text2Style={{ fontSize: 13 }}
+      text2NumberOfLines={2}
+      style={{ borderLeftColor: '#9D00FF' }}
+    />
+  ),
 };
 
 function Providers({ children }: { children: ReactNode }) {

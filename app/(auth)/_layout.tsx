@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Slot, useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useUser } from '@/context/UserContext';
 
 export default function AuthLayout() {
@@ -13,5 +13,18 @@ export default function AuthLayout() {
     }
   }, [user, router]);
 
-  return <Slot />;
+  return (
+    <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
+      <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen name="sign-up" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="forgot-password"
+        options={{ title: 'Forgot password' }}
+      />
+      <Stack.Screen
+        name="phone-verification"
+        options={{ headerShown: false }}
+      />
+    </Stack>
+  );
 }
