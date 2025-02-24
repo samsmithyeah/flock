@@ -93,7 +93,7 @@ const DashboardScreen: React.FC = () => {
       text1: 'Success',
       text2: 'Crew created successfully',
     });
-    router.push(
+    router.replace(
       {
         pathname: '/crews/add-members',
         params: { crewId },
