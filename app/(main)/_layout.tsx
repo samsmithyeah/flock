@@ -44,6 +44,7 @@ export default function MainLayout() {
       <Tabs.Screen
         name="invitations"
         options={{
+          title: 'Invitations',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="mail-outline" size={size} color={color} />
           ),
@@ -73,7 +74,7 @@ export default function MainLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Your profile',
+          title: 'Profile',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person-outline" size={size} color={color} />
           ),
