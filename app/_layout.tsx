@@ -29,6 +29,7 @@ const toastConfig = {
       {...props}
       text1Style={{ fontSize: 15, fontWeight: '400' }}
       text2Style={{ fontSize: 13 }}
+      text2NumberOfLines={2}
       style={{ borderLeftColor: '#008000' }}
     />
   ),
@@ -37,6 +38,7 @@ const toastConfig = {
       {...props}
       text1Style={{ fontSize: 15, fontWeight: '400' }}
       text2Style={{ fontSize: 13 }}
+      text2NumberOfLines={2}
       style={{ borderLeftColor: '#FF0000' }}
     />
   ),
@@ -45,6 +47,7 @@ const toastConfig = {
       {...props}
       text1Style={{ fontSize: 15, fontWeight: '400' }}
       text2Style={{ fontSize: 13 }}
+      text2NumberOfLines={2}
       style={{ borderLeftColor: '#FFA500' }}
     />
   ),
