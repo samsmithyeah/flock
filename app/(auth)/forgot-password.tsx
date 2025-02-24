@@ -13,10 +13,9 @@ import { auth } from '@/firebase';
 import CustomButton from '@/components/CustomButton';
 import CustomTextInput from '@/components/CustomTextInput';
 import Colors from '@/styles/colors';
-import { router, useNavigation } from 'expo-router';
+import { router } from 'expo-router';
 
 const ForgotPasswordScreen: React.FC = () => {
-  const navigation = useNavigation();
   const [email, setEmail] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
