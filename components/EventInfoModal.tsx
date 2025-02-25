@@ -1,7 +1,7 @@
 // /components/EventInfoModal.tsx
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Alert } from 'react-native';
 import CustomModal from '@/components/CustomModal';
 import { getFormattedDate } from '@/utils/dateHelpers';
 import { CrewEvent } from '@/types/CrewEvent';
@@ -10,17 +10,20 @@ import { User } from '@/types/User';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { Ionicons } from '@expo/vector-icons';
+import CustomButton from '@/components/CustomButton';
 
 type EventInfoModalProps = {
   isVisible: boolean;
   onClose: () => void;
   event: CrewEvent;
+  onAddToCalendar?: () => void;
 };
 
 const EventInfoModal: React.FC<EventInfoModalProps> = ({
   isVisible,
   onClose,
   event,
+  onAddToCalendar,
 }) => {
   const { usersCache, setUsersCache } = useCrews();
   const [creatorName, setCreatorName] = useState<string>('');
@@ -30,7 +33,6 @@ const EventInfoModal: React.FC<EventInfoModalProps> = ({
       if (usersCache[uid]) {
         return usersCache[uid].displayName;
       }
-
       try {
         const userDoc = await getDoc(doc(db, 'users', uid));
         if (userDoc.exists()) {
@@ -41,7 +43,6 @@ const EventInfoModal: React.FC<EventInfoModalProps> = ({
             email: userData.email || '',
             photoURL: userData.photoURL || '',
           };
-          // Update usersCache
           setUsersCache((prev) => ({ ...prev, [uid]: fetchedUser }));
           return fetchedUser.displayName;
         } else {
@@ -55,6 +56,22 @@ const EventInfoModal: React.FC<EventInfoModalProps> = ({
 
     getCreatorName(event.createdBy).then(setCreatorName);
   }, [event.createdBy]);
+
+  const confirmAddToCalendar = () => {
+    Alert.alert(
+      'Add to calendar',
+      'Do you want to add this event to your calendar?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Yes',
+          onPress: () => {
+            if (onAddToCalendar) onAddToCalendar();
+          },
+        },
+      ],
+    );
+  };
 
   return (
     <CustomModal
@@ -73,7 +90,6 @@ const EventInfoModal: React.FC<EventInfoModalProps> = ({
       <Text style={styles.text}>{event.title}</Text>
 
       <Text style={styles.label}>Event date</Text>
-
       <View style={styles.dateContainer}>
         {event.startDate !== event.endDate ? (
           <>
@@ -98,6 +114,18 @@ const EventInfoModal: React.FC<EventInfoModalProps> = ({
       </Text>
       <Text style={styles.label}>Created by</Text>
       <Text style={styles.text}>{creatorName}</Text>
+
+      {onAddToCalendar && (
+        <CustomButton
+          title="Add to calendar"
+          onPress={confirmAddToCalendar}
+          variant="secondary"
+          accessibilityLabel="Add to Calendar"
+          accessibilityHint="Add the current event to your calendar"
+          icon={{ name: 'calendar-outline' }}
+          style={{ marginTop: 16 }}
+        />
+      )}
     </CustomModal>
   );
 };

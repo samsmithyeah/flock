@@ -42,6 +42,7 @@ import {
 } from '@/utils/addEventToCrew';
 import { CrewEvent } from '@/types/CrewEvent';
 import { useLocalSearchParams, useNavigation, router } from 'expo-router';
+import * as ExpoCalendar from 'expo-calendar';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.75;
@@ -487,6 +488,112 @@ const CrewScreen: React.FC = () => {
     }
   };
 
+  const handleAddToCalendar = async (event: CrewEvent) => {
+    console.log('[handleAddToCalendar] Requesting calendar permissions...');
+    const { status } = await ExpoCalendar.requestCalendarPermissionsAsync();
+    console.log('[handleAddToCalendar] Permission status:', status);
+    if (status !== 'granted') {
+      Toast.show({
+        text1: 'Cannot add event to calendar',
+        text2: 'Calendar permission not granted',
+        type: 'error',
+      });
+      return;
+    }
+
+    console.log('[handleAddToCalendar] Getting available calendars...');
+    const calendars = await ExpoCalendar.getCalendarsAsync(
+      ExpoCalendar.EntityTypes.EVENT,
+    );
+    console.log('[handleAddToCalendar] Calendars fetched:', calendars);
+
+    // Filter to calendars that allow modifications
+    const modifiableCalendars = calendars.filter(
+      (cal) => cal.allowsModifications,
+    );
+    if (!modifiableCalendars.length) {
+      console.log('[handleAddToCalendar] No modifiable calendars found');
+      Toast.show({
+        text1: 'Cannot add event to calendar',
+        text2: 'No modifiable calendar available',
+        type: 'error',
+      });
+      return;
+    }
+
+    let calendarIdToUse: string | null = null;
+
+    try {
+      console.log(
+        '[handleAddToCalendar] Attempting to get OS default calendar...',
+      );
+      // getDefaultCalendarAsync returns the default calendar (OS-selected) on iOS.
+      // On Android this may return the first calendar.
+      const osDefaultCalendar = await ExpoCalendar.getDefaultCalendarAsync();
+      console.log(
+        '[handleAddToCalendar] OS default calendar:',
+        osDefaultCalendar,
+      );
+      if (osDefaultCalendar && osDefaultCalendar.allowsModifications) {
+        calendarIdToUse = osDefaultCalendar.id;
+      } else {
+        console.log(
+          '[handleAddToCalendar] OS default calendar is not modifiable',
+        );
+      }
+    } catch (error) {
+      console.error(
+        '[handleAddToCalendar] Error getting OS default calendar:',
+        error,
+      );
+    }
+
+    if (!calendarIdToUse) {
+      // Fallback to the first modifiable calendar if OS default isn't available or modifiable.
+      calendarIdToUse = modifiableCalendars[0].id;
+      console.log(
+        '[handleAddToCalendar] Fallback: using first modifiable calendar:',
+        calendarIdToUse,
+      );
+    }
+
+    try {
+      const eventCreatorName = members.find(
+        (m) => m.uid === event.createdBy,
+      )?.displayName;
+      const eventDetails = {
+        title: `${event.title} with ${crew?.name || 'your crew'}`,
+        startDate: new Date(event.startDate),
+        endDate: new Date(event.endDate),
+        location: event.location,
+        notes: `Event created in Flock by ${eventCreatorName}`,
+        allDay: true,
+        alarms: [{ relativeOffset: -60 * 30 }],
+      };
+      console.log(
+        '[handleAddToCalendar] Creating event with details:',
+        eventDetails,
+      );
+      await ExpoCalendar.createEventAsync(calendarIdToUse, eventDetails);
+      console.log('[handleAddToCalendar] Event successfully created');
+      Toast.show({
+        text1: 'Success',
+        text2: 'Event added to your calendar',
+        type: 'success',
+      });
+    } catch (error) {
+      console.error(
+        '[handleAddToCalendar] Error adding event to calendar',
+        error,
+      );
+      Toast.show({
+        text1: 'Error',
+        text2: 'An error occurred while adding the event to your calendar',
+        type: 'error',
+      });
+    }
+  };
+
   const handlePokeCrew = async (day: string) => {
     if (!crewId || !day || !user?.uid) {
       Toast.show({
@@ -694,6 +801,9 @@ const CrewScreen: React.FC = () => {
         defaultLocation={editingEvent?.location}
         isEditing={!!editingEvent}
         onDelete={() => editingEvent?.id && handleDeleteEvent(editingEvent.id)}
+        onAddToCalendar={
+          editingEvent ? () => handleAddToCalendar(editingEvent) : undefined
+        }
       />
 
       {viewingEvent && (
@@ -701,6 +811,7 @@ const CrewScreen: React.FC = () => {
           isVisible={viewEventModalVisible}
           onClose={() => setViewEventModalVisible(false)}
           event={viewingEvent}
+          onAddToCalendar={() => handleAddToCalendar(viewingEvent)}
         />
       )}
 

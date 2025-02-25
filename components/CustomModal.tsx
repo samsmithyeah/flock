@@ -12,6 +12,7 @@ import {
 import CustomButton from './CustomButton';
 import Colors from '@/styles/colors';
 import SpinLoader from './SpinLoader';
+import Toast from 'react-native-toast-message';
 
 type ButtonProps = {
   label: string;
@@ -77,6 +78,7 @@ const CustomModal: React.FC<CustomModalProps> = ({
           </TouchableWithoutFeedback>
         </View>
       </TouchableWithoutFeedback>
+      <Toast />
     </Modal>
   );
 };

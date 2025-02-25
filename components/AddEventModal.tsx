@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Modal,
   Switch,
+  Alert,
 } from 'react-native';
 import moment from 'moment';
 import { Calendar } from 'react-native-calendars';
@@ -27,7 +28,7 @@ type AddEventModalProps = {
     unconfirmed: boolean,
     location: string,
   ) => void;
-  onDelete?: () => void;
+  onDelete: () => void;
   defaultStart?: string;
   defaultEnd?: string;
   defaultTitle?: string;
@@ -35,6 +36,7 @@ type AddEventModalProps = {
   loading?: boolean;
   defaultUnconfirmed?: boolean;
   defaultLocation?: string;
+  onAddToCalendar?: () => void;
 };
 
 const AddEventModal: React.FC<AddEventModalProps> = ({
@@ -49,6 +51,7 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
   loading = false,
   defaultUnconfirmed = true,
   defaultLocation = '',
+  onAddToCalendar,
 }) => {
   const initialDate = defaultStart || moment().format('YYYY-MM-DD');
   const initialEndDate = defaultEnd || initialDate;
@@ -64,14 +67,9 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
     end: initialEndDate,
   });
   const [isCalendarVisible, setIsCalendarVisible] = useState(false);
-
-  // New state for unconfirmed
   const [isUnconfirmed, setIsUnconfirmed] = useState(defaultUnconfirmed);
-
-  // New state for location
   const [location, setLocation] = useState(defaultLocation);
 
-  // Reset state whenever props change
   useEffect(() => {
     setTitle(defaultTitle);
     setTitleError(false);
@@ -131,15 +129,11 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
 
   const handleDayPress = (day: { dateString: string }) => {
     const { start, end } = tempSelectedDates;
-
     if (!start || end) {
-      // If no start is set or both start and end are already set, start a new selection
       setTempSelectedDates({ start: day.dateString, end: '' });
     } else if (moment(day.dateString).isAfter(start)) {
-      // If the selected date is after the start date, set it as the end date
       setTempSelectedDates({ start, end: day.dateString });
     } else {
-      // If the selected date is before the start date, reset the start date
       setTempSelectedDates({ start: day.dateString, end: '' });
     }
   };
@@ -147,7 +141,6 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
   const getMarkedDates = () => {
     const { start, end } = tempSelectedDates;
     const marked: Record<string, any> = {};
-
     if (start) {
       if (end && start !== end) {
         marked[start] = {
@@ -167,7 +160,6 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
           current = current.add(1, 'day');
         }
       } else {
-        // single-day selection
         marked[start] = {
           startingDay: true,
           endingDay: true,
@@ -181,6 +173,22 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
 
   const handleClose = () => {
     onClose();
+  };
+
+  const confirmAddToCalendar = () => {
+    Alert.alert(
+      'Add to calendar',
+      'Do you want to add this event to your calendar?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Yes',
+          onPress: () => {
+            if (onAddToCalendar) onAddToCalendar();
+          },
+        },
+      ],
+    );
   };
 
   const buttons = [
@@ -199,7 +207,6 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
 
   return (
     <>
-      {/* Full-screen calendar modal */}
       <Modal
         visible={isCalendarVisible}
         animationType="none"
@@ -219,11 +226,9 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
             >
               <Ionicons name="close" size={24} color="red" />
             </TouchableOpacity>
-
             <TouchableOpacity style={styles.saveButton} onPress={saveCalendar}>
               <Ionicons name="checkmark" size={24} color="green" />
             </TouchableOpacity>
-
             <Calendar
               minDate={moment().format('YYYY-MM-DD')}
               markedDates={getMarkedDates()}
@@ -243,8 +248,6 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
           </View>
         </View>
       </Modal>
-
-      {/* Main Add/Edit Event Modal */}
       <CustomModal
         isVisible={isVisible && !isCalendarVisible}
         onClose={handleClose}
@@ -294,8 +297,6 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
               <Ionicons name="calendar-outline" size={20} color="#1e90ff" />
             </TouchableOpacity>
           </View>
-
-          {/* Location input */}
           <CustomTextInput
             labelText="Location"
             placeholder="Enter a location"
@@ -305,7 +306,6 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
             autoCapitalize="sentences"
             hasBorder
           />
-
           <View style={styles.switchContainer}>
             <Text style={styles.label}>Is this event confirmed?</Text>
             <Switch
@@ -315,16 +315,28 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
               thumbColor={!isUnconfirmed ? '#f5dd4b' : '#f4f3f4'}
             />
           </View>
-
-          {isEditing && onDelete && (
-            <CustomButton
-              title="Delete event"
-              onPress={handleDelete}
-              variant="secondaryDanger"
-              accessibilityLabel="Delete Event"
-              accessibilityHint="Delete the current event"
-              icon={{ name: 'trash-outline' }}
-            />
+          {isEditing && (
+            <>
+              {onAddToCalendar && (
+                <CustomButton
+                  title="Add to calendar"
+                  onPress={confirmAddToCalendar}
+                  variant="secondary"
+                  accessibilityLabel="Add to Calendar"
+                  accessibilityHint="Add the current event to your calendar"
+                  icon={{ name: 'calendar-outline' }}
+                />
+              )}
+              <CustomButton
+                title="Delete event"
+                onPress={handleDelete}
+                variant="secondaryDanger"
+                accessibilityLabel="Delete Event"
+                accessibilityHint="Delete the current event"
+                icon={{ name: 'trash-outline' }}
+                style={{ marginTop: 5 }}
+              />
+            </>
           )}
         </View>
       </CustomModal>
