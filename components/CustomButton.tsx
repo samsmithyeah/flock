@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   GestureResponderEvent,
   View,
+  StyleProp,
+  ViewStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -35,6 +37,7 @@ interface CustomButtonProps {
   disabled?: boolean;
   accessibilityLabel?: string;
   accessibilityHint?: string;
+  style?: StyleProp<ViewStyle>;
 }
 
 const CustomButton: React.FC<CustomButtonProps> = ({
@@ -46,6 +49,7 @@ const CustomButton: React.FC<CustomButtonProps> = ({
   disabled = false,
   accessibilityLabel,
   accessibilityHint,
+  style,
 }) => {
   // Determine if the button should be disabled
   const isDisabled = disabled || variant === 'disabled';
@@ -83,8 +87,9 @@ const CustomButton: React.FC<CustomButtonProps> = ({
     <TouchableOpacity
       style={[
         styles.button,
-        styles[variant], // Apply variant styles
+        styles[variant],
         isDisabled ? styles.buttonDisabled : {},
+        style,
       ]}
       onPress={onPress}
       activeOpacity={0.7}

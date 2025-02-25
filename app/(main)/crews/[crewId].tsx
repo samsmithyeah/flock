@@ -42,6 +42,7 @@ import {
 } from '@/utils/addEventToCrew';
 import { CrewEvent } from '@/types/CrewEvent';
 import { useLocalSearchParams, useNavigation, router } from 'expo-router';
+import * as ExpoCalendar from 'expo-calendar';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.75;
@@ -487,6 +488,56 @@ const CrewScreen: React.FC = () => {
     }
   };
 
+  const handleAddToCalendar = async (event: CrewEvent) => {
+    const { status } = await ExpoCalendar.requestCalendarPermissionsAsync();
+    if (status !== 'granted') {
+      Toast.show({
+        text1: 'Cannot add event to calendar',
+        text2: 'Calendar permission not granted',
+        type: 'error',
+      });
+      return;
+    }
+    const calendars = await ExpoCalendar.getCalendarsAsync(
+      ExpoCalendar.EntityTypes.EVENT,
+    );
+    const defaultCalendar = calendars.find((cal) => cal.allowsModifications);
+    if (!defaultCalendar) {
+      Toast.show({
+        text1: 'Cannot add event to calendar',
+        text2: 'No calendar available',
+        type: 'error',
+      });
+      return;
+    }
+    try {
+      const eventCreatorName = members.find(
+        (m) => m.uid === event.createdBy,
+      )?.displayName;
+      await ExpoCalendar.createEventAsync(defaultCalendar.id, {
+        title: `${event.title} with ${crew?.name || 'your crew'}`,
+        startDate: new Date(event.startDate),
+        endDate: new Date(event.endDate),
+        location: event.location,
+        notes: `Event created in Flock by ${eventCreatorName}`,
+        allDay: true,
+        alarms: [{ relativeOffset: -60 * 60 }],
+      });
+      Toast.show({
+        text1: 'Success',
+        text2: 'Event added to your calendar',
+        type: 'success',
+      });
+    } catch (error) {
+      console.error('Error adding event to calendar', error);
+      Toast.show({
+        text1: 'Error',
+        text2: 'An error occurred while adding the event to your calendar',
+        type: 'error',
+      });
+    }
+  };
+
   const handlePokeCrew = async (day: string) => {
     if (!crewId || !day || !user?.uid) {
       Toast.show({
@@ -694,6 +745,9 @@ const CrewScreen: React.FC = () => {
         defaultLocation={editingEvent?.location}
         isEditing={!!editingEvent}
         onDelete={() => editingEvent?.id && handleDeleteEvent(editingEvent.id)}
+        onAddToCalendar={
+          editingEvent ? () => handleAddToCalendar(editingEvent) : undefined
+        }
       />
 
       {viewingEvent && (
@@ -701,6 +755,7 @@ const CrewScreen: React.FC = () => {
           isVisible={viewEventModalVisible}
           onClose={() => setViewEventModalVisible(false)}
           event={viewingEvent}
+          onAddToCalendar={() => handleAddToCalendar(viewingEvent)}
         />
       )}
 
