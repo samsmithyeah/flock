@@ -33,13 +33,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { User } from '@/types/User';
 import ProfilePicturePicker from '@/components/ProfilePicturePicker';
-import { throttle } from 'lodash';
+import { throttle, debounce } from 'lodash';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import Toast from 'react-native-toast-message';
 
 const TYPING_TIMEOUT = 1000;
+const READ_UPDATE_DEBOUNCE = 1000; // 1 second debounce for read status updates
 
 const DMChatScreen: React.FC = () => {
   const { otherUserId } = useLocalSearchParams<{ otherUserId: string }>();
@@ -52,6 +53,7 @@ const DMChatScreen: React.FC = () => {
   const { user, addActiveChat, removeActiveChat } = useUser();
   const [otherUser, setOtherUser] = useState<User | null>(null);
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
+  const [lastReadTimestamp, setLastReadTimestamp] = useState<Date | null>(null);
   const insets = useSafeAreaInsets();
   // Add state for optimistic messages
   const [optimisticMessages, setOptimisticMessages] = useState<IMessage[]>([]);
@@ -62,7 +64,7 @@ const DMChatScreen: React.FC = () => {
     return generateDMConversationId(user.uid, otherUserId);
   }, [user?.uid, otherUserId]);
 
-  // Listen for typing status updates.
+  // Listen for typing status and last read updates
   useEffect(() => {
     if (!conversationId) return;
     const convoRef = doc(db, 'direct_messages', conversationId);
@@ -71,11 +73,18 @@ const DMChatScreen: React.FC = () => {
       (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
+          // Handle typing status
           if (data.typingStatus) {
             const otherTyping = data.typingStatus[otherUserId] || false;
             setIsOtherUserTyping(Boolean(otherTyping));
           } else {
             setIsOtherUserTyping(false);
+          }
+
+          // Handle last read timestamp
+          if (data.lastRead && data.lastRead[otherUserId]) {
+            const timestamp = data.lastRead[otherUserId];
+            setLastReadTimestamp(timestamp.toDate());
           }
         } else {
           setIsOtherUserTyping(false);
@@ -83,7 +92,7 @@ const DMChatScreen: React.FC = () => {
       },
       (error) => {
         if (error.code === 'permission-denied') return;
-        console.error('Error listening to typing status:', error);
+        console.error('Error listening to DM document:', error);
         setIsOtherUserTyping(false);
       },
     );
@@ -171,34 +180,44 @@ const DMChatScreen: React.FC = () => {
 
   const conversationMessages = messages[conversationId] || [];
 
-  // Modified to include optimistic messages
+  // Modified to include optimistic messages and message status
   const giftedChatMessages: IMessage[] = useMemo(() => {
     // Get messages from server
     const serverMessages = conversationMessages
-      .map((message) => ({
-        _id: message.id,
-        text: message.text,
-        createdAt:
-          message.createdAt instanceof Date
-            ? message.createdAt
-            : new Date(message.createdAt),
-        user: {
-          _id: message.senderId,
-          name:
-            message.senderId === user?.uid
-              ? user?.displayName || 'You'
-              : otherUser?.displayName || 'Unknown',
-          avatar:
-            message.senderId === user?.uid
-              ? user?.photoURL
-              : otherUser?.photoURL,
-          isOnline: message.senderId === user?.uid ? true : otherUser?.isOnline,
-        },
-      }))
+      .map((message) => {
+        // Determine if message has been read by other user
+        const isRead =
+          lastReadTimestamp &&
+          message.senderId === user?.uid &&
+          new Date(message.createdAt) < lastReadTimestamp;
+
+        return {
+          _id: message.id,
+          text: message.text,
+          createdAt:
+            message.createdAt instanceof Date
+              ? message.createdAt
+              : new Date(message.createdAt),
+          user: {
+            _id: message.senderId,
+            name:
+              message.senderId === user?.uid
+                ? user?.displayName || 'You'
+                : otherUser?.displayName || 'Unknown',
+            avatar:
+              message.senderId === user?.uid
+                ? user?.photoURL
+                : otherUser?.photoURL,
+            isOnline:
+              message.senderId === user?.uid ? true : otherUser?.isOnline,
+          },
+          sent: true, // All server messages were successfully sent
+          received: isRead || false, // Message is "received" when it has been read
+        };
+      })
       .reverse();
 
     // Find and remove any optimistic messages that have been confirmed
-    // by comparing their text and timestamps
     const newOptimisticMessages = optimisticMessages.filter((optMsg) => {
       // If this message appears in server messages, remove it from optimistic messages
       return !serverMessages.some(
@@ -218,7 +237,13 @@ const DMChatScreen: React.FC = () => {
 
     // Merge server messages with remaining optimistic messages
     return [...newOptimisticMessages, ...serverMessages];
-  }, [conversationMessages, user, otherUser, optimisticMessages]);
+  }, [
+    conversationMessages,
+    user,
+    otherUser,
+    optimisticMessages,
+    lastReadTimestamp,
+  ]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -241,6 +266,7 @@ const DMChatScreen: React.FC = () => {
             avatar: user?.photoURL,
           },
           pending: true,
+          // Note: We don't set sent or received yet
         };
 
         // Add to optimistic messages
@@ -264,6 +290,47 @@ const DMChatScreen: React.FC = () => {
     },
     [conversationId, sendMessage, updateTypingStatus, updateLastRead, user],
   );
+
+  // Create a ref to track the previous message count for comparison
+  const previousMessageCountRef = useRef<number>(0);
+
+  // Debounced function to update last read status
+  const debouncedUpdateLastRead = useMemo(
+    () =>
+      debounce((chatId: string) => {
+        updateLastRead(chatId);
+      }, READ_UPDATE_DEBOUNCE),
+    [updateLastRead],
+  );
+
+  // Effect to auto-mark messages as read when receiving new messages while screen is focused
+  useEffect(() => {
+    if (!conversationId || !isFocused) return;
+
+    const currentMessageCount = conversationMessages.length;
+
+    // Only update if we received new messages (not on initial load)
+    if (
+      previousMessageCountRef.current > 0 &&
+      currentMessageCount > previousMessageCountRef.current
+    ) {
+      // Messages have increased while screen is focused - mark as read
+      debouncedUpdateLastRead(conversationId);
+    }
+
+    // Update the ref with current count for next comparison
+    previousMessageCountRef.current = currentMessageCount;
+  }, [
+    conversationMessages,
+    conversationId,
+    isFocused,
+    debouncedUpdateLastRead,
+  ]);
+
+  // Reset the counter when changing conversations
+  useEffect(() => {
+    previousMessageCountRef.current = 0;
+  }, [conversationId]);
 
   // Manage active chat state using focus.
   useFocusEffect(
@@ -334,6 +401,45 @@ const DMChatScreen: React.FC = () => {
     <InputToolbar {...props} containerStyle={styles.inputToolbarContainer} />
   );
 
+  // Custom render function for message ticks (WhatsApp style)
+  const renderTicks = useCallback(
+    (message: IMessage) => {
+      // Only show ticks for the current user's messages
+      if (message.user._id !== user?.uid) {
+        return null;
+      }
+
+      // For pending/optimistic messages
+      if (message.pending) {
+        return (
+          <View style={styles.tickContainer}>
+            <Ionicons name="time-outline" size={10} color="#92AAB0" />
+          </View>
+        );
+      }
+
+      // For sent messages
+      if (message.received) {
+        // Double blue ticks for received/read messages
+        return (
+          <View style={styles.tickContainer}>
+            <Ionicons name="checkmark-done" size={14} color="#4FC3F7" />
+          </View>
+        );
+      } else if (message.sent) {
+        // Single gray tick for delivered but unread messages
+        return (
+          <View style={styles.tickContainer}>
+            <Ionicons name="checkmark" size={14} color="#92AAB0" />
+          </View>
+        );
+      }
+
+      return null;
+    },
+    [user?.uid],
+  );
+
   if (!conversationId) return <LoadingOverlay />;
   return (
     <View style={styles.container}>
@@ -355,6 +461,8 @@ const DMChatScreen: React.FC = () => {
             wrapperStyle={{
               left: { backgroundColor: '#BFF4BE' },
             }}
+            renderTicks={(message) => renderTicks(message)}
+            tickStyle={styles.tick}
           />
         )}
         renderSend={(props: SendProps<IMessage>) => (
@@ -404,5 +512,15 @@ const styles = StyleSheet.create({
   sendContainer: {
     justifyContent: 'center',
     paddingHorizontal: 10,
+  },
+  tickContainer: {
+    flexDirection: 'row',
+    marginRight: 10,
+    alignItems: 'center',
+  },
+  tick: {
+    fontSize: 10,
+    color: '#92AAB0',
+    marginRight: 2,
   },
 });

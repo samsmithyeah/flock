@@ -37,7 +37,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { User } from '@/types/User';
 import ProfilePicturePicker from '@/components/ProfilePicturePicker';
-import { throttle } from 'lodash';
+import { throttle, debounce } from 'lodash';
 import moment from 'moment';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
@@ -45,6 +45,7 @@ import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import Toast from 'react-native-toast-message';
 
 const TYPING_TIMEOUT = 1000;
+const READ_UPDATE_DEBOUNCE = 1000; // 1 second debounce for read status updates
 
 const CrewDateChatScreen: React.FC = () => {
   const { crewId, date, id } = useLocalSearchParams<{
@@ -67,8 +68,11 @@ const CrewDateChatScreen: React.FC = () => {
   const [otherUsersTyping, setOtherUsersTyping] = useState<{
     [key: string]: boolean;
   }>({});
-  // Add state for optimistic messages
+  // Add states for optimistic messages and reading status
   const [optimisticMessages, setOptimisticMessages] = useState<IMessage[]>([]);
+  const [lastReadByUsers, setLastReadByUsers] = useState<{
+    [uid: string]: Date;
+  }>({});
 
   const chatId = useMemo(() => {
     if (id) return id;
@@ -222,35 +226,62 @@ const CrewDateChatScreen: React.FC = () => {
 
   const conversationMessages = messages[chatId || ''] || [];
 
-  // Modified to include optimistic messages
+  // Function to check if a message has been read by all participants
+  const isMessageReadByAll = useCallback(
+    (messageTimestamp: Date) => {
+      // If we don't have member data or timestamp data, assume not read
+      if (!otherMembers.length || !Object.keys(lastReadByUsers).length) {
+        return false;
+      }
+
+      // Check if all other members have read the message
+      return otherMembers.every((member) => {
+        const lastReadTime = lastReadByUsers[member.uid];
+        return lastReadTime && messageTimestamp < lastReadTime;
+      });
+    },
+    [otherMembers, lastReadByUsers],
+  );
+
+  // Modified to include optimistic messages and read status
   const giftedChatMessages: IMessage[] = useMemo(() => {
     // Get messages from server
     const serverMessages = conversationMessages
-      .map((message) => ({
-        _id: message.id,
-        text: message.text,
-        createdAt:
+      .map((message) => {
+        // Determine if message has been read by all other participants
+        const messageTime =
           message.createdAt instanceof Date
             ? message.createdAt
-            : new Date(message.createdAt),
-        user: {
-          _id: message.senderId,
-          name:
-            message.senderId === user?.uid
-              ? user?.displayName || 'You'
-              : otherMembers.find((m) => m.uid === message.senderId)
-                  ?.displayName || 'Unknown',
-          avatar:
-            message.senderId === user?.uid
-              ? user?.photoURL
-              : otherMembers.find((m) => m.uid === message.senderId)?.photoURL,
-        },
-      }))
+            : new Date(message.createdAt);
+
+        const isReadByAll =
+          message.senderId === user?.uid && isMessageReadByAll(messageTime);
+
+        return {
+          _id: message.id,
+          text: message.text,
+          createdAt: messageTime,
+          user: {
+            _id: message.senderId,
+            name:
+              message.senderId === user?.uid
+                ? user?.displayName || 'You'
+                : otherMembers.find((m) => m.uid === message.senderId)
+                    ?.displayName || 'Unknown',
+            avatar:
+              message.senderId === user?.uid
+                ? user?.photoURL
+                : otherMembers.find((m) => m.uid === message.senderId)
+                    ?.photoURL,
+          },
+          sent: true, // All server messages were successfully sent
+          received: isReadByAll || false, // Received when read by all members
+        };
+      })
       .reverse();
 
     // Filter out optimistic messages that have been confirmed by the server
     const newOptimisticMessages = optimisticMessages.filter((optMsg) => {
-      // If the message appears in server messages, remove it from optimistic messages
       return !serverMessages.some(
         (serverMsg) =>
           serverMsg.text === optMsg.text &&
@@ -275,6 +306,7 @@ const CrewDateChatScreen: React.FC = () => {
     user?.photoURL,
     otherMembers,
     optimisticMessages,
+    isMessageReadByAll,
   ]);
 
   useEffect(() => {
@@ -283,15 +315,28 @@ const CrewDateChatScreen: React.FC = () => {
     return () => unsubscribeMessages();
   }, [chatId]);
 
+  // Listen for last read timestamps from all members
   useEffect(() => {
     if (!chatId || !user?.uid) return;
     const chatRef = doc(db, 'crew_date_chats', chatId);
-    const unsubscribeTyping = onSnapshot(
+    const unsubscribe = onSnapshot(
       chatRef,
       (docSnapshot) => {
         if (!user?.uid) return;
         if (docSnapshot.exists()) {
           const data = docSnapshot.data();
+          if (data.lastRead) {
+            const lastReadData: { [uid: string]: Date } = {};
+            Object.keys(data.lastRead).forEach((uid) => {
+              const timestamp = data.lastRead[uid];
+              if (timestamp) {
+                lastReadData[uid] = timestamp.toDate();
+              }
+            });
+            setLastReadByUsers(lastReadData);
+          }
+
+          // Continue with typing status handling
           if (data.typingStatus) {
             const updatedTypingStatus: { [key: string]: boolean } = {};
             Object.keys(data.typingStatus).forEach((key) => {
@@ -313,17 +358,15 @@ const CrewDateChatScreen: React.FC = () => {
           } else {
             setOtherUsersTyping({});
           }
-        } else {
-          setOtherUsersTyping({});
         }
       },
       (error) => {
         if (!user?.uid) return;
         if (error.code === 'permission-denied') return;
-        console.error('Error listening to typing status (group):', error);
+        console.error('Error listening to chat document:', error);
       },
     );
-    return () => unsubscribeTyping();
+    return () => unsubscribe();
   }, [chatId, user?.uid]);
 
   const onSend = useCallback(
@@ -341,6 +384,7 @@ const CrewDateChatScreen: React.FC = () => {
             avatar: user?.photoURL,
           },
           pending: true,
+          // Note: We don't set sent or received yet
         };
 
         // Add to optimistic messages
@@ -404,6 +448,42 @@ const CrewDateChatScreen: React.FC = () => {
     return () => subscription.remove();
   }, [chatId, isFocused, addActiveChat, removeActiveChat]);
 
+  // Create a ref to track the previous message count for comparison
+  const previousMessageCountRef = useRef<number>(0);
+
+  // Debounced function to update last read status
+  const debouncedUpdateLastRead = useMemo(
+    () =>
+      debounce((chatId: string) => {
+        updateLastRead(chatId);
+      }, READ_UPDATE_DEBOUNCE),
+    [updateLastRead],
+  );
+
+  // Effect to auto-mark messages as read when receiving new messages while screen is focused
+  useEffect(() => {
+    if (!chatId || !isFocused) return;
+
+    const currentMessageCount = conversationMessages.length;
+
+    // Only update if we received new messages (not on initial load)
+    if (
+      previousMessageCountRef.current > 0 &&
+      currentMessageCount > previousMessageCountRef.current
+    ) {
+      // New messages arrived while screen is focused - mark as read
+      debouncedUpdateLastRead(chatId);
+    }
+
+    // Update the ref with current count for next comparison
+    previousMessageCountRef.current = currentMessageCount;
+  }, [conversationMessages, chatId, isFocused, debouncedUpdateLastRead]);
+
+  // Reset the counter when changing chats
+  useEffect(() => {
+    previousMessageCountRef.current = 0;
+  }, [chatId]);
+
   const typingUserIds = useMemo(
     () => Object.keys(otherUsersTyping).filter((uid) => otherUsersTyping[uid]),
     [otherUsersTyping],
@@ -437,6 +517,45 @@ const CrewDateChatScreen: React.FC = () => {
     <InputToolbar {...props} containerStyle={styles.inputToolbarContainer} />
   );
 
+  // Custom render function for message ticks (WhatsApp style)
+  const renderTicks = useCallback(
+    (message: IMessage) => {
+      // Only show ticks for the current user's messages
+      if (message.user._id !== user?.uid) {
+        return null;
+      }
+
+      // For pending/optimistic messages
+      if (message.pending) {
+        return (
+          <View style={styles.tickContainer}>
+            <Ionicons name="time-outline" size={10} color="#92AAB0" />
+          </View>
+        );
+      }
+
+      // For sent messages
+      if (message.received) {
+        // Double blue ticks for read by all members
+        return (
+          <View style={styles.tickContainer}>
+            <Ionicons name="checkmark-done" size={14} color="#4FC3F7" />
+          </View>
+        );
+      } else if (message.sent) {
+        // Single gray tick for delivered but not read by all
+        return (
+          <View style={styles.tickContainer}>
+            <Ionicons name="checkmark" size={14} color="#92AAB0" />
+          </View>
+        );
+      }
+
+      return null;
+    },
+    [user?.uid],
+  );
+
   if (!chatId) return <LoadingOverlay />;
   return (
     <View style={styles.container}>
@@ -458,6 +577,8 @@ const CrewDateChatScreen: React.FC = () => {
             wrapperStyle={{
               left: { backgroundColor: '#BFF4BE' },
             }}
+            renderTicks={(message) => renderTicks(message)}
+            tickStyle={styles.tick}
           />
         )}
         renderInputToolbar={renderInputToolbar}
@@ -508,5 +629,15 @@ const styles = StyleSheet.create({
   sendContainer: {
     justifyContent: 'center',
     paddingHorizontal: 10,
+  },
+  tickContainer: {
+    flexDirection: 'row',
+    marginRight: 10,
+    alignItems: 'center',
+  },
+  tick: {
+    fontSize: 10,
+    color: '#92AAB0',
+    marginRight: 2,
   },
 });
