@@ -505,6 +505,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
           // Document exists, update it
           await updateDoc(chatRef, {
             memberIds: arrayUnion(uid),
+            [`lastRead.${uid}`]: serverTimestamp(),
           });
           console.log(`Added member ${uid} to existing chat ${chatId}`);
         } else {
@@ -513,6 +514,9 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
             memberIds: [uid], // Initialize the array
             createdAt: serverTimestamp(), // Optionally track when the chat was created
             hasMessages: false,
+            lastRead: {
+              [uid]: serverTimestamp(),
+            },
           });
           console.log(
             `Created new chat and added member ${uid} to chat ${chatId}`,
