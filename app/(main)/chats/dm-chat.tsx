@@ -1,5 +1,3 @@
-// app/(main)/chats/dm-chat.tsx
-
 import React, {
   useEffect,
   useMemo,
@@ -39,6 +37,7 @@ import { throttle } from 'lodash';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { useIsFocused, useFocusEffect } from '@react-navigation/native';
+import Toast from 'react-native-toast-message';
 
 const TYPING_TIMEOUT = 1000;
 
@@ -54,6 +53,8 @@ const DMChatScreen: React.FC = () => {
   const [otherUser, setOtherUser] = useState<User | null>(null);
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const insets = useSafeAreaInsets();
+  // Add state for optimistic messages
+  const [optimisticMessages, setOptimisticMessages] = useState<IMessage[]>([]);
 
   // Generate conversationId from current and other user IDs.
   const conversationId = useMemo(() => {
@@ -169,8 +170,11 @@ const DMChatScreen: React.FC = () => {
   );
 
   const conversationMessages = messages[conversationId] || [];
+
+  // Modified to include optimistic messages
   const giftedChatMessages: IMessage[] = useMemo(() => {
-    return conversationMessages
+    // Get messages from server
+    const serverMessages = conversationMessages
       .map((message) => ({
         _id: message.id,
         text: message.text,
@@ -192,7 +196,29 @@ const DMChatScreen: React.FC = () => {
         },
       }))
       .reverse();
-  }, [conversationMessages, user, otherUser]);
+
+    // Find and remove any optimistic messages that have been confirmed
+    // by comparing their text and timestamps
+    const newOptimisticMessages = optimisticMessages.filter((optMsg) => {
+      // If this message appears in server messages, remove it from optimistic messages
+      return !serverMessages.some(
+        (serverMsg) =>
+          serverMsg.text === optMsg.text &&
+          Math.abs(
+            new Date(serverMsg.createdAt).getTime() -
+              new Date(optMsg.createdAt).getTime(),
+          ) < 5000,
+      );
+    });
+
+    // Update optimistic messages if any were confirmed
+    if (newOptimisticMessages.length !== optimisticMessages.length) {
+      setOptimisticMessages(newOptimisticMessages);
+    }
+
+    // Merge server messages with remaining optimistic messages
+    return [...newOptimisticMessages, ...serverMessages];
+  }, [conversationMessages, user, otherUser, optimisticMessages]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -204,12 +230,39 @@ const DMChatScreen: React.FC = () => {
     async (msgs: IMessage[] = []) => {
       const text = msgs[0].text;
       if (text && text.trim() !== '') {
-        await sendMessage(conversationId, text.trim());
-        updateTypingStatus(false);
-        await updateLastRead(conversationId);
+        // Add the message optimistically
+        const optimisticMsg: IMessage = {
+          _id: `temp-${Date.now()}`,
+          text: text.trim(),
+          createdAt: new Date(),
+          user: {
+            _id: user?.uid || '',
+            name: user?.displayName || 'You',
+            avatar: user?.photoURL,
+          },
+          pending: true,
+        };
+
+        // Add to optimistic messages
+        setOptimisticMessages((prev) => [...prev, optimisticMsg]);
+
+        // Send to server
+        try {
+          await sendMessage(conversationId, text.trim());
+          updateTypingStatus(false);
+          await updateLastRead(conversationId);
+        } catch (error) {
+          console.error('Failed to send message:', error);
+          // Show error and keep optimistic message with error state
+          Toast.show({
+            type: 'error',
+            text1: 'Error',
+            text2: 'Failed to send message',
+          });
+        }
       }
     },
-    [conversationId, sendMessage, updateTypingStatus, updateLastRead],
+    [conversationId, sendMessage, updateTypingStatus, updateLastRead, user],
   );
 
   // Manage active chat state using focus.
