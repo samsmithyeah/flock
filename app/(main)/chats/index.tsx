@@ -30,6 +30,8 @@ import ProfilePicturePicker from '@/components/ProfilePicturePicker';
 import { storage } from '@/storage';
 import useGlobalStyles from '@/styles/globalStyles';
 import { router, useNavigation } from 'expo-router';
+import { FirebaseError } from 'firebase/app';
+import Toast from 'react-native-toast-message';
 
 interface CombinedChat {
   id: string;
@@ -353,7 +355,18 @@ const ChatsListScreen: React.FC = () => {
           : combined,
       );
       saveCachedChatData(combined);
-    } catch (error) {
+    } catch (error: unknown) {
+      if (
+        error instanceof Error ||
+        (error instanceof FirebaseError && error.message.includes('offline'))
+      ) {
+        Toast.show({
+          text1: 'Error',
+          text2: 'Failed to load chats. Check your connection.',
+          type: 'error',
+        });
+        return;
+      }
       console.error('Error combining chats:', error);
     } finally {
       setLoading(false);

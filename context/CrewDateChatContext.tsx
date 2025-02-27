@@ -230,6 +230,15 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
       } catch (error: any) {
         if (!user?.uid) return 0;
         if (error.code === 'permission-denied') return 0;
+        if (error.code === 'unavailable') {
+          Toast.show({
+            type: 'error',
+            text1: 'Error',
+            text2:
+              'Could not fetch unread count. Please check your connection.',
+          });
+          return 0;
+        }
         console.error(`Error fetching unread count for chat ${chatId}:`, error);
         return 0;
       }

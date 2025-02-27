@@ -90,20 +90,23 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
         if (!dmData) return 0;
         const lastRead = dmData.lastRead ? dmData.lastRead[user.uid] : null;
         if (!lastRead) {
-          const messagesRef = collection(
-            db,
-            'direct_messages',
-            dmId,
-            'messages',
-          );
-          const countSnapshot = await getCountFromServer(messagesRef);
-          return countSnapshot.data().count;
+          // lastRead should not be null other than during fetch so return 0
+          return 0;
         }
         const messagesRef = collection(db, 'direct_messages', dmId, 'messages');
         const msqQuery = query(messagesRef, where('createdAt', '>', lastRead));
         const countSnapshot = await getCountFromServer(msqQuery);
         return countSnapshot.data().count;
-      } catch (error) {
+      } catch (error: any) {
+        if (error.code === 'unavailable') {
+          Toast.show({
+            type: 'error',
+            text1: 'Error',
+            text2:
+              'Could not fetch unread count. Please check your connection.',
+          });
+          return 0;
+        }
         console.error('Error fetching unread count:', error);
         return 0;
       }
