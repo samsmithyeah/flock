@@ -222,9 +222,8 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
           // Fetch messages created after lastRead
           msgQuery = query(messagesRef, where('createdAt', '>', lastRead));
         } else {
-          // If lastRead is null, all messages are unread
-          console.log('lastRead is null. Fetching all messages.');
-          msgQuery = query(messagesRef);
+          // Last read should not be null unless fetching is in progress so return 0
+          return 0;
         }
         const countSnapshot = await getCountFromServer(msgQuery);
         return countSnapshot.data().count;
