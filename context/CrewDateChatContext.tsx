@@ -222,15 +222,23 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
           // Fetch messages created after lastRead
           msgQuery = query(messagesRef, where('createdAt', '>', lastRead));
         } else {
-          // If lastRead is null, all messages are unread
-          console.log('lastRead is null. Fetching all messages.');
-          msgQuery = query(messagesRef);
+          // Last read should not be null unless fetching is in progress so return 0
+          return 0;
         }
         const countSnapshot = await getCountFromServer(msgQuery);
         return countSnapshot.data().count;
       } catch (error: any) {
         if (!user?.uid) return 0;
         if (error.code === 'permission-denied') return 0;
+        if (error.code === 'unavailable') {
+          Toast.show({
+            type: 'error',
+            text1: 'Error',
+            text2:
+              'Could not fetch unread count. Please check your connection.',
+          });
+          return 0;
+        }
         console.error(`Error fetching unread count for chat ${chatId}:`, error);
         return 0;
       }
@@ -505,6 +513,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
           // Document exists, update it
           await updateDoc(chatRef, {
             memberIds: arrayUnion(uid),
+            [`lastRead.${uid}`]: serverTimestamp(),
           });
           console.log(`Added member ${uid} to existing chat ${chatId}`);
         } else {
@@ -513,6 +522,9 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
             memberIds: [uid], // Initialize the array
             createdAt: serverTimestamp(), // Optionally track when the chat was created
             hasMessages: false,
+            lastRead: {
+              [uid]: serverTimestamp(),
+            },
           });
           console.log(
             `Created new chat and added member ${uid} to chat ${chatId}`,
