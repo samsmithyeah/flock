@@ -1,3 +1,5 @@
+// app/(main)/chats/crew-date-chat.tsx
+
 import React, {
   useEffect,
   useMemo,
@@ -100,12 +102,6 @@ const CrewDateChatScreen: React.FC = () => {
 
     if (!paginationInfo?.hasMore) {
       console.log('[CrewDateChat] No more earlier messages available');
-      Toast.show({
-        type: 'info',
-        text1: 'No more messages',
-        text2: 'You have reached the beginning of this conversation',
-        position: 'bottom',
-      });
       return;
     }
 
@@ -115,15 +111,6 @@ const CrewDateChatScreen: React.FC = () => {
     try {
       const hasMore = await loadEarlierMessages(chatId);
       console.log('[CrewDateChat] Loaded earlier messages, has more:', hasMore);
-
-      if (!hasMore) {
-        Toast.show({
-          type: 'info',
-          text1: 'No more messages',
-          text2: 'You have reached the beginning of this conversation',
-          position: 'bottom',
-        });
-      }
     } catch (error) {
       console.error('[CrewDateChat] Error loading earlier messages:', error);
       Toast.show({

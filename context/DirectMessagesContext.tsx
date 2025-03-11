@@ -248,9 +248,6 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
 
       // Check if we already have a listener for this DM
       if (listenersRef.current[dmId]) {
-        console.log(
-          `[DMChat] Listener already exists for ${dmId}, skipping setup`,
-        );
         return () => {
           if (listenersRef.current[dmId]) {
             listenersRef.current[dmId]();

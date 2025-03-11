@@ -1,3 +1,5 @@
+// app/(main)/chats/dm-chat.tsx
+
 import React, {
   useEffect,
   useMemo,
@@ -98,12 +100,6 @@ const DMChatScreen: React.FC = () => {
       console.log(
         '[DMChat] No more earlier messages available according to paginationInfo',
       );
-      Toast.show({
-        type: 'info',
-        text1: 'No more messages',
-        text2: 'You have reached the beginning of this conversation',
-        position: 'bottom',
-      });
       return;
     }
 
@@ -113,15 +109,6 @@ const DMChatScreen: React.FC = () => {
     try {
       const hasMore = await loadEarlierMessages(conversationId);
       console.log('[DMChat] loadEarlierMessages result:', hasMore);
-
-      if (!hasMore) {
-        Toast.show({
-          type: 'info',
-          text1: 'No more messages',
-          text2: 'You have reached the beginning of this conversation',
-          position: 'bottom',
-        });
-      }
     } catch (error) {
       console.error('[DMChat] Error loading earlier messages:', error);
       Toast.show({
