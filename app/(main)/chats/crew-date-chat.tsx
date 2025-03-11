@@ -1,5 +1,3 @@
-// app/(main)/chats/crew-date-chat.tsx
-
 import React, {
   useEffect,
   useMemo,
@@ -8,7 +6,14 @@ import React, {
   useCallback,
   useState,
 } from 'react';
-import { View, StyleSheet, Text, AppState, AppStateStatus } from 'react-native';
+import {
+  View,
+  StyleSheet,
+  Text,
+  AppState,
+  AppStateStatus,
+  ActivityIndicator,
+} from 'react-native';
 import {
   GiftedChat,
   IMessage,
@@ -17,6 +22,7 @@ import {
   SendProps,
   AvatarProps,
   InputToolbar,
+  LoadEarlier,
 } from 'react-native-gifted-chat';
 import { useUser } from '@/context/UserContext';
 import { useCrewDateChat } from '@/context/CrewDateChatContext';
@@ -55,8 +61,14 @@ const CrewDateChatScreen: React.FC = () => {
   }>();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const { sendMessage, updateLastRead, messages, listenToMessages } =
-    useCrewDateChat();
+  const {
+    sendMessage,
+    updateLastRead,
+    messages,
+    listenToMessages,
+    loadEarlierMessages,
+    messagePaginationInfo,
+  } = useCrewDateChat();
   const { crews, usersCache, setUsersCache } = useCrews();
   const isFocused = useIsFocused();
   const tabBarHeight = useBottomTabBarHeight();
@@ -68,6 +80,7 @@ const CrewDateChatScreen: React.FC = () => {
   const [otherUsersTyping, setOtherUsersTyping] = useState<{
     [key: string]: boolean;
   }>({});
+  const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
   // Add states for optimistic messages and reading status
   const [optimisticMessages, setOptimisticMessages] = useState<IMessage[]>([]);
   const [lastReadByUsers, setLastReadByUsers] = useState<{
@@ -79,6 +92,58 @@ const CrewDateChatScreen: React.FC = () => {
     if (crewId && date) return generateChatId(crewId, date);
     return null;
   }, [crewId, date, id]);
+
+  // Get pagination info for this chat
+  const paginationInfo = chatId ? messagePaginationInfo[chatId] : undefined;
+
+  // Handle loading earlier messages with debugging
+  const handleLoadEarlier = useCallback(async () => {
+    if (!chatId || isLoadingEarlier) {
+      console.log(
+        "[CrewDateChat] Can't load earlier messages:",
+        !chatId ? 'Invalid chatId' : 'Already loading',
+      );
+      return;
+    }
+
+    if (!paginationInfo?.hasMore) {
+      console.log('[CrewDateChat] No more earlier messages available');
+      Toast.show({
+        type: 'info',
+        text1: 'No more messages',
+        text2: 'You have reached the beginning of this conversation',
+        position: 'bottom',
+      });
+      return;
+    }
+
+    console.log('[CrewDateChat] Loading earlier messages...');
+    setIsLoadingEarlier(true);
+
+    try {
+      const hasMore = await loadEarlierMessages(chatId);
+      console.log('[CrewDateChat] Loaded earlier messages, has more:', hasMore);
+
+      if (!hasMore) {
+        Toast.show({
+          type: 'info',
+          text1: 'No more messages',
+          text2: 'You have reached the beginning of this conversation',
+          position: 'bottom',
+        });
+      }
+    } catch (error) {
+      console.error('[CrewDateChat] Error loading earlier messages:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Could not load earlier messages',
+        position: 'bottom',
+      });
+    } finally {
+      setIsLoadingEarlier(false);
+    }
+  }, [chatId, paginationInfo, loadEarlierMessages, isLoadingEarlier]);
 
   // Fetch crew details from crews context.
   useEffect(() => {
@@ -165,6 +230,16 @@ const CrewDateChatScreen: React.FC = () => {
 
     fetchMembers();
   }, [chatId, user?.uid]);
+
+  // Log when pagination info changes
+  useEffect(() => {
+    if (paginationInfo) {
+      console.log('[CrewDateChat] Pagination info updated:', {
+        hasMore: paginationInfo.hasMore,
+        loading: paginationInfo.loading,
+      });
+    }
+  }, [paginationInfo]);
 
   useLayoutEffect(() => {
     if (crew) {
@@ -311,6 +386,7 @@ const CrewDateChatScreen: React.FC = () => {
 
   useEffect(() => {
     if (!chatId) return;
+    console.log('[CrewDateChat] Setting up message listener for:', chatId);
     const unsubscribeMessages = listenToMessages(chatId);
     return () => unsubscribeMessages();
   }, [chatId]);
@@ -556,6 +632,39 @@ const CrewDateChatScreen: React.FC = () => {
     [user?.uid],
   );
 
+  // Custom render function for the LoadEarlier component
+  const renderLoadEarlier = useCallback(
+    (props: any) => {
+      return (
+        <LoadEarlier
+          {...props}
+          label={isLoadingEarlier ? 'Loading...' : 'Load earlier messages'}
+          containerStyle={styles.loadEarlierContainer}
+          wrapperStyle={styles.loadEarlierWrapper}
+          textStyle={styles.loadEarlierText}
+          activityIndicatorSize="small"
+          activityIndicatorColor="#0a84ff"
+        />
+      );
+    },
+    [isLoadingEarlier],
+  );
+
+  // Only show typing indicator in footer, not loading earlier messages
+  const renderFooter = useCallback(() => {
+    if (typingDisplayNames.length > 0) {
+      return (
+        <View style={styles.footerContainer}>
+          <Text style={styles.footerText}>
+            {typingDisplayNames.join(', ')}{' '}
+            {typingDisplayNames.length === 1 ? 'is' : 'are'} typing...
+          </Text>
+        </View>
+      );
+    }
+    return null;
+  }, [typingDisplayNames]);
+
   if (!chatId) return <LoadingOverlay />;
   return (
     <View style={styles.container}>
@@ -594,16 +703,11 @@ const CrewDateChatScreen: React.FC = () => {
             <Ionicons size={30} color={'#1E90FF'} name={'arrow-up-circle'} />
           </Send>
         )}
-        renderFooter={() =>
-          typingDisplayNames.length > 0 ? (
-            <View style={styles.footerContainer}>
-              <Text style={styles.footerText}>
-                {typingDisplayNames.join(', ')}{' '}
-                {typingDisplayNames.length === 1 ? 'is' : 'are'} typing...
-              </Text>
-            </View>
-          ) : null
-        }
+        renderFooter={renderFooter}
+        loadEarlier={paginationInfo?.hasMore === true}
+        isLoadingEarlier={isLoadingEarlier}
+        onLoadEarlier={handleLoadEarlier}
+        renderLoadEarlier={renderLoadEarlier}
       />
     </View>
   );
@@ -639,5 +743,19 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#92AAB0',
     marginRight: 2,
+  },
+  loadEarlierContainer: {
+    marginVertical: 10,
+  },
+  loadEarlierWrapper: {
+    backgroundColor: '#f0f0f0',
+    borderRadius: 15,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  loadEarlierText: {
+    fontSize: 14,
+    color: '#0a84ff',
+    fontWeight: '500',
   },
 });

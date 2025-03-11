@@ -14,6 +14,7 @@ import {
   Send,
   SendProps,
   InputToolbar,
+  LoadEarlier,
 } from 'react-native-gifted-chat';
 import { useUser } from '@/context/UserContext';
 import { useDirectMessages } from '@/context/DirectMessagesContext';
@@ -45,8 +46,15 @@ const READ_UPDATE_DEBOUNCE = 1000; // 1 second debounce for read status updates
 const DMChatScreen: React.FC = () => {
   const { otherUserId } = useLocalSearchParams<{ otherUserId: string }>();
   const navigation = useNavigation();
-  const { sendMessage, updateLastRead, messages, listenToDMMessages } =
-    useDirectMessages();
+  const {
+    sendMessage,
+    updateLastRead,
+    messages,
+    listenToDMMessages,
+    // Add pagination related items
+    loadEarlierMessages,
+    messagePaginationInfo,
+  } = useDirectMessages();
   const { usersCache, fetchUserDetails } = useCrews();
   const isFocused = useIsFocused();
   const tabBarHeight = useBottomTabBarHeight();
@@ -57,12 +65,87 @@ const DMChatScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   // Add state for optimistic messages
   const [optimisticMessages, setOptimisticMessages] = useState<IMessage[]>([]);
+  // Add state for loading earlier messages
+  const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
 
   // Generate conversationId from current and other user IDs.
   const conversationId = useMemo(() => {
     if (!user?.uid || !otherUserId) return '';
     return generateDMConversationId(user.uid, otherUserId);
   }, [user?.uid, otherUserId]);
+
+  // Get pagination info for this conversation
+  const paginationInfo = conversationId
+    ? messagePaginationInfo[conversationId]
+    : undefined;
+
+  // Handle loading earlier messages
+  const handleLoadEarlier = useCallback(async () => {
+    if (!conversationId || isLoadingEarlier) {
+      console.log(
+        "[DMChat] Can't load earlier messages:",
+        !conversationId ? 'Invalid conversationId' : 'Already loading',
+      );
+      return;
+    }
+
+    console.log(
+      '[DMChat] Load earlier button clicked, paginationInfo:',
+      paginationInfo,
+    );
+
+    // Check if there are more messages in pagination info
+    if (!paginationInfo?.hasMore) {
+      console.log(
+        '[DMChat] No more earlier messages available according to paginationInfo',
+      );
+      Toast.show({
+        type: 'info',
+        text1: 'No more messages',
+        text2: 'You have reached the beginning of this conversation',
+        position: 'bottom',
+      });
+      return;
+    }
+
+    console.log(`[DMChat] Loading earlier messages for ${conversationId}...`);
+    setIsLoadingEarlier(true);
+
+    try {
+      const hasMore = await loadEarlierMessages(conversationId);
+      console.log('[DMChat] loadEarlierMessages result:', hasMore);
+
+      if (!hasMore) {
+        Toast.show({
+          type: 'info',
+          text1: 'No more messages',
+          text2: 'You have reached the beginning of this conversation',
+          position: 'bottom',
+        });
+      }
+    } catch (error) {
+      console.error('[DMChat] Error loading earlier messages:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Could not load earlier messages',
+        position: 'bottom',
+      });
+    } finally {
+      setIsLoadingEarlier(false);
+    }
+  }, [conversationId, paginationInfo, loadEarlierMessages, isLoadingEarlier]);
+
+  // Add this effect to ensure we use the correct pagination info
+  useEffect(() => {
+    if (conversationId && paginationInfo) {
+      console.log(`[DMChat] Current pagination info for ${conversationId}:`, {
+        hasMore: paginationInfo.hasMore,
+        loading: paginationInfo.loading,
+        lastDocId: paginationInfo.lastDoc?.id || 'null',
+      });
+    }
+  }, [conversationId, paginationInfo]);
 
   // Listen for typing status and last read updates
   useEffect(() => {
@@ -440,6 +523,73 @@ const DMChatScreen: React.FC = () => {
     [user?.uid],
   );
 
+  // Log when pagination info changes
+  useEffect(() => {
+    if (paginationInfo) {
+      console.log('[DMChat] Pagination info updated:', {
+        hasMore: paginationInfo.hasMore,
+        loading: paginationInfo.loading,
+      });
+    }
+  }, [paginationInfo]);
+
+  // Custom render function for the LoadEarlier component
+  const renderLoadEarlier = useCallback(
+    (props: any) => {
+      return (
+        <LoadEarlier
+          {...props}
+          label={isLoadingEarlier ? 'Loading...' : 'Load earlier messages'}
+          containerStyle={styles.loadEarlierContainer}
+          wrapperStyle={styles.loadEarlierWrapper}
+          textStyle={styles.loadEarlierText}
+          activityIndicatorSize="small"
+          activityIndicatorColor="#0a84ff"
+        />
+      );
+    },
+    [isLoadingEarlier],
+  );
+
+  // Add this debug effect to log when messages change
+  useEffect(() => {
+    if (conversationMessages.length > 0) {
+      console.log(`[DMChat] Message count: ${conversationMessages.length}`);
+    }
+  }, [conversationMessages.length]);
+
+  // Add more debugging for pagination info and message count
+  useEffect(() => {
+    if (paginationInfo) {
+      console.log('[DMChat] Pagination info updated:', {
+        chatId: conversationId,
+        hasMore: paginationInfo.hasMore,
+        loading: paginationInfo.loading,
+      });
+    }
+  }, [paginationInfo, conversationId]);
+
+  // More detailed logging for message count changes
+  useEffect(() => {
+    if (conversationId && conversationMessages.length > 0) {
+      console.log(
+        `[DMChat] Messages for ${conversationId}: ${conversationMessages.length}`,
+      );
+
+      // Log first and last message timestamps to help debug ordering
+      const firstMsg = conversationMessages[0];
+      const lastMsg = conversationMessages[conversationMessages.length - 1];
+      if (firstMsg && lastMsg) {
+        console.log(
+          `[DMChat] First msg: ${new Date(firstMsg.createdAt).toISOString()}`,
+        );
+        console.log(
+          `[DMChat] Last msg: ${new Date(lastMsg.createdAt).toISOString()}`,
+        );
+      }
+    }
+  }, [conversationId, conversationMessages.length]);
+
   if (!conversationId) return <LoadingOverlay />;
   return (
     <View style={styles.container}>
@@ -487,6 +637,12 @@ const DMChatScreen: React.FC = () => {
             </View>
           ) : null
         }
+        // Add pagination support with improved property binding
+        loadEarlier={Boolean(paginationInfo?.hasMore)}
+        isLoadingEarlier={isLoadingEarlier}
+        onLoadEarlier={handleLoadEarlier}
+        renderLoadEarlier={renderLoadEarlier}
+        inverted={true}
       />
     </View>
   );
@@ -522,5 +678,20 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#92AAB0',
     marginRight: 2,
+  },
+  // Add styles for load earlier button
+  loadEarlierContainer: {
+    marginVertical: 10,
+  },
+  loadEarlierWrapper: {
+    backgroundColor: '#f0f0f0',
+    borderRadius: 15,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  loadEarlierText: {
+    fontSize: 14,
+    color: '#0a84ff',
+    fontWeight: '500',
   },
 });
