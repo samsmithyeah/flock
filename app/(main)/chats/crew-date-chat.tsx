@@ -6,14 +6,7 @@ import React, {
   useCallback,
   useState,
 } from 'react';
-import {
-  View,
-  StyleSheet,
-  Text,
-  AppState,
-  AppStateStatus,
-  ActivityIndicator,
-} from 'react-native';
+import { View, StyleSheet, Text, AppState, AppStateStatus } from 'react-native';
 import {
   GiftedChat,
   IMessage,
@@ -22,7 +15,6 @@ import {
   SendProps,
   AvatarProps,
   InputToolbar,
-  LoadEarlier,
 } from 'react-native-gifted-chat';
 import { useUser } from '@/context/UserContext';
 import { useCrewDateChat } from '@/context/CrewDateChatContext';
@@ -632,24 +624,6 @@ const CrewDateChatScreen: React.FC = () => {
     [user?.uid],
   );
 
-  // Custom render function for the LoadEarlier component
-  const renderLoadEarlier = useCallback(
-    (props: any) => {
-      return (
-        <LoadEarlier
-          {...props}
-          label={isLoadingEarlier ? 'Loading...' : 'Load earlier messages'}
-          containerStyle={styles.loadEarlierContainer}
-          wrapperStyle={styles.loadEarlierWrapper}
-          textStyle={styles.loadEarlierText}
-          activityIndicatorSize="small"
-          activityIndicatorColor="#0a84ff"
-        />
-      );
-    },
-    [isLoadingEarlier],
-  );
-
   // Only show typing indicator in footer, not loading earlier messages
   const renderFooter = useCallback(() => {
     if (typingDisplayNames.length > 0) {
@@ -704,10 +678,11 @@ const CrewDateChatScreen: React.FC = () => {
           </Send>
         )}
         renderFooter={renderFooter}
-        loadEarlier={paginationInfo?.hasMore === true}
+        loadEarlier={paginationInfo?.hasMore}
         isLoadingEarlier={isLoadingEarlier}
-        onLoadEarlier={handleLoadEarlier}
-        renderLoadEarlier={renderLoadEarlier}
+        listViewProps={{
+          onEndReached: () => handleLoadEarlier(),
+        }}
       />
     </View>
   );
@@ -743,19 +718,5 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#92AAB0',
     marginRight: 2,
-  },
-  loadEarlierContainer: {
-    marginVertical: 10,
-  },
-  loadEarlierWrapper: {
-    backgroundColor: '#f0f0f0',
-    borderRadius: 15,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  loadEarlierText: {
-    fontSize: 14,
-    color: '#0a84ff',
-    fontWeight: '500',
   },
 });

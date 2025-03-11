@@ -14,7 +14,6 @@ import {
   Send,
   SendProps,
   InputToolbar,
-  LoadEarlier,
 } from 'react-native-gifted-chat';
 import { useUser } from '@/context/UserContext';
 import { useDirectMessages } from '@/context/DirectMessagesContext';
@@ -533,24 +532,6 @@ const DMChatScreen: React.FC = () => {
     }
   }, [paginationInfo]);
 
-  // Custom render function for the LoadEarlier component
-  const renderLoadEarlier = useCallback(
-    (props: any) => {
-      return (
-        <LoadEarlier
-          {...props}
-          label={isLoadingEarlier ? 'Loading...' : 'Load earlier messages'}
-          containerStyle={styles.loadEarlierContainer}
-          wrapperStyle={styles.loadEarlierWrapper}
-          textStyle={styles.loadEarlierText}
-          activityIndicatorSize="small"
-          activityIndicatorColor="#0a84ff"
-        />
-      );
-    },
-    [isLoadingEarlier],
-  );
-
   // Add this debug effect to log when messages change
   useEffect(() => {
     if (conversationMessages.length > 0) {
@@ -637,11 +618,11 @@ const DMChatScreen: React.FC = () => {
             </View>
           ) : null
         }
-        // Add pagination support with improved property binding
-        loadEarlier={Boolean(paginationInfo?.hasMore)}
+        loadEarlier={paginationInfo?.hasMore}
         isLoadingEarlier={isLoadingEarlier}
-        onLoadEarlier={handleLoadEarlier}
-        renderLoadEarlier={renderLoadEarlier}
+        listViewProps={{
+          onEndReached: () => handleLoadEarlier(),
+        }}
         inverted={true}
       />
     </View>
@@ -678,20 +659,5 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#92AAB0',
     marginRight: 2,
-  },
-  // Add styles for load earlier button
-  loadEarlierContainer: {
-    marginVertical: 10,
-  },
-  loadEarlierWrapper: {
-    backgroundColor: '#f0f0f0',
-    borderRadius: 15,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  loadEarlierText: {
-    fontSize: 14,
-    color: '#0a84ff',
-    fontWeight: '500',
   },
 });
