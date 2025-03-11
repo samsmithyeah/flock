@@ -24,7 +24,6 @@ import LoadingOverlay from '@/components/LoadingOverlay';
 import { generateDMConversationId } from '@/utils/chatHelpers';
 import {
   doc,
-  getDoc,
   setDoc,
   updateDoc,
   serverTimestamp,
@@ -35,25 +34,39 @@ import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { User } from '@/types/User';
 import ProfilePicturePicker from '@/components/ProfilePicturePicker';
-import { throttle } from 'lodash';
+import { debounce } from 'lodash';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { useIsFocused, useFocusEffect } from '@react-navigation/native';
+import Toast from 'react-native-toast-message';
 
 const TYPING_TIMEOUT = 1000;
+const READ_UPDATE_DEBOUNCE = 1000; // 1 second debounce for read status updates
 
 const DMChatScreen: React.FC = () => {
   const { otherUserId } = useLocalSearchParams<{ otherUserId: string }>();
   const navigation = useNavigation();
-  const { sendMessage, updateLastRead, messages, listenToDMMessages } =
-    useDirectMessages();
+  const {
+    sendMessage,
+    updateLastRead,
+    messages,
+    listenToDMMessages,
+    // Add pagination related items
+    loadEarlierMessages,
+    messagePaginationInfo,
+  } = useDirectMessages();
   const { usersCache, fetchUserDetails } = useCrews();
   const isFocused = useIsFocused();
   const tabBarHeight = useBottomTabBarHeight();
   const { user, addActiveChat, removeActiveChat } = useUser();
   const [otherUser, setOtherUser] = useState<User | null>(null);
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
+  const [lastReadTimestamp, setLastReadTimestamp] = useState<Date | null>(null);
   const insets = useSafeAreaInsets();
+  // Add state for optimistic messages
+  const [optimisticMessages, setOptimisticMessages] = useState<IMessage[]>([]);
+  // Add state for loading earlier messages
+  const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
 
   // Generate conversationId from current and other user IDs.
   const conversationId = useMemo(() => {
@@ -61,7 +74,65 @@ const DMChatScreen: React.FC = () => {
     return generateDMConversationId(user.uid, otherUserId);
   }, [user?.uid, otherUserId]);
 
-  // Listen for typing status updates.
+  // Get pagination info for this conversation
+  const paginationInfo = conversationId
+    ? messagePaginationInfo[conversationId]
+    : undefined;
+
+  // Handle loading earlier messages
+  const handleLoadEarlier = useCallback(async () => {
+    if (!conversationId || isLoadingEarlier) {
+      console.log(
+        "[DMChat] Can't load earlier messages:",
+        !conversationId ? 'Invalid conversationId' : 'Already loading',
+      );
+      return;
+    }
+
+    console.log(
+      '[DMChat] Load earlier button clicked, paginationInfo:',
+      paginationInfo,
+    );
+
+    // Check if there are more messages in pagination info
+    if (!paginationInfo?.hasMore) {
+      console.log(
+        '[DMChat] No more earlier messages available according to paginationInfo',
+      );
+      return;
+    }
+
+    console.log(`[DMChat] Loading earlier messages for ${conversationId}...`);
+    setIsLoadingEarlier(true);
+
+    try {
+      const hasMore = await loadEarlierMessages(conversationId);
+      console.log('[DMChat] loadEarlierMessages result:', hasMore);
+    } catch (error) {
+      console.error('[DMChat] Error loading earlier messages:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Could not load earlier messages',
+        position: 'bottom',
+      });
+    } finally {
+      setIsLoadingEarlier(false);
+    }
+  }, [conversationId, paginationInfo, loadEarlierMessages, isLoadingEarlier]);
+
+  // Add this effect to ensure we use the correct pagination info
+  useEffect(() => {
+    if (conversationId && paginationInfo) {
+      console.log(`[DMChat] Current pagination info for ${conversationId}:`, {
+        hasMore: paginationInfo.hasMore,
+        loading: paginationInfo.loading,
+        lastDocId: paginationInfo.lastDoc?.id || 'null',
+      });
+    }
+  }, [conversationId, paginationInfo]);
+
+  // Listen for typing status and last read updates
   useEffect(() => {
     if (!conversationId) return;
     const convoRef = doc(db, 'direct_messages', conversationId);
@@ -70,11 +141,18 @@ const DMChatScreen: React.FC = () => {
       (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
+          // Handle typing status
           if (data.typingStatus) {
             const otherTyping = data.typingStatus[otherUserId] || false;
             setIsOtherUserTyping(Boolean(otherTyping));
           } else {
             setIsOtherUserTyping(false);
+          }
+
+          // Handle last read timestamp
+          if (data.lastRead && data.lastRead[otherUserId]) {
+            const timestamp = data.lastRead[otherUserId];
+            setLastReadTimestamp(timestamp.toDate());
           }
         } else {
           setIsOtherUserTyping(false);
@@ -82,7 +160,7 @@ const DMChatScreen: React.FC = () => {
       },
       (error) => {
         if (error.code === 'permission-denied') return;
-        console.error('Error listening to typing status:', error);
+        console.error('Error listening to DM document:', error);
         setIsOtherUserTyping(false);
       },
     );
@@ -113,18 +191,23 @@ const DMChatScreen: React.FC = () => {
 
   // Use a ref for the typing timeout to ensure proper cleanup.
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Track previous typing state to prevent unnecessary updates
+  const prevTypingStateRef = useRef<boolean>(false);
 
-  // Throttled function to update typing status.
-  const updateTypingStatus = useMemo(
-    () =>
-      throttle(async (isTyping: boolean) => {
-        if (!conversationId || !user?.uid) return;
-        const convoRef = doc(db, 'direct_messages', conversationId);
-        try {
-          const chatSnap = await getDoc(convoRef);
-          if (!chatSnap.exists()) {
+  // Function to immediately update typing status when typing starts
+  const updateTypingStatusImmediately = useCallback(
+    async (isTyping: boolean) => {
+      if (!conversationId || !user?.uid) return;
+      try {
+        await updateDoc(doc(db, 'direct_messages', conversationId), {
+          [`typingStatus.${user.uid}`]: isTyping,
+          [`typingStatus.${user.uid}LastUpdate`]: serverTimestamp(),
+        });
+      } catch (error: any) {
+        if (error.code === 'not-found') {
+          try {
             await setDoc(
-              convoRef,
+              doc(db, 'direct_messages', conversationId),
               {
                 typingStatus: {
                   [user.uid]: isTyping,
@@ -133,66 +216,139 @@ const DMChatScreen: React.FC = () => {
               },
               { merge: true },
             );
-          } else {
-            await updateDoc(convoRef, {
-              typingStatus: {
-                [user.uid]: isTyping,
-                [`${user.uid}LastUpdate`]: serverTimestamp(),
-              },
-            });
+          } catch (innerError) {
+            console.error('Error creating typing status:', innerError);
           }
-        } catch (error) {
+        } else {
           console.error('Error updating typing status:', error);
-        }
-      }, 500),
-    [conversationId, user?.uid],
-  );
-
-  const handleInputTextChanged = useCallback(
-    (text: string) => {
-      const isTyping = text.length > 0;
-      updateTypingStatus(isTyping);
-      if (isTyping) {
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(() => {
-          updateTypingStatus(false);
-          typingTimeoutRef.current = null;
-        }, TYPING_TIMEOUT);
-      } else {
-        if (typingTimeoutRef.current) {
-          clearTimeout(typingTimeoutRef.current);
-          typingTimeoutRef.current = null;
         }
       }
     },
-    [updateTypingStatus],
+    [conversationId, user?.uid],
   );
 
+  // Only debounce the "stop typing" signal to reduce Firebase operations
+  const debouncedStopTyping = useMemo(
+    () =>
+      debounce(() => {
+        updateTypingStatusImmediately(false);
+        prevTypingStateRef.current = false;
+      }, 500),
+    [updateTypingStatusImmediately],
+  );
+
+  // Optimize the input text change handler
+  const handleInputTextChanged = useCallback(
+    (text: string) => {
+      const isTyping = text.length > 0;
+
+      // Clear any existing timeout
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+
+      // Only send updates when typing state changes to avoid unnecessary writes
+      if (isTyping !== prevTypingStateRef.current) {
+        // If typing started, update immediately
+        if (isTyping) {
+          updateTypingStatusImmediately(true);
+          prevTypingStateRef.current = true;
+        } else {
+          // If typing stopped, use debounce to avoid flickering when
+          // user is just pausing between words
+          debouncedStopTyping();
+        }
+      }
+
+      // Set timeout to clear typing status after inactivity
+      if (isTyping) {
+        typingTimeoutRef.current = setTimeout(() => {
+          updateTypingStatusImmediately(false);
+          prevTypingStateRef.current = false;
+          typingTimeoutRef.current = null;
+        }, TYPING_TIMEOUT);
+      }
+    },
+    [updateTypingStatusImmediately, debouncedStopTyping],
+  );
+
+  // Make sure to cancel debounced function on unmount
+  useEffect(() => {
+    return () => {
+      debouncedStopTyping.cancel();
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, [debouncedStopTyping]);
+
   const conversationMessages = messages[conversationId] || [];
+
+  // Modified to include optimistic messages and message status
   const giftedChatMessages: IMessage[] = useMemo(() => {
-    return conversationMessages
-      .map((message) => ({
-        _id: message.id,
-        text: message.text,
-        createdAt:
-          message.createdAt instanceof Date
-            ? message.createdAt
-            : new Date(message.createdAt),
-        user: {
-          _id: message.senderId,
-          name:
-            message.senderId === user?.uid
-              ? user?.displayName || 'You'
-              : otherUser?.displayName || 'Unknown',
-          avatar:
-            message.senderId === user?.uid
-              ? user?.photoURL
-              : otherUser?.photoURL,
-          isOnline: message.senderId === user?.uid ? true : otherUser?.isOnline,
-        },
-      }))
+    // Get messages from server
+    const serverMessages = conversationMessages
+      .map((message) => {
+        // Determine if message has been read by other user
+        const isRead =
+          lastReadTimestamp &&
+          message.senderId === user?.uid &&
+          new Date(message.createdAt) < lastReadTimestamp;
+
+        return {
+          _id: message.id,
+          text: message.text,
+          createdAt:
+            message.createdAt instanceof Date
+              ? message.createdAt
+              : new Date(message.createdAt),
+          user: {
+            _id: message.senderId,
+            name:
+              message.senderId === user?.uid
+                ? user?.displayName || 'You'
+                : otherUser?.displayName || 'Unknown',
+            avatar:
+              message.senderId === user?.uid
+                ? user?.photoURL
+                : otherUser?.photoURL,
+            isOnline:
+              message.senderId === user?.uid ? true : otherUser?.isOnline,
+          },
+          sent: true, // All server messages were successfully sent
+          received: isRead || false, // Message is "received" when it has been read
+        };
+      })
       .reverse();
-  }, [conversationMessages, user, otherUser]);
+
+    // Find and remove any optimistic messages that have been confirmed
+    const newOptimisticMessages = optimisticMessages.filter((optMsg) => {
+      // If this message appears in server messages, remove it from optimistic messages
+      return !serverMessages.some(
+        (serverMsg) =>
+          serverMsg.text === optMsg.text &&
+          Math.abs(
+            new Date(serverMsg.createdAt).getTime() -
+              new Date(optMsg.createdAt).getTime(),
+          ) < 5000,
+      );
+    });
+
+    // Update optimistic messages if any were confirmed
+    if (newOptimisticMessages.length !== optimisticMessages.length) {
+      setOptimisticMessages(newOptimisticMessages);
+    }
+
+    // Merge server messages with remaining optimistic messages
+    return [...newOptimisticMessages, ...serverMessages];
+  }, [
+    conversationMessages,
+    user,
+    otherUser,
+    optimisticMessages,
+    lastReadTimestamp,
+  ]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -204,13 +360,88 @@ const DMChatScreen: React.FC = () => {
     async (msgs: IMessage[] = []) => {
       const text = msgs[0].text;
       if (text && text.trim() !== '') {
-        await sendMessage(conversationId, text.trim());
-        updateTypingStatus(false);
-        await updateLastRead(conversationId);
+        // Add the message optimistically
+        const optimisticMsg: IMessage = {
+          _id: `temp-${Date.now()}`,
+          text: text.trim(),
+          createdAt: new Date(),
+          user: {
+            _id: user?.uid || '',
+            name: user?.displayName || 'You',
+            avatar: user?.photoURL,
+          },
+          pending: true,
+        };
+
+        // Add to optimistic messages
+        setOptimisticMessages((prev) => [...prev, optimisticMsg]);
+
+        // Send to server
+        try {
+          await sendMessage(conversationId, text.trim());
+          // Explicitly set typing status to false when sending a message
+          updateTypingStatusImmediately(false);
+          prevTypingStateRef.current = false;
+          await updateLastRead(conversationId);
+        } catch (error) {
+          console.error('Failed to send message:', error);
+          Toast.show({
+            type: 'error',
+            text1: 'Error',
+            text2: 'Failed to send message',
+          });
+        }
       }
     },
-    [conversationId, sendMessage, updateTypingStatus, updateLastRead],
+    [
+      conversationId,
+      sendMessage,
+      updateTypingStatusImmediately,
+      updateLastRead,
+      user,
+    ],
   );
+
+  // Create a ref to track the previous message count for comparison
+  const previousMessageCountRef = useRef<number>(0);
+
+  // Debounced function to update last read status
+  const debouncedUpdateLastRead = useMemo(
+    () =>
+      debounce((chatId: string) => {
+        updateLastRead(chatId);
+      }, READ_UPDATE_DEBOUNCE),
+    [updateLastRead],
+  );
+
+  // Effect to auto-mark messages as read when receiving new messages while screen is focused
+  useEffect(() => {
+    if (!conversationId || !isFocused) return;
+
+    const currentMessageCount = conversationMessages.length;
+
+    // Only update if we received new messages (not on initial load)
+    if (
+      previousMessageCountRef.current > 0 &&
+      currentMessageCount > previousMessageCountRef.current
+    ) {
+      // Messages have increased while screen is focused - mark as read
+      debouncedUpdateLastRead(conversationId);
+    }
+
+    // Update the ref with current count for next comparison
+    previousMessageCountRef.current = currentMessageCount;
+  }, [
+    conversationMessages,
+    conversationId,
+    isFocused,
+    debouncedUpdateLastRead,
+  ]);
+
+  // Reset the counter when changing conversations
+  useEffect(() => {
+    previousMessageCountRef.current = 0;
+  }, [conversationId]);
 
   // Manage active chat state using focus.
   useFocusEffect(
@@ -281,6 +512,94 @@ const DMChatScreen: React.FC = () => {
     <InputToolbar {...props} containerStyle={styles.inputToolbarContainer} />
   );
 
+  // Custom render function for message ticks (WhatsApp style)
+  const renderTicks = useCallback(
+    (message: IMessage) => {
+      // Only show ticks for the current user's messages
+      if (message.user._id !== user?.uid) {
+        return null;
+      }
+
+      // For pending/optimistic messages
+      if (message.pending) {
+        return (
+          <View style={styles.tickContainer}>
+            <Ionicons name="time-outline" size={10} color="#92AAB0" />
+          </View>
+        );
+      }
+
+      // For sent messages
+      if (message.received) {
+        // Double blue ticks for received/read messages
+        return (
+          <View style={styles.tickContainer}>
+            <Ionicons name="checkmark-done" size={14} color="#4FC3F7" />
+          </View>
+        );
+      } else if (message.sent) {
+        // Single gray tick for delivered but unread messages
+        return (
+          <View style={styles.tickContainer}>
+            <Ionicons name="checkmark" size={14} color="#92AAB0" />
+          </View>
+        );
+      }
+
+      return null;
+    },
+    [user?.uid],
+  );
+
+  // Log when pagination info changes
+  useEffect(() => {
+    if (paginationInfo) {
+      console.log('[DMChat] Pagination info updated:', {
+        hasMore: paginationInfo.hasMore,
+        loading: paginationInfo.loading,
+      });
+    }
+  }, [paginationInfo]);
+
+  // Add this debug effect to log when messages change
+  useEffect(() => {
+    if (conversationMessages.length > 0) {
+      console.log(`[DMChat] Message count: ${conversationMessages.length}`);
+    }
+  }, [conversationMessages.length]);
+
+  // Add more debugging for pagination info and message count
+  useEffect(() => {
+    if (paginationInfo) {
+      console.log('[DMChat] Pagination info updated:', {
+        chatId: conversationId,
+        hasMore: paginationInfo.hasMore,
+        loading: paginationInfo.loading,
+      });
+    }
+  }, [paginationInfo, conversationId]);
+
+  // More detailed logging for message count changes
+  useEffect(() => {
+    if (conversationId && conversationMessages.length > 0) {
+      console.log(
+        `[DMChat] Messages for ${conversationId}: ${conversationMessages.length}`,
+      );
+
+      // Log first and last message timestamps to help debug ordering
+      const firstMsg = conversationMessages[0];
+      const lastMsg = conversationMessages[conversationMessages.length - 1];
+      if (firstMsg && lastMsg) {
+        console.log(
+          `[DMChat] First msg: ${new Date(firstMsg.createdAt).toISOString()}`,
+        );
+        console.log(
+          `[DMChat] Last msg: ${new Date(lastMsg.createdAt).toISOString()}`,
+        );
+      }
+    }
+  }, [conversationId, conversationMessages.length]);
+
   if (!conversationId) return <LoadingOverlay />;
   return (
     <View style={styles.container}>
@@ -302,6 +621,8 @@ const DMChatScreen: React.FC = () => {
             wrapperStyle={{
               left: { backgroundColor: '#BFF4BE' },
             }}
+            renderTicks={(message) => renderTicks(message)}
+            tickStyle={styles.tick}
           />
         )}
         renderSend={(props: SendProps<IMessage>) => (
@@ -326,6 +647,12 @@ const DMChatScreen: React.FC = () => {
             </View>
           ) : null
         }
+        loadEarlier={paginationInfo?.hasMore}
+        isLoadingEarlier={isLoadingEarlier}
+        listViewProps={{
+          onEndReached: () => handleLoadEarlier(),
+        }}
+        inverted={true}
       />
     </View>
   );
@@ -351,5 +678,15 @@ const styles = StyleSheet.create({
   sendContainer: {
     justifyContent: 'center',
     paddingHorizontal: 10,
+  },
+  tickContainer: {
+    flexDirection: 'row',
+    marginRight: 10,
+    alignItems: 'center',
+  },
+  tick: {
+    fontSize: 10,
+    color: '#92AAB0',
+    marginRight: 2,
   },
 });

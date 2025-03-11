@@ -27,6 +27,10 @@ import {
   arrayRemove,
   FirestoreError,
   getCountFromServer,
+  limit,
+  startAfter,
+  DocumentData,
+  QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
@@ -42,6 +46,13 @@ interface Message {
   text: string;
   createdAt: Date; // Ensure it's Date
   senderName?: string;
+}
+
+// Add pagination info to track message loading state
+interface MessagePaginationInfo {
+  hasMore: boolean;
+  loading: boolean;
+  lastDoc: QueryDocumentSnapshot<DocumentData> | null;
 }
 
 // Extend the CrewDateChat interface to include member details, crewName, and lastRead
@@ -68,7 +79,14 @@ interface CrewDateChatContextProps {
   fetchUnreadCount: (chatId: string) => Promise<number>;
   totalUnread: number;
   getChatParticipantsCount: (chatId: string) => number;
+  // Add method to load earlier messages
+  loadEarlierMessages: (chatId: string) => Promise<boolean>;
+  // Add pagination info mapping
+  messagePaginationInfo: { [chatId: string]: MessagePaginationInfo };
 }
+
+// Default number of messages to load initially and for pagination
+const MESSAGES_PER_LOAD = 20;
 
 // Create the context
 const CrewDateChatContext = createContext<CrewDateChatContextProps | undefined>(
@@ -86,6 +104,11 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
   const [totalUnread, setTotalUnread] = useState<number>(0);
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 1000; // 1 second
+
+  // Add state for pagination info
+  const [messagePaginationInfo, setMessagePaginationInfo] = useState<{
+    [chatId: string]: MessagePaginationInfo;
+  }>({});
 
   // Ref to keep track of message listeners
   const listenersRef = useRef<{ [chatId: string]: () => void }>({});
@@ -222,15 +245,23 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
           // Fetch messages created after lastRead
           msgQuery = query(messagesRef, where('createdAt', '>', lastRead));
         } else {
-          // If lastRead is null, all messages are unread
-          console.log('lastRead is null. Fetching all messages.');
-          msgQuery = query(messagesRef);
+          // Last read should not be null unless fetching is in progress so return 0
+          return 0;
         }
         const countSnapshot = await getCountFromServer(msgQuery);
         return countSnapshot.data().count;
       } catch (error: any) {
         if (!user?.uid) return 0;
         if (error.code === 'permission-denied') return 0;
+        if (error.code === 'unavailable') {
+          Toast.show({
+            type: 'error',
+            text1: 'Error',
+            text2:
+              'Could not fetch unread count. Please check your connection.',
+          });
+          return 0;
+        }
         console.error(`Error fetching unread count for chat ${chatId}:`, error);
         return 0;
       }
@@ -505,6 +536,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
           // Document exists, update it
           await updateDoc(chatRef, {
             memberIds: arrayUnion(uid),
+            [`lastRead.${uid}`]: serverTimestamp(),
           });
           console.log(`Added member ${uid} to existing chat ${chatId}`);
         } else {
@@ -513,6 +545,9 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
             memberIds: [uid], // Initialize the array
             createdAt: serverTimestamp(), // Optionally track when the chat was created
             hasMessages: false,
+            lastRead: {
+              [uid]: serverTimestamp(),
+            },
           });
           console.log(
             `Created new chat and added member ${uid} to chat ${chatId}`,
@@ -560,7 +595,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
     [],
   );
 
-  // Listen to real-time updates in messages of a crew date chat with sender names
+  // Listen to real-time updates in messages of a crew date chat with sender names - updated with pagination
   const listenToMessages = useCallback(
     (chatId: string) => {
       if (!user?.uid) return () => {};
@@ -571,8 +606,25 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         delete listenersRef.current[chatId];
       }
 
+      // Initialize pagination info if it doesn't exist
+      if (!messagePaginationInfo[chatId]) {
+        setMessagePaginationInfo((prev) => ({
+          ...prev,
+          [chatId]: {
+            hasMore: true,
+            loading: false,
+            lastDoc: null,
+          },
+        }));
+      }
+
       const messagesRef = collection(db, 'crew_date_chats', chatId, 'messages');
-      const msgQuery = query(messagesRef, orderBy('createdAt', 'asc'));
+      // Modified to use limit and only get recent messages
+      const msgQuery = query(
+        messagesRef,
+        orderBy('createdAt', 'desc'),
+        limit(MESSAGES_PER_LOAD),
+      );
 
       // Load cached messages if available
       const cachedMessages = storage.getString(`messages_${chatId}`);
@@ -597,6 +649,23 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         async (querySnapshot) => {
           if (!user?.uid) return;
           try {
+            // Store the last document for pagination
+            const lastVisible =
+              querySnapshot.docs.length > 0
+                ? querySnapshot.docs[querySnapshot.docs.length - 1]
+                : null;
+
+            // Update pagination info with the last document
+            setMessagePaginationInfo((prev) => ({
+              ...prev,
+              [chatId]: {
+                ...(prev[chatId] || {}),
+                hasMore: querySnapshot.docs.length >= MESSAGES_PER_LOAD,
+                lastDoc: lastVisible,
+                loading: false,
+              },
+            }));
+
             const fetchedMessages: Message[] = await Promise.all(
               querySnapshot.docs.map(async (docSnap) => {
                 const msgData = docSnap.data();
@@ -615,12 +684,37 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
               }),
             );
 
-            setMessages((prev) => ({
-              ...prev,
-              [chatId]: fetchedMessages,
-            }));
+            // Sort messages by createdAt (ascending) before setting state
+            const sortedMessages = fetchedMessages.sort(
+              (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+            );
 
-            const messagesToCache = fetchedMessages.map((msg) => ({
+            setMessages((prev) => {
+              // Preserve any previously loaded older messages
+              const existingMessages = prev[chatId] || [];
+
+              // Check for duplicate messages (in case we're refreshing)
+              const mergedMessages = [...existingMessages];
+
+              // Add new messages, avoiding duplicates
+              sortedMessages.forEach((newMsg) => {
+                const isDuplicate = mergedMessages.some(
+                  (existing) => existing.id === newMsg.id,
+                );
+                if (!isDuplicate) {
+                  mergedMessages.push(newMsg);
+                }
+              });
+
+              // Sort messages by date
+              mergedMessages.sort(
+                (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+              );
+
+              return { ...prev, [chatId]: mergedMessages };
+            });
+
+            const messagesToCache = sortedMessages.map((msg) => ({
               ...msg,
               createdAt: msg.createdAt.toISOString(),
             }));
@@ -650,7 +744,135 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         }
       };
     },
-    [user?.uid, fetchUserDetails],
+    [user?.uid, fetchUserDetailsWithRetry, messagePaginationInfo],
+  );
+
+  // Add function to load earlier messages
+  const loadEarlierMessages = useCallback(
+    async (chatId: string): Promise<boolean> => {
+      if (!user?.uid || !messagePaginationInfo[chatId]?.hasMore) {
+        return false;
+      }
+
+      const paginationInfo = messagePaginationInfo[chatId];
+      if (paginationInfo?.loading) return false;
+
+      // Set loading state
+      setMessagePaginationInfo((prev) => ({
+        ...prev,
+        [chatId]: {
+          ...prev[chatId],
+          loading: true,
+        },
+      }));
+
+      try {
+        const lastDoc = paginationInfo?.lastDoc;
+        if (!lastDoc) return false;
+
+        const messagesRef = collection(
+          db,
+          'crew_date_chats',
+          chatId,
+          'messages',
+        );
+        const olderMessagesQuery = query(
+          messagesRef,
+          orderBy('createdAt', 'desc'),
+          startAfter(lastDoc),
+          limit(MESSAGES_PER_LOAD),
+        );
+
+        const querySnapshot = await getDocs(olderMessagesQuery);
+        const lastVisible =
+          querySnapshot.docs.length > 0
+            ? querySnapshot.docs[querySnapshot.docs.length - 1]
+            : null;
+
+        // Update pagination info
+        setMessagePaginationInfo((prev) => ({
+          ...prev,
+          [chatId]: {
+            hasMore: querySnapshot.docs.length >= MESSAGES_PER_LOAD,
+            lastDoc: lastVisible || prev[chatId].lastDoc,
+            loading: false,
+          },
+        }));
+
+        if (querySnapshot.empty) {
+          return false;
+        }
+
+        // Process and add older messages
+        const olderMessages: Message[] = await Promise.all(
+          querySnapshot.docs.map(async (docSnap) => {
+            const msgData = docSnap.data();
+            const senderId: string = msgData.senderId;
+            const sender = await fetchUserDetailsWithRetry(senderId);
+
+            return {
+              id: docSnap.id,
+              senderId,
+              text: msgData.text,
+              createdAt: msgData.createdAt
+                ? msgData.createdAt.toDate()
+                : new Date(),
+              senderName: sender.displayName,
+            };
+          }),
+        );
+
+        // Sort older messages by date (ascending)
+        const sortedOlderMessages = olderMessages.sort(
+          (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+        );
+
+        // Update messages state by prepending older messages
+        setMessages((prev) => {
+          const existingMessages = prev[chatId] || [];
+
+          // Add older messages, avoiding duplicates
+          const mergedMessages = [...existingMessages];
+
+          sortedOlderMessages.forEach((oldMsg) => {
+            const isDuplicate = mergedMessages.some(
+              (existing) => existing.id === oldMsg.id,
+            );
+            if (!isDuplicate) {
+              mergedMessages.unshift(oldMsg); // Add to the beginning
+            }
+          });
+
+          // Sort all messages by date
+          mergedMessages.sort(
+            (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+          );
+
+          return { ...prev, [chatId]: mergedMessages };
+        });
+
+        return querySnapshot.docs.length > 0;
+      } catch (error) {
+        console.error('Error loading earlier messages:', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Could not load earlier messages.',
+        });
+
+        // Reset loading state on error
+        setMessagePaginationInfo((prev) => ({
+          ...prev,
+          [chatId]: {
+            ...prev[chatId],
+            loading: false,
+          },
+        }));
+
+        return false;
+      }
+    },
+    [user?.uid, messagePaginationInfo, fetchUserDetailsWithRetry],
   );
 
   // Get count of chat participants
@@ -674,6 +896,8 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         fetchUnreadCount,
         totalUnread,
         getChatParticipantsCount,
+        loadEarlierMessages,
+        messagePaginationInfo,
       }}
     >
       {children}
