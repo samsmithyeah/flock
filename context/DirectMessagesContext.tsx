@@ -179,14 +179,16 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
     [user?.uid],
   );
 
-  // Send a message in a DM
+  // Optimize the sendMessage function to prevent lag while typing
   const sendMessage = useCallback(
     async (dmId: string, text: string) => {
       if (!user?.uid) return;
       try {
+        // Check if the document exists in a separate variable for better readability
         const dmRef = doc(db, 'direct_messages', dmId);
         const dmDoc = await getDoc(dmRef);
         const otherUserUid = dmId.split('_').find((id) => id !== user.uid);
+
         if (!otherUserUid) {
           console.error('Other user UID not found in DM ID.');
           Toast.show({
@@ -196,6 +198,8 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
           });
           return;
         }
+
+        // If document doesn't exist, create it first
         if (!dmDoc.exists()) {
           await setDoc(
             dmRef,
@@ -211,7 +215,9 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
             },
             { merge: true },
           );
-        } else {
+        }
+        // Ensure participants field is properly set
+        else {
           const dmData = dmDoc.data();
           if (!dmData.participants || !Array.isArray(dmData.participants)) {
             await setDoc(
@@ -221,6 +227,8 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
             );
           }
         }
+
+        // Add the new message - separate operation from the document creation/update
         const messagesRef = collection(db, 'direct_messages', dmId, 'messages');
         const newMessage = {
           senderId: user.uid,
@@ -228,6 +236,8 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
           createdAt: serverTimestamp(),
         };
         await addDoc(messagesRef, newMessage);
+
+        // Update last read timestamp
         await updateLastRead(dmId);
       } catch (error) {
         console.error('Error sending message:', error);

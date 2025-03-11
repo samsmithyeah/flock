@@ -37,7 +37,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { User } from '@/types/User';
 import ProfilePicturePicker from '@/components/ProfilePicturePicker';
-import { throttle, debounce } from 'lodash';
+import { debounce } from 'lodash';
 import moment from 'moment';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
@@ -230,17 +230,24 @@ const CrewDateChatScreen: React.FC = () => {
   }, [navigation, crew, date, insets.top]);
 
   // Typing status for group chat.
-  let typingTimeout: NodeJS.Timeout;
-  const updateTypingStatus = useMemo(
-    () =>
-      throttle(async (isTyping: boolean) => {
-        if (!chatId || !user?.uid) return;
-        const chatRef = doc(db, 'crew_date_chats', chatId);
-        try {
-          const chatSnap = await getDoc(chatRef);
-          if (!chatSnap.exists()) {
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Track previous typing state to prevent unnecessary updates
+  const prevTypingStateRef = useRef<boolean>(false);
+
+  // Function to immediately update typing status when typing starts
+  const updateTypingStatusImmediately = useCallback(
+    async (isTyping: boolean) => {
+      if (!chatId || !user?.uid) return;
+      try {
+        await updateDoc(doc(db, 'crew_date_chats', chatId), {
+          [`typingStatus.${user.uid}`]: isTyping,
+          [`typingStatus.${user.uid}LastUpdate`]: serverTimestamp(),
+        });
+      } catch (error: any) {
+        if (error.code === 'not-found') {
+          try {
             await setDoc(
-              chatRef,
+              doc(db, 'crew_date_chats', chatId),
               {
                 typingStatus: {
                   [user.uid]: isTyping,
@@ -249,34 +256,72 @@ const CrewDateChatScreen: React.FC = () => {
               },
               { merge: true },
             );
-          } else {
-            await updateDoc(chatRef, {
-              [`typingStatus.${user.uid}`]: isTyping,
-              [`typingStatus.${user.uid}LastUpdate`]: serverTimestamp(),
-            });
+          } catch (innerError) {
+            console.error('Error creating typing status:', innerError);
           }
-        } catch (error) {
+        } else {
           console.error('Error updating typing status:', error);
         }
-      }, 500),
+      }
+    },
     [chatId, user?.uid],
   );
 
+  // Only debounce the "stop typing" signal to reduce Firebase operations
+  const debouncedStopTyping = useMemo(
+    () =>
+      debounce(() => {
+        updateTypingStatusImmediately(false);
+        prevTypingStateRef.current = false;
+      }, 500),
+    [updateTypingStatusImmediately],
+  );
+
+  // Optimize the input text change handler
   const handleInputTextChanged = useCallback(
     (text: string) => {
       const isTyping = text.length > 0;
-      updateTypingStatus(isTyping);
+
+      // Clear any existing timeout
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+
+      // Only send updates when typing state changes to avoid unnecessary writes
+      if (isTyping !== prevTypingStateRef.current) {
+        // If typing started, update immediately
+        if (isTyping) {
+          updateTypingStatusImmediately(true);
+          prevTypingStateRef.current = true;
+        } else {
+          // If typing stopped, use debounce to avoid flickering when
+          // user is just pausing between words
+          debouncedStopTyping();
+        }
+      }
+
+      // Set timeout to clear typing status after inactivity
       if (isTyping) {
-        if (typingTimeout) clearTimeout(typingTimeout);
-        typingTimeout = setTimeout(() => {
-          updateTypingStatus(false);
+        typingTimeoutRef.current = setTimeout(() => {
+          updateTypingStatusImmediately(false);
+          prevTypingStateRef.current = false;
+          typingTimeoutRef.current = null;
         }, TYPING_TIMEOUT);
-      } else {
-        if (typingTimeout) clearTimeout(typingTimeout);
       }
     },
-    [updateTypingStatus],
+    [updateTypingStatusImmediately, debouncedStopTyping],
   );
+
+  // Make sure to cancel debounced function on unmount
+  useEffect(() => {
+    return () => {
+      debouncedStopTyping.cancel();
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, [debouncedStopTyping]);
 
   const conversationMessages = messages[chatId || ''] || [];
 
@@ -439,7 +484,6 @@ const CrewDateChatScreen: React.FC = () => {
             avatar: user?.photoURL,
           },
           pending: true,
-          // Note: We don't set sent or received yet
         };
 
         // Add to optimistic messages
@@ -448,11 +492,12 @@ const CrewDateChatScreen: React.FC = () => {
         // Send to server
         try {
           await sendMessage(chatId, text.trim());
-          updateTypingStatus(false);
+          // Explicitly set typing status to false when sending a message
+          updateTypingStatusImmediately(false);
+          prevTypingStateRef.current = false;
           await updateLastRead(chatId);
         } catch (error) {
           console.error('Failed to send message:', error);
-          // Show error and keep optimistic message with error state
           Toast.show({
             type: 'error',
             text1: 'Error',
@@ -461,7 +506,7 @@ const CrewDateChatScreen: React.FC = () => {
         }
       }
     },
-    [chatId, sendMessage, updateTypingStatus, updateLastRead, user],
+    [chatId, sendMessage, updateTypingStatusImmediately, updateLastRead, user],
   );
 
   // Manage active chat state when screen gains/loses focus.

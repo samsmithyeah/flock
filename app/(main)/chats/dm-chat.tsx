@@ -24,7 +24,6 @@ import LoadingOverlay from '@/components/LoadingOverlay';
 import { generateDMConversationId } from '@/utils/chatHelpers';
 import {
   doc,
-  getDoc,
   setDoc,
   updateDoc,
   serverTimestamp,
@@ -35,7 +34,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { User } from '@/types/User';
 import ProfilePicturePicker from '@/components/ProfilePicturePicker';
-import { throttle, debounce } from 'lodash';
+import { debounce } from 'lodash';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { useIsFocused, useFocusEffect } from '@react-navigation/native';
@@ -192,18 +191,23 @@ const DMChatScreen: React.FC = () => {
 
   // Use a ref for the typing timeout to ensure proper cleanup.
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Track previous typing state to prevent unnecessary updates
+  const prevTypingStateRef = useRef<boolean>(false);
 
-  // Throttled function to update typing status.
-  const updateTypingStatus = useMemo(
-    () =>
-      throttle(async (isTyping: boolean) => {
-        if (!conversationId || !user?.uid) return;
-        const convoRef = doc(db, 'direct_messages', conversationId);
-        try {
-          const chatSnap = await getDoc(convoRef);
-          if (!chatSnap.exists()) {
+  // Function to immediately update typing status when typing starts
+  const updateTypingStatusImmediately = useCallback(
+    async (isTyping: boolean) => {
+      if (!conversationId || !user?.uid) return;
+      try {
+        await updateDoc(doc(db, 'direct_messages', conversationId), {
+          [`typingStatus.${user.uid}`]: isTyping,
+          [`typingStatus.${user.uid}LastUpdate`]: serverTimestamp(),
+        });
+      } catch (error: any) {
+        if (error.code === 'not-found') {
+          try {
             await setDoc(
-              convoRef,
+              doc(db, 'direct_messages', conversationId),
               {
                 typingStatus: {
                   [user.uid]: isTyping,
@@ -212,40 +216,72 @@ const DMChatScreen: React.FC = () => {
               },
               { merge: true },
             );
-          } else {
-            await updateDoc(convoRef, {
-              typingStatus: {
-                [user.uid]: isTyping,
-                [`${user.uid}LastUpdate`]: serverTimestamp(),
-              },
-            });
+          } catch (innerError) {
+            console.error('Error creating typing status:', innerError);
           }
-        } catch (error) {
+        } else {
           console.error('Error updating typing status:', error);
-        }
-      }, 500),
-    [conversationId, user?.uid],
-  );
-
-  const handleInputTextChanged = useCallback(
-    (text: string) => {
-      const isTyping = text.length > 0;
-      updateTypingStatus(isTyping);
-      if (isTyping) {
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(() => {
-          updateTypingStatus(false);
-          typingTimeoutRef.current = null;
-        }, TYPING_TIMEOUT);
-      } else {
-        if (typingTimeoutRef.current) {
-          clearTimeout(typingTimeoutRef.current);
-          typingTimeoutRef.current = null;
         }
       }
     },
-    [updateTypingStatus],
+    [conversationId, user?.uid],
   );
+
+  // Only debounce the "stop typing" signal to reduce Firebase operations
+  const debouncedStopTyping = useMemo(
+    () =>
+      debounce(() => {
+        updateTypingStatusImmediately(false);
+        prevTypingStateRef.current = false;
+      }, 500),
+    [updateTypingStatusImmediately],
+  );
+
+  // Optimize the input text change handler
+  const handleInputTextChanged = useCallback(
+    (text: string) => {
+      const isTyping = text.length > 0;
+
+      // Clear any existing timeout
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+
+      // Only send updates when typing state changes to avoid unnecessary writes
+      if (isTyping !== prevTypingStateRef.current) {
+        // If typing started, update immediately
+        if (isTyping) {
+          updateTypingStatusImmediately(true);
+          prevTypingStateRef.current = true;
+        } else {
+          // If typing stopped, use debounce to avoid flickering when
+          // user is just pausing between words
+          debouncedStopTyping();
+        }
+      }
+
+      // Set timeout to clear typing status after inactivity
+      if (isTyping) {
+        typingTimeoutRef.current = setTimeout(() => {
+          updateTypingStatusImmediately(false);
+          prevTypingStateRef.current = false;
+          typingTimeoutRef.current = null;
+        }, TYPING_TIMEOUT);
+      }
+    },
+    [updateTypingStatusImmediately, debouncedStopTyping],
+  );
+
+  // Make sure to cancel debounced function on unmount
+  useEffect(() => {
+    return () => {
+      debouncedStopTyping.cancel();
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, [debouncedStopTyping]);
 
   const conversationMessages = messages[conversationId] || [];
 
@@ -335,7 +371,6 @@ const DMChatScreen: React.FC = () => {
             avatar: user?.photoURL,
           },
           pending: true,
-          // Note: We don't set sent or received yet
         };
 
         // Add to optimistic messages
@@ -344,11 +379,12 @@ const DMChatScreen: React.FC = () => {
         // Send to server
         try {
           await sendMessage(conversationId, text.trim());
-          updateTypingStatus(false);
+          // Explicitly set typing status to false when sending a message
+          updateTypingStatusImmediately(false);
+          prevTypingStateRef.current = false;
           await updateLastRead(conversationId);
         } catch (error) {
           console.error('Failed to send message:', error);
-          // Show error and keep optimistic message with error state
           Toast.show({
             type: 'error',
             text1: 'Error',
@@ -357,7 +393,13 @@ const DMChatScreen: React.FC = () => {
         }
       }
     },
-    [conversationId, sendMessage, updateTypingStatus, updateLastRead, user],
+    [
+      conversationId,
+      sendMessage,
+      updateTypingStatusImmediately,
+      updateLastRead,
+      user,
+    ],
   );
 
   // Create a ref to track the previous message count for comparison
