@@ -20,6 +20,8 @@ import {
   limit,
   orderBy,
   query,
+  onSnapshot,
+  Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/firebase';
 import moment from 'moment';
@@ -33,6 +35,12 @@ import { router, useNavigation } from 'expo-router';
 import { FirebaseError } from 'firebase/app';
 import Toast from 'react-native-toast-message';
 
+// Define the typing status interface
+interface TypingStatus {
+  [chatId: string]: string[]; // array of userIds typing in each chat
+}
+
+// Rest of the existing interfaces...
 interface CombinedChat {
   id: string;
   type: 'direct' | 'group';
@@ -67,8 +75,12 @@ const ChatsListScreen: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filteredChats, setFilteredChats] = useState<CombinedChat[]>([]);
+  // Add state for typing indicators
+  const [typingStatus, setTypingStatus] = useState<TypingStatus>({});
 
   const senderNameCache = useRef<{ [senderId: string]: string }>({});
+  // Ref to store unsubscribe functions
+  const typingListenersRef = useRef<{ [key: string]: () => void }>({});
 
   const getSenderName = useCallback(
     async (senderId: string): Promise<string> => {
@@ -95,6 +107,7 @@ const ChatsListScreen: React.FC = () => {
     [usersCache],
   );
 
+  // Other existing functions...
   const loadCachedChatData = useCallback((): CombinedChat[] => {
     const cachedDataString = storage.getString('combinedChats');
     if (!cachedDataString) return [];
@@ -266,6 +279,98 @@ const ChatsListScreen: React.FC = () => {
     [crews],
   );
 
+  // Set up typing listeners for all chats
+  const setupTypingListeners = useCallback(() => {
+    if (!user?.uid) return;
+
+    // Clean up any existing listeners
+    Object.values(typingListenersRef.current).forEach((unsubscribe) =>
+      unsubscribe(),
+    );
+    typingListenersRef.current = {};
+
+    // Set up listeners for direct messages
+    dms.forEach((dm) => {
+      const chatId = dm.id;
+      const chatRef = doc(db, 'direct_messages', chatId);
+
+      const unsubscribe = onSnapshot(chatRef, (docSnap) => {
+        if (!docSnap.exists() || !user?.uid) return;
+
+        const data = docSnap.data();
+        if (data.typingStatus) {
+          // Find typing users other than current user
+          const typingUsers = Object.keys(data.typingStatus)
+            .filter((key) => !key.includes('LastUpdate') && key !== user.uid)
+            .filter((uid) => {
+              // Check if typing is recent
+              const lastUpdate = data.typingStatus[`${uid}LastUpdate`];
+              if (!lastUpdate) return false;
+
+              const now = Date.now();
+              const lastUpdateTime = (lastUpdate as Timestamp).toMillis();
+              return data.typingStatus[uid] && now - lastUpdateTime < 10000; // 10s timeout
+            });
+
+          setTypingStatus((prev) => ({
+            ...prev,
+            [chatId]: typingUsers.length > 0 ? typingUsers : [],
+          }));
+        }
+      });
+
+      typingListenersRef.current[`dm_${chatId}`] = unsubscribe;
+    });
+
+    // Set up listeners for group chats
+    groupChats.forEach((groupChat) => {
+      const chatId = groupChat.id;
+      const chatRef = doc(db, 'crew_date_chats', chatId);
+
+      const unsubscribe = onSnapshot(chatRef, (docSnap) => {
+        if (!docSnap.exists() || !user?.uid) return;
+
+        const data = docSnap.data();
+        if (data.typingStatus) {
+          // Find typing users other than current user
+          const typingUsers = Object.keys(data.typingStatus)
+            .filter((key) => !key.includes('LastUpdate') && key !== user.uid)
+            .filter((uid) => {
+              // Check if typing is recent
+              const lastUpdate = data.typingStatus[`${uid}LastUpdate`];
+              if (!lastUpdate) return false;
+
+              const now = Date.now();
+              const lastUpdateTime = (lastUpdate as Timestamp).toMillis();
+              return data.typingStatus[uid] && now - lastUpdateTime < 10000; // 10s timeout
+            });
+
+          setTypingStatus((prev) => ({
+            ...prev,
+            [chatId]: typingUsers.length > 0 ? typingUsers : [],
+          }));
+        }
+      });
+
+      typingListenersRef.current[`group_${chatId}`] = unsubscribe;
+    });
+  }, [user?.uid, dms, groupChats]);
+
+  // Call setupTypingListeners when dms or groupChats change
+  useEffect(() => {
+    if (isFocused) {
+      setupTypingListeners();
+    }
+
+    return () => {
+      // Clean up listeners when component unmounts or loses focus
+      Object.values(typingListenersRef.current).forEach((unsubscribe) =>
+        unsubscribe(),
+      );
+      typingListenersRef.current = {};
+    };
+  }, [setupTypingListeners, isFocused, dms.length, groupChats.length]);
+
   const combineChats = useCallback(async () => {
     if (!user) return;
     const cachedCombined = loadCachedChatData();
@@ -387,6 +492,35 @@ const ChatsListScreen: React.FC = () => {
     usersCache,
   ]);
 
+  // Helper function to get typing indicator text
+  const getTypingIndicatorText = useCallback(
+    (chatId: string, chatType: 'direct' | 'group') => {
+      const typingUserIds = typingStatus[chatId] || [];
+
+      if (typingUserIds.length === 0) return null;
+
+      if (chatType === 'direct') {
+        // For direct messages, just show "typing..."
+        return 'typing...';
+      } else {
+        // For group chats, try to show name(s)
+        const typingNames = typingUserIds
+          .map((uid) => usersCache[uid]?.displayName || 'Someone')
+          .slice(0, 2); // Limit to 2 names
+
+        if (typingNames.length === 1) {
+          return `${typingNames[0]} is typing...`;
+        } else if (typingNames.length === 2) {
+          return `${typingNames[0]} and ${typingNames[1]} are typing...`;
+        } else {
+          const otherCount = typingUserIds.length - 1;
+          return `${typingNames[0]} and ${otherCount} others are typing...`;
+        }
+      }
+    },
+    [typingStatus, usersCache],
+  );
+
   useEffect(() => {
     if (searchQuery.trim() === '') {
       setFilteredChats(combinedChats);
@@ -432,60 +566,74 @@ const ChatsListScreen: React.FC = () => {
     );
   }
 
-  const renderItem = ({ item }: { item: CombinedChat }) => (
-    <TouchableOpacity
-      style={styles.chatItem}
-      onPress={() => handleNavigation(item.id, item.type)}
-    >
-      <View style={styles.avatar}>
-        <ProfilePicturePicker
-          size={55}
-          imageUrl={item.iconUrl ?? null}
-          iconName={
-            item.type === 'direct' ? 'person-outline' : 'people-outline'
-          }
-          editable={false}
-          onImageUpdate={() => {}}
-          isOnline={item.isOnline ?? false}
-        />
-      </View>
-      <View style={styles.chatDetails}>
-        <View style={styles.chatHeader}>
-          <Text style={styles.chatTitle} numberOfLines={1}>
-            {item.title}
-          </Text>
-          {item.lastMessageTime && (
-            <Text style={styles.chatTimestamp}>
-              {moment(item.lastMessageTime).fromNow()}
+  const renderItem = ({ item }: { item: CombinedChat }) => {
+    // Check if someone is typing in this chat
+    const typingIndicator = getTypingIndicatorText(item.id, item.type);
+
+    return (
+      <TouchableOpacity
+        style={styles.chatItem}
+        onPress={() => handleNavigation(item.id, item.type)}
+      >
+        <View style={styles.avatar}>
+          <ProfilePicturePicker
+            size={55}
+            imageUrl={item.iconUrl ?? null}
+            iconName={
+              item.type === 'direct' ? 'person-outline' : 'people-outline'
+            }
+            editable={false}
+            onImageUpdate={() => {}}
+            isOnline={item.isOnline ?? false}
+          />
+        </View>
+        <View style={styles.chatDetails}>
+          <View style={styles.chatHeader}>
+            <Text style={styles.chatTitle} numberOfLines={1}>
+              {item.title}
+            </Text>
+            {item.lastMessageTime && !typingIndicator && (
+              <Text style={styles.chatTimestamp}>
+                {moment(item.lastMessageTime).fromNow()}
+              </Text>
+            )}
+          </View>
+
+          {typingIndicator ? (
+            // Show typing indicator
+            <Text style={styles.typingText} numberOfLines={1}>
+              {typingIndicator}
+            </Text>
+          ) : (
+            // Show regular last message
+            <Text style={styles.chatLastMessage} numberOfLines={2}>
+              {item.lastMessage ? (
+                item.lastMessageSenderName ? (
+                  <Text>
+                    <Text key="sender" style={styles.senderName}>
+                      {item.lastMessageSenderName}:{' '}
+                    </Text>
+                    <Text key="message">{item.lastMessage}</Text>
+                  </Text>
+                ) : (
+                  item.lastMessage
+                )
+              ) : (
+                'No messages yet.'
+              )}
             </Text>
           )}
         </View>
-        <Text style={styles.chatLastMessage} numberOfLines={2}>
-          {item.lastMessage ? (
-            item.lastMessageSenderName ? (
-              <Text>
-                <Text key="sender" style={styles.senderName}>
-                  {item.lastMessageSenderName}:{' '}
-                </Text>
-                <Text key="message">{item.lastMessage}</Text>
-              </Text>
-            ) : (
-              item.lastMessage
-            )
-          ) : (
-            'No messages yet.'
-          )}
-        </Text>
-      </View>
-      {item.unreadCount > 0 && (
-        <View style={styles.unreadBadge}>
-          <Text style={styles.unreadText}>
-            {item.unreadCount > 99 ? '99+' : item.unreadCount}
-          </Text>
-        </View>
-      )}
-    </TouchableOpacity>
-  );
+        {item.unreadCount > 0 && (
+          <View style={styles.unreadBadge}>
+            <Text style={styles.unreadText}>
+              {item.unreadCount > 99 ? '99+' : item.unreadCount}
+            </Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={globalStyles.container}>
@@ -540,6 +688,14 @@ const styles = StyleSheet.create({
   chatLastMessage: {
     fontSize: 14,
     color: '#555',
+    marginTop: 4,
+    flexDirection: 'row',
+    flex: 1,
+  },
+  typingText: {
+    fontSize: 14,
+    color: '#555',
+    fontStyle: 'italic',
     marginTop: 4,
     flexDirection: 'row',
     flex: 1,
