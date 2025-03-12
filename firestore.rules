@@ -62,6 +62,36 @@ service cloud.firestore {
       }
     }
     
+    // Event Polls Collection
+    match /event-polls/{pollId} {
+      // Allow reading polls for authenticated users
+      allow read: if request.auth != null;
+      
+      // Allow creating polls if the user is a member of the referenced crew
+      allow create: if request.auth != null && 
+                    request.resource.data.crewId is string &&
+                    isCrewMember(request.resource.data.crewId) &&
+                    request.resource.data.createdBy == request.auth.uid;
+      
+      // Allow updates if:
+      // 1. User is the poll creator (for finalizing)
+      // 2. User is a crew member (for responding to poll options)
+      allow update: if request.auth != null &&
+                    (resource.data.createdBy == request.auth.uid ||
+                     isCrewMember(resource.data.crewId));
+                     
+      // Limit certain updates to poll creator only
+      allow update: if request.auth != null &&
+                    resource.data.createdBy == request.auth.uid &&
+                    ('finalized' in request.resource.data || 
+                     'selectedDate' in request.resource.data);
+      
+      // Only poll creator or crew owner can delete 
+      allow delete: if request.auth != null && 
+                    (resource.data.createdBy == request.auth.uid || 
+                     isCrewOwner(resource.data.crewId));
+    }
+    
     // Invitations Collection
     match /invitations/{invitationId} {
       // Temporary rule to allow read for authenticated users
