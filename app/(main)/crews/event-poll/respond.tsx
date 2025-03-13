@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,10 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams, router, useNavigation } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
-import { useCrews } from '@/context/CrewsContext';
 import { Ionicons } from '@expo/vector-icons';
 import { EventPoll, PollOptionResponse } from '@/types/EventPoll';
 import { respondToPollOption } from '@/utils/eventPollHelpers';
@@ -20,7 +19,6 @@ import moment from 'moment';
 import Toast from 'react-native-toast-message';
 import useGlobalStyles from '@/styles/globalStyles';
 import LoadingOverlay from '@/components/LoadingOverlay';
-import CustomButton from '@/components/CustomButton';
 
 type ResponseOption = {
   date: string;
@@ -34,34 +32,13 @@ const ResponseScreen: React.FC = () => {
     crewId: string;
   }>();
   const { user } = useUser();
-  const { fetchCrew } = useCrews();
   const globalStyles = useGlobalStyles();
+  const navigation = useNavigation();
 
   const [poll, setPoll] = useState<EventPoll | null>(null);
-  const [crewName, setCrewName] = useState('');
   const [responses, setResponses] = useState<ResponseOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-
-  // Fetch crew name for display
-  useEffect(() => {
-    const fetchCrewName = async () => {
-      try {
-        if (crewId) {
-          const crew = await fetchCrew(crewId);
-          if (crew) {
-            setCrewName(crew.name);
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching crew name:', error);
-      }
-    };
-
-    if (crewId) {
-      fetchCrewName();
-    }
-  }, [crewId, fetchCrew]);
 
   // Fetch poll data and initialize response state
   useEffect(() => {
@@ -130,10 +107,18 @@ const ResponseScreen: React.FC = () => {
   ) => {
     setResponses((prev) => {
       const updated = [...prev];
-      updated[dateIndex] = {
-        ...updated[dateIndex],
-        response: newResponse,
-      };
+      // If the same response is clicked again, clear it
+      if (updated[dateIndex].response === newResponse) {
+        updated[dateIndex] = {
+          ...updated[dateIndex],
+          response: null,
+        };
+      } else {
+        updated[dateIndex] = {
+          ...updated[dateIndex],
+          response: newResponse,
+        };
+      }
       return updated;
     });
   };
@@ -180,7 +165,7 @@ const ResponseScreen: React.FC = () => {
       });
 
       // Navigate to poll details
-      router.push({
+      router.replace({
         pathname: '/crews/event-poll/[pollId]',
         params: { pollId, crewId },
       });
@@ -220,6 +205,33 @@ const ResponseScreen: React.FC = () => {
     }
   };
 
+  // Set header buttons
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <TouchableOpacity onPress={handleCancel}>
+          <Text style={styles.headerButtonText}>Cancel</Text>
+        </TouchableOpacity>
+      ),
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={handleSubmit}
+          disabled={submitting || !responses.some((r) => r.response !== null)}
+        >
+          <Text
+            style={[
+              styles.headerButtonText,
+              (submitting || !responses.some((r) => r.response !== null)) &&
+                styles.disabledHeaderButton,
+            ]}
+          >
+            {submitting ? 'Submitting...' : 'Submit'}
+          </Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, responses, submitting]);
+
   const renderResponseOptions = () => {
     return responses.map((responseOption, index) => {
       const date = responseOption.date;
@@ -230,12 +242,11 @@ const ResponseScreen: React.FC = () => {
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
       return (
-        <View
-          key={date}
-          style={[styles.dateCard, isWeekend && styles.weekendCard]}
-        >
-          <Text style={styles.dateText}>{formattedDate}</Text>
-          {isWeekend && <Text style={styles.weekendLabel}>Weekend</Text>}
+        <View key={date} style={styles.dateCard}>
+          <View style={styles.dateHeader}>
+            <Text style={styles.dateText}>{formattedDate}</Text>
+            {isWeekend && <Text style={styles.weekendLabel}>Weekend</Text>}
+          </View>
 
           <View style={styles.responseButtons}>
             <TouchableOpacity
@@ -320,15 +331,7 @@ const ResponseScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          {/* Clear response button */}
-          {responseOption.response !== null && (
-            <TouchableOpacity
-              style={styles.clearButton}
-              onPress={() => handleResponseChange(index, null)}
-            >
-              <Text style={styles.clearButtonText}>Clear response</Text>
-            </TouchableOpacity>
-          )}
+          {/* Remove the clear response button as we now clear by tapping the same response again */}
         </View>
       );
     });
@@ -363,22 +366,6 @@ const ResponseScreen: React.FC = () => {
       </Text>
 
       {renderResponseOptions()}
-
-      <View style={styles.buttonContainer}>
-        <CustomButton
-          title="Cancel"
-          onPress={handleCancel}
-          variant="secondary"
-          style={styles.buttonSpace}
-        />
-        <CustomButton
-          title="Submit"
-          onPress={handleSubmit}
-          variant="primary"
-          disabled={submitting || !responses.some((r) => r.response !== null)}
-          loading={submitting}
-        />
-      </View>
     </ScrollView>
   );
 };
@@ -392,7 +379,7 @@ const styles = StyleSheet.create({
   pollInfo: {
     backgroundColor: '#FFFFFF',
     borderRadius: 10,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: '#E0E0E0',
     padding: 16,
     marginBottom: 20,
@@ -427,27 +414,32 @@ const styles = StyleSheet.create({
   dateCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 10,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: '#E0E0E0',
     padding: 16,
     marginBottom: 10,
   },
-  weekendCard: {
-    backgroundColor: '#FFFDE7',
-    borderLeftWidth: 3,
-    borderLeftColor: '#FFC107',
+  dateHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   dateText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 6,
+    flex: 1,
   },
   weekendLabel: {
     fontSize: 12,
-    color: '#FFA000',
+    color: '#855A00',
     fontWeight: '500',
-    marginBottom: 8,
+    backgroundColor: '#FFECB3',
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    overflow: 'hidden',
+    alignSelf: 'flex-start',
+    marginLeft: 8,
   },
   responseButtons: {
     flexDirection: 'row',
@@ -488,22 +480,11 @@ const styles = StyleSheet.create({
   selectedResponseText: {
     color: '#FFFFFF',
   },
-  clearButton: {
-    alignSelf: 'center',
-    marginTop: 12,
-    paddingVertical: 4,
+  headerButtonText: {
+    fontSize: 16,
+    color: '#1e90ff',
   },
-  clearButtonText: {
-    fontSize: 14,
-    color: '#757575',
-    textDecorationLine: 'underline',
-  },
-  buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 24,
-  },
-  buttonSpace: {
-    marginRight: 8,
+  disabledHeaderButton: {
+    opacity: 0.5,
   },
 });

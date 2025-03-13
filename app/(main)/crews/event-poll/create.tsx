@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -7,9 +7,8 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams, router, useNavigation } from 'expo-router';
 import { useUser } from '@/context/UserContext';
-import { useCrews } from '@/context/CrewsContext';
 import { Calendar } from 'react-native-calendars';
 import moment from 'moment';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,7 +16,6 @@ import Toast from 'react-native-toast-message';
 import { createEventPoll } from '@/utils/eventPollHelpers';
 import useGlobalStyles from '@/styles/globalStyles';
 import CustomTextInput from '@/components/CustomTextInput';
-import CustomButton from '@/components/CustomButton';
 
 const CreateEventPollScreen: React.FC = () => {
   const { crewId, initialDate } = useLocalSearchParams<{
@@ -25,8 +23,8 @@ const CreateEventPollScreen: React.FC = () => {
     initialDate?: string;
   }>();
   const { user } = useUser();
-  const { fetchCrew } = useCrews();
   const globalStyles = useGlobalStyles();
+  const navigation = useNavigation();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -34,26 +32,7 @@ const CreateEventPollScreen: React.FC = () => {
   const [selectedDates, setSelectedDates] = useState<string[]>(
     initialDate ? [initialDate] : [],
   );
-  const [crewName, setCrewName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Fetch crew name
-  useEffect(() => {
-    const getCrewName = async () => {
-      try {
-        if (crewId) {
-          const crew = await fetchCrew(crewId);
-          if (crew) {
-            setCrewName(crew.name);
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching crew details:', error);
-      }
-    };
-
-    getCrewName();
-  }, [crewId, fetchCrew]);
 
   const handleSelectDate = (day: { dateString: string }) => {
     const date = day.dateString;
@@ -121,7 +100,7 @@ const CreateEventPollScreen: React.FC = () => {
         text2: 'Event poll created successfully',
       });
 
-      router.push({
+      router.replace({
         pathname: '/crews/event-poll',
         params: { crewId },
       });
@@ -156,13 +135,38 @@ const CreateEventPollScreen: React.FC = () => {
     }
   };
 
+  // Set header buttons
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <TouchableOpacity onPress={handleCancel}>
+          <Text style={styles.headerButtonText}>Cancel</Text>
+        </TouchableOpacity>
+      ),
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={handleCreatePoll}
+          disabled={isSubmitting || !title.trim() || selectedDates.length === 0}
+        >
+          <Text
+            style={[
+              styles.headerButtonText,
+              (isSubmitting || !title.trim() || selectedDates.length === 0) &&
+                styles.disabledHeaderButton,
+            ]}
+          >
+            {isSubmitting ? 'Creating...' : 'Create'}
+          </Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, title, selectedDates.length, isSubmitting]);
+
   return (
     <ScrollView
       style={globalStyles.containerWithHeader}
       contentContainerStyle={styles.scrollContent}
     >
-      <Text style={styles.headerText}>Create Event Poll for {crewName}</Text>
-
       <CustomTextInput
         labelText="Event name"
         placeholder="Enter a title for your event"
@@ -237,22 +241,6 @@ const CreateEventPollScreen: React.FC = () => {
           <Text style={styles.noDateText}>No dates selected</Text>
         )}
       </View>
-
-      <View style={styles.buttonContainer}>
-        <CustomButton
-          title="Cancel"
-          onPress={handleCancel}
-          variant="secondary"
-          style={styles.buttonSpace}
-        />
-        <CustomButton
-          title="Create Poll"
-          onPress={handleCreatePoll}
-          variant="primary"
-          disabled={isSubmitting || !title.trim() || selectedDates.length === 0}
-          loading={isSubmitting}
-        />
-      </View>
     </ScrollView>
   );
 };
@@ -262,12 +250,6 @@ export default CreateEventPollScreen;
 const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 30,
-  },
-  headerText: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 20,
-    color: '#333',
   },
   sectionTitle: {
     fontSize: 16,
@@ -283,14 +265,11 @@ const styles = StyleSheet.create({
   },
   calendarContainer: {
     backgroundColor: '#FFF',
-    borderRadius: 8,
     padding: 8,
     marginTop: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
   },
   selectedDatesContainer: {
     marginTop: 20,
@@ -311,12 +290,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     padding: 12,
     marginVertical: 4,
-    borderRadius: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 1,
-    elevation: 1,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
   },
   selectedDateText: {
     fontSize: 14,
@@ -332,12 +308,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 12,
   },
-  buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 24,
+  headerButtonText: {
+    fontSize: 16,
+    color: '#1e90ff',
   },
-  buttonSpace: {
-    marginRight: 8,
+  disabledHeaderButton: {
+    opacity: 0.5,
   },
 });

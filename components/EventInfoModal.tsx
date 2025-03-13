@@ -1,7 +1,7 @@
 // /components/EventInfoModal.tsx
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { Text, StyleSheet, Alert } from 'react-native';
 import CustomModal from '@/components/CustomModal';
 import { getFormattedDate } from '@/utils/dateHelpers';
 import { CrewEvent } from '@/types/CrewEvent';
@@ -9,7 +9,6 @@ import { useCrews } from '@/context/CrewsContext';
 import { User } from '@/types/User';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
-import { Ionicons } from '@expo/vector-icons';
 import CustomButton from '@/components/CustomButton';
 
 type EventInfoModalProps = {
@@ -59,7 +58,7 @@ const EventInfoModal: React.FC<EventInfoModalProps> = ({
 
   const confirmAddToCalendar = () => {
     Alert.alert(
-      'Add to calendar',
+      'Add to phone calendar',
       'Do you want to add this event to your calendar?',
       [
         { text: 'Cancel', style: 'cancel' },
@@ -90,23 +89,7 @@ const EventInfoModal: React.FC<EventInfoModalProps> = ({
       <Text style={styles.text}>{event.title}</Text>
 
       <Text style={styles.label}>Event date</Text>
-      <View style={styles.dateContainer}>
-        {event.startDate !== event.endDate ? (
-          <>
-            <Text style={styles.text}>
-              {getFormattedDate(event.startDate, true)}
-            </Text>
-            <View style={styles.arrowIcon}>
-              <Ionicons name="arrow-forward" size={16} color="#333" />
-            </View>
-            <Text style={styles.text}>
-              {getFormattedDate(event.endDate, true)}
-            </Text>
-          </>
-        ) : (
-          <Text style={styles.text}>{getFormattedDate(event.startDate)}</Text>
-        )}
-      </View>
+      <Text style={styles.text}>{getFormattedDate(event.date)}</Text>
 
       <Text style={styles.label}>Location</Text>
       <Text style={styles.text}>
@@ -117,11 +100,11 @@ const EventInfoModal: React.FC<EventInfoModalProps> = ({
 
       {onAddToCalendar && (
         <CustomButton
-          title="Add to calendar"
+          title="Add to phone calendar"
           onPress={confirmAddToCalendar}
           variant="secondary"
-          accessibilityLabel="Add to Calendar"
-          accessibilityHint="Add the current event to your calendar"
+          accessibilityLabel="Add to phone clendar"
+          accessibilityHint="Add the current event to your phone's calendar"
           icon={{ name: 'calendar-outline' }}
           style={{ marginTop: 16 }}
         />
@@ -142,12 +125,5 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 16,
     color: '#555',
-  },
-  dateContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  arrowIcon: {
-    marginHorizontal: 4,
   },
 });

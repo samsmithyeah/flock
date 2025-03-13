@@ -9,6 +9,7 @@ import {
   where,
   Timestamp,
   serverTimestamp,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { EventPoll, PollOptionResponse } from '@/types/EventPoll';
@@ -182,8 +183,7 @@ export const createEventFromPoll = async (
     const eventRef = collection(db, 'crews', crewId, 'events');
     const eventData = {
       title: poll.title,
-      startDate: poll.selectedDate,
-      endDate: poll.selectedDate, // Single-date events
+      date: poll.selectedDate, // Use single date field
       location: poll.location || '',
       description: poll.description || '',
       createdBy: userId,
@@ -193,8 +193,52 @@ export const createEventFromPoll = async (
 
     const docRef = await addDoc(eventRef, eventData);
 
-    // Delete the poll (optional)
-    // await deleteDoc(doc(db, 'event-polls', pollId));
+    // Get user responses for the selected date
+    // Since we've checked poll.selectedDate is not null above, we can safely use it
+    const selectedDate = poll.selectedDate; // This is definitely a string now
+    const selectedOption = poll.options.find(
+      (option) => option.date === selectedDate,
+    );
+    if (selectedOption && selectedOption.responses) {
+      // Set availability statuses based on poll responses
+      const batch = writeBatch(db);
+
+      Object.entries(selectedOption.responses).forEach(
+        ([respondentId, response]) => {
+          // "yes" and "maybe" responses should be marked as available
+          // "no" responses should be marked as unavailable
+          // Any other responses are ignored
+          const isAvailable = () => {
+            if (response === 'yes' || response === 'maybe') {
+              return true;
+            }
+            if (response === 'no') {
+              return false;
+            }
+            return null;
+          };
+
+          const userStatusRef = doc(
+            db,
+            'crews',
+            crewId,
+            'statuses',
+            selectedDate,
+            'userStatuses',
+            respondentId,
+          );
+
+          batch.set(userStatusRef, {
+            date: selectedDate,
+            upForGoingOutTonight: isAvailable(),
+            timestamp: Timestamp.now(),
+          });
+        },
+      );
+
+      // Commit all status updates
+      await batch.commit();
+    }
 
     return {
       id: docRef.id,

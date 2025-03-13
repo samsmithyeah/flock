@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams, router, useNavigation } from 'expo-router';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
@@ -26,6 +26,7 @@ const PollDetailsScreen: React.FC = () => {
   const { user } = useUser();
   const { usersCache, fetchCrew } = useCrews();
   const globalStyles = useGlobalStyles();
+  const navigation = useNavigation();
 
   const [poll, setPoll] = useState<EventPoll | null>(null);
   const [crewName, setCrewName] = useState('');
@@ -52,6 +53,15 @@ const PollDetailsScreen: React.FC = () => {
       fetchCrewName();
     }
   }, [crewId, fetchCrew]);
+
+  // Set the screen title
+  useLayoutEffect(() => {
+    if (crewName) {
+      navigation.setOptions({
+        title: `Poll for ${crewName}`,
+      });
+    }
+  }, [crewName, navigation]);
 
   // Subscribe to poll updates
   useEffect(() => {
@@ -217,23 +227,41 @@ const PollDetailsScreen: React.FC = () => {
     }
   };
 
-  const getUserResponse = (optionIndex: number, userId: string) => {
-    if (!poll) return null;
-    return poll.options[optionIndex].responses?.[userId] || null;
+  // Find option with highest vote count
+  const findBestOption = () => {
+    if (!poll || !poll.options.length) return null;
+
+    // Calculate scores for each option
+    const optionScores = poll.options.map((option, index) => {
+      const { yesCount, maybeCount } = getResponseCountsByType(index);
+      // Score formula: yes = 1 point, maybe = 0.5 points
+      const score = yesCount + maybeCount * 0.5;
+      return { date: option.date, score, index };
+    });
+
+    // Sort by score (highest first)
+    optionScores.sort((a, b) => b.score - a.score);
+
+    // Return the option with highest score if it's greater than 0
+    return optionScores[0].score > 0 ? optionScores[0] : null;
   };
 
   const renderOptionsWithResponses = () => {
     if (!poll) return null;
 
+    const bestOption = findBestOption();
+
     return (
       <View style={styles.optionsContainer}>
-        <Text style={styles.sectionTitle}>Date Options</Text>
+        <Text style={styles.sectionTitle}>Date options:</Text>
 
         {poll.options.map((option, index) => {
           const { yesCount, maybeCount, noCount, totalResponses } =
             getResponseCountsByType(index);
           const isSelectedDate =
             poll.finalized && poll.selectedDate === option.date;
+          const isBestOption =
+            bestOption && bestOption.date === option.date && !poll.finalized;
 
           return (
             <View
@@ -241,12 +269,22 @@ const PollDetailsScreen: React.FC = () => {
               style={[
                 styles.optionCard,
                 isSelectedDate && styles.selectedDateCard,
+                isBestOption && styles.bestOptionCard,
               ]}
             >
               <View style={styles.dateHeader}>
-                <Text style={styles.dateText}>
-                  {getFormattedDate(option.date)}
-                </Text>
+                <View style={styles.dateHeaderLeft}>
+                  <Text style={styles.dateText}>
+                    {getFormattedDate(option.date)}
+                  </Text>
+                  {isBestOption && (
+                    <View style={styles.mostVotesTag}>
+                      <Ionicons name="star" size={14} color="#FFD700" />
+                      <Text style={styles.mostVotesText}>Most votes</Text>
+                    </View>
+                  )}
+                </View>
+
                 {isSelectedDate && (
                   <View style={styles.selectedBadge}>
                     <Text style={styles.selectedBadgeText}>Selected</Text>
@@ -267,6 +305,15 @@ const PollDetailsScreen: React.FC = () => {
                   <Ionicons name="close-circle" size={16} color="#F44336" />
                   <Text style={styles.statText}>{noCount}</Text>
                 </View>
+
+                {/* Show weighted score for non-finalized polls */}
+                {!poll.finalized && (
+                  <View style={styles.scoreItem}>
+                    <Text style={styles.scoreText}>
+                      Score: {(yesCount + maybeCount * 0.5).toFixed(1)}
+                    </Text>
+                  </View>
+                )}
               </View>
 
               {totalResponses > 0 && (
@@ -304,8 +351,6 @@ const PollDetailsScreen: React.FC = () => {
       style={globalStyles.containerWithHeader}
       contentContainerStyle={styles.scrollContent}
     >
-      <Text style={styles.headerText}>Poll for {crewName}</Text>
-
       <View style={styles.pollHeader}>
         <Text style={styles.pollTitle}>{poll?.title}</Text>
 
@@ -363,13 +408,15 @@ const PollDetailsScreen: React.FC = () => {
 
       {hasResponded && (
         <View>
-          <CustomButton
-            title={poll?.finalized ? 'Change Response' : 'Edit Response'}
-            onPress={goToRespondScreen}
-            variant="secondary"
-            icon={{ name: 'create-outline' }}
-            style={styles.button}
-          />
+          {!poll?.finalized && (
+            <CustomButton
+              title="Edit response"
+              onPress={goToRespondScreen}
+              variant="secondary"
+              icon={{ name: 'create-outline' }}
+              style={styles.button}
+            />
+          )}
 
           {user?.uid === poll?.createdBy && !poll?.finalized && (
             <CustomButton
@@ -384,7 +431,7 @@ const PollDetailsScreen: React.FC = () => {
 
           {poll?.finalized && poll?.selectedDate && (
             <CustomButton
-              title="View in Calendar"
+              title="View in calendar"
               onPress={handleCreateEvent}
               variant="primary"
               icon={{ name: 'calendar-outline' }}
@@ -405,12 +452,6 @@ export default PollDetailsScreen;
 const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 30,
-  },
-  headerText: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 20,
-    color: '#333',
   },
   pollHeader: {
     flexDirection: 'row',
@@ -460,8 +501,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginBottom: 20,
     paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
   },
   infoItem: {
     flexDirection: 'row',
@@ -506,18 +545,15 @@ const styles = StyleSheet.create({
   },
   optionCard: {
     backgroundColor: '#FFF',
-    borderRadius: 8,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
     padding: 16,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
   },
   selectedDateCard: {
     borderColor: '#4CAF50',
-    borderWidth: 1,
+    borderWidth: 2,
     backgroundColor: '#F1F8E9',
   },
   dateHeader: {
@@ -572,5 +608,36 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#555',
     marginLeft: 8,
+  },
+  dateHeaderLeft: {
+    flex: 1,
+  },
+  bestOptionCard: {
+    borderColor: '#FFD700',
+    borderWidth: 2,
+    backgroundColor: '#FFFEF0',
+  },
+  mostVotesTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  mostVotesText: {
+    fontSize: 12,
+    color: '#FFA000',
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  scoreItem: {
+    backgroundColor: '#F5F5F5',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginLeft: 'auto',
+  },
+  scoreText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#333',
   },
 });

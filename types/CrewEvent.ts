@@ -5,8 +5,7 @@ import { Timestamp } from 'firebase/firestore';
 export type CrewEvent = {
   id: string;
   title: string;
-  startDate: string;
-  endDate: string;
+  date: string; // YYYY-MM-DD format
   description?: string;
   createdBy: string;
   createdAt: Timestamp;

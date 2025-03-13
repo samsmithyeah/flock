@@ -140,9 +140,10 @@ const CrewLandingScreen: React.FC = () => {
           }
         >
           <Ionicons name="calendar-outline" size={36} color="#1e90ff" />
-          <Text style={styles.navCardTitle}>Calendar</Text>
+          <Text style={styles.navCardTitle}>Crew calendar</Text>
           <Text style={styles.navCardDescription}>
-            View and manage upcoming crew events
+            Update your availability, see upcoming events, and meet up with your
+            crew.
           </Text>
         </TouchableOpacity>
 
@@ -156,9 +157,9 @@ const CrewLandingScreen: React.FC = () => {
           }
         >
           <Ionicons name="stats-chart-outline" size={36} color="#ff7043" />
-          <Text style={styles.navCardTitle}>Date Polls</Text>
+          <Text style={styles.navCardTitle}>Event polls</Text>
           <Text style={styles.navCardDescription}>
-            Create polls to find the best date for your next event
+            Create polls to find the best date for your next crew event
           </Text>
         </TouchableOpacity>
       </View>
@@ -203,15 +204,12 @@ const styles = StyleSheet.create({
   },
   navCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
     padding: 20,
     marginBottom: 16,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
   },
   navCardTitle: {
     fontSize: 18,

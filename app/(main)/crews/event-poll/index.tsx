@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   FlatList,
-  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -14,21 +13,43 @@ import { useUser } from '@/context/UserContext';
 import { Ionicons } from '@expo/vector-icons';
 import { EventPoll } from '@/types/EventPoll';
 import { getFormattedDate } from '@/utils/dateHelpers';
-import moment from 'moment';
 import { useCrews } from '@/context/CrewsContext';
 import Toast from 'react-native-toast-message';
 import useGlobalStyles from '@/styles/globalStyles';
 import LoadingOverlay from '@/components/LoadingOverlay';
+import { useNavigation } from 'expo-router';
 
 const EventPollsScreen: React.FC = () => {
   const { crewId } = useLocalSearchParams<{ crewId: string }>();
   const { user } = useUser();
-  const { fetchCrew } = useCrews();
+  const { fetchCrew, fetchUserDetails } = useCrews();
   const globalStyles = useGlobalStyles();
+  const navigation = useNavigation();
 
   const [polls, setPolls] = useState<EventPoll[]>([]);
   const [loading, setLoading] = useState(true);
   const [crewName, setCrewName] = useState('');
+  const [creatorNames, setCreatorNames] = useState<Record<string, string>>({});
+
+  useLayoutEffect(() => {
+    if (crewName) {
+      navigation.setOptions({
+        title: `Event polls for ${crewName}`,
+        headerRight: () => (
+          <TouchableOpacity
+            onPress={() =>
+              router.push({
+                pathname: '/crews/event-poll/create',
+                params: { crewId },
+              })
+            }
+          >
+            <Ionicons name="add-circle" size={30} color="#1e90ff" />
+          </TouchableOpacity>
+        ),
+      });
+    }
+  }, [crewName, navigation]);
 
   useEffect(() => {
     const fetchCrewName = async () => {
@@ -94,11 +115,39 @@ const EventPollsScreen: React.FC = () => {
     return () => unsubscribe();
   }, [crewId, user]);
 
+  // Fetch creator names for polls
+  useEffect(() => {
+    const getCreatorNames = async () => {
+      const names: Record<string, string> = {};
+
+      for (const poll of polls) {
+        if (poll.createdBy && !creatorNames[poll.createdBy]) {
+          try {
+            const creator = await fetchUserDetails(poll.createdBy);
+            if (creator) {
+              names[poll.createdBy] = creator.displayName || 'Unknown user';
+            }
+          } catch (error) {
+            console.error('Error fetching creator details:', error);
+            names[poll.createdBy] = 'Unknown user';
+          }
+        }
+      }
+
+      setCreatorNames((prevNames) => ({ ...prevNames, ...names }));
+    };
+
+    if (polls.length > 0) {
+      getCreatorNames();
+    }
+  }, [polls, fetchUserDetails]);
+
   const renderPollItem = ({ item }: { item: EventPoll }) => {
     // Find how many dates have been proposed
     const dateCount = item.options.length;
 
     // Calculate response statistics
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     let totalResponses = 0;
     let memberCount = 0;
 
@@ -117,8 +166,13 @@ const EventPollsScreen: React.FC = () => {
     // Format the creation date
     const creationDate = item.createdAt?.toDate();
     const formattedDate = creationDate
-      ? moment(creationDate).format('MMM D, YYYY')
+      ? getFormattedDate(creationDate.toISOString())
       : '';
+
+    // Get creator name
+    const creatorName = item.createdBy
+      ? creatorNames[item.createdBy] || 'Loading...'
+      : 'Unknown';
 
     return (
       <TouchableOpacity
@@ -153,12 +207,16 @@ const EventPollsScreen: React.FC = () => {
             <View style={styles.selectedDateContainer}>
               <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
               <Text style={styles.selectedDateText}>
-                {getFormattedDate(item.selectedDate)}
+                {item.selectedDate
+                  ? getFormattedDate(item.selectedDate.toString())
+                  : ''}
               </Text>
             </View>
           )}
 
-          <Text style={styles.pollDate}>Created {formattedDate}</Text>
+          <Text style={styles.pollDate}>
+            Created on {formattedDate} by {creatorName}
+          </Text>
         </View>
 
         <Ionicons name="chevron-forward" size={20} color="#888" />
@@ -193,21 +251,6 @@ const EventPollsScreen: React.FC = () => {
 
   return (
     <View style={globalStyles.containerWithHeader}>
-      <View style={styles.header}>
-        <Text style={styles.headerText}>Event Polls for {crewName}</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() =>
-            router.push({
-              pathname: '/crews/event-poll/create',
-              params: { crewId },
-            })
-          }
-        >
-          <Ionicons name="add" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
-
       <FlatList
         data={polls}
         renderItem={renderPollItem}
@@ -224,31 +267,6 @@ const EventPollsScreen: React.FC = () => {
 export default EventPollsScreen;
 
 const styles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-    paddingHorizontal: 4,
-  },
-  headerText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-  },
-  addButton: {
-    backgroundColor: '#1e90ff',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 1.5,
-  },
   list: {
     paddingVertical: 8,
   },
@@ -258,22 +276,19 @@ const styles = StyleSheet.create({
   },
   pollItem: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 8,
     padding: 16,
     marginBottom: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
   },
   finalizedPoll: {
     backgroundColor: '#F9F9F9',
     borderColor: '#E0E0E0',
-    borderWidth: 1,
+    borderWidth: 2,
   },
   pollMain: {
     flex: 1,

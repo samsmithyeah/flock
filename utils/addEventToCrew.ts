@@ -1,57 +1,89 @@
-// utils/addEventToCrew.ts
-
 import {
   collection,
   addDoc,
   doc,
   updateDoc,
-  serverTimestamp,
   deleteDoc,
+  Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/firebase';
 
-export type NewCrewEvent = {
-  title: string;
-  startDate: string;
-  endDate: string;
-  description?: string;
-  unconfirmed?: boolean;
-  location?: string;
+/**
+ * Add a new event to a crew
+ */
+export const addEventToCrew = async (
+  crewId: string,
+  eventData: {
+    title: string;
+    date: string;
+    unconfirmed?: boolean;
+    location?: string;
+    description?: string;
+  },
+  userId: string,
+) => {
+  try {
+    const eventRef = collection(db, 'crews', crewId, 'events');
+    const newEvent = {
+      title: eventData.title,
+      date: eventData.date,
+      location: eventData.location || '',
+      description: eventData.description || '',
+      createdBy: userId,
+      createdAt: Timestamp.now(),
+      unconfirmed:
+        eventData.unconfirmed !== undefined ? eventData.unconfirmed : true,
+    };
+
+    const docRef = await addDoc(eventRef, newEvent);
+    return { id: docRef.id, ...newEvent };
+  } catch (error) {
+    console.error('Error adding event to crew:', error);
+    throw error;
+  }
 };
 
-export async function addEventToCrew(
-  crewId: string,
-  eventData: NewCrewEvent,
-  userId: string,
-) {
-  const eventsRef = collection(db, 'crews', crewId, 'events');
-  await addDoc(eventsRef, {
-    ...eventData,
-    createdBy: userId,
-    createdAt: serverTimestamp(),
-  });
-}
-
-export async function updateEventInCrew(
+/**
+ * Update an existing event in a crew
+ */
+export const updateEventInCrew = async (
   crewId: string,
   eventId: string,
   userId: string,
-  updates: {
-    title: string;
-    startDate: string;
-    endDate: string;
+  eventData: {
+    title?: string;
+    date?: string;
     unconfirmed?: boolean;
     location?: string;
+    description?: string;
   },
-) {
-  const eventRef = doc(db, 'crews', crewId, 'events', eventId);
-  await updateDoc(eventRef, {
-    ...updates,
-    updatedAt: serverTimestamp(),
-    updatedBy: userId,
-  });
-}
+) => {
+  try {
+    const eventRef = doc(db, 'crews', crewId, 'events', eventId);
+    const updateData = {
+      ...eventData,
+      updatedBy: userId,
+      updatedAt: Timestamp.now(),
+    };
 
-export async function deleteEventFromCrew(crewId: string, eventId: string) {
-  await deleteDoc(doc(db, 'crews', crewId, 'events', eventId));
-}
+    await updateDoc(eventRef, updateData);
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating event in crew:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete an event from a crew
+ */
+export const deleteEventFromCrew = async (crewId: string, eventId: string) => {
+  try {
+    const eventRef = doc(db, 'crews', crewId, 'events', eventId);
+    await deleteDoc(eventRef);
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting event from crew:', error);
+    throw error;
+  }
+};

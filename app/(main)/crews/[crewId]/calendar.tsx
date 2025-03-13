@@ -30,6 +30,7 @@ import useglobalStyles from '@/styles/globalStyles';
 import { Calendar } from 'react-native-calendars';
 import WeekNavButtons from '@/components/WeekNavButtons';
 import DayContainer from '@/components/DayContainer';
+import AddEventModal from '@/components/AddEventModal';
 import EventInfoModal from '@/components/EventInfoModal';
 import {
   addEventToCrew,
@@ -72,6 +73,10 @@ const CrewCalendarScreen: React.FC = () => {
   const scrollViewRef = useRef<ScrollView>(null);
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  const [addEventVisible, setAddEventVisible] = useState(false);
+  const [isAddingEvent, setIsAddingEvent] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<CrewEvent | null>(null);
 
   // Controls for event viewing
   const [viewingEvent, setViewingEvent] = useState<CrewEvent | null>(null);
@@ -176,7 +181,7 @@ const CrewCalendarScreen: React.FC = () => {
     if (!crewId || !weekDates.length || !user) return;
 
     const eventsRef = collection(db, 'crews', crewId, 'events');
-    const q = query(eventsRef, orderBy('startDate'));
+    const q = query(eventsRef, orderBy('date'));
 
     const unsub = onSnapshot(
       q,
@@ -191,9 +196,9 @@ const CrewCalendarScreen: React.FC = () => {
           groupedByDay[day] = [];
         });
 
-        // Since events are now single-date only, this logic is simplified
+        // Group events by their date
         for (const event of allEvents) {
-          const eventDate = event.startDate;
+          const eventDate = event.date;
           if (weekDates.includes(eventDate)) {
             groupedByDay[eventDate].push(event);
           }
@@ -311,6 +316,145 @@ const CrewCalendarScreen: React.FC = () => {
     }
   };
 
+  const handleDeleteEvent = async (eventId: string) => {
+    if (!crewId || !eventId || !editingEvent) return;
+    Alert.alert(
+      'Delete event?',
+      'Are you sure you want to delete this event?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteEventFromCrew(crewId, eventId);
+              Toast.show({
+                type: 'success',
+                text1: 'Deleted',
+                text2: 'Event was removed successfully.',
+              });
+
+              // Check if user is available on the event date
+              const eventDate = editingEvent.date;
+              const userIsAvailable = isUserUpForDay(eventDate);
+
+              if (userIsAvailable) {
+                Alert.alert(
+                  'Clear availability',
+                  'Do you want to clear your availability on the deleted event date?',
+                  [
+                    { text: 'No', style: 'cancel' },
+                    {
+                      text: 'Yes',
+                      onPress: () => {
+                        if (!user) return;
+                        setStatusForCrew(crewId, eventDate, null);
+                        removeMemberFromChat(
+                          `${crewId}_${eventDate}`,
+                          user.uid,
+                        );
+                      },
+                    },
+                  ],
+                );
+              }
+            } catch (err) {
+              console.error('Error deleting event:', err);
+              Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'Could not delete event.',
+              });
+            }
+          },
+        },
+      ],
+      { cancelable: true },
+    );
+  };
+
+  const handleSaveEvent = async (
+    title: string,
+    date: string,
+    unconfirmed?: boolean,
+    location?: string,
+  ) => {
+    if (!crewId || !user?.uid) return;
+    setIsAddingEvent(true);
+    try {
+      if (editingEvent) {
+        // Handle updating an existing event
+        await updateEventInCrew(crewId, editingEvent.id, user.uid, {
+          title,
+          date,
+          unconfirmed,
+          location,
+        });
+
+        // Set user status for the event date
+        setStatusForCrew(crewId, date, true);
+        addMemberToChat(`${crewId}_${date}`, user.uid);
+
+        // If the date changed, handle availability for the old date
+        if (editingEvent.date !== date && isUserUpForDay(editingEvent.date)) {
+          Alert.alert(
+            'Update availability',
+            'The event date has changed. Do you want to mark yourself as not available on the previous date?',
+            [
+              { text: 'No', style: 'cancel' },
+              {
+                text: 'Yes',
+                onPress: () => {
+                  if (!user) return;
+                  setStatusForCrew(crewId, editingEvent.date, false);
+                  removeMemberFromChat(
+                    `${crewId}_${editingEvent.date}`,
+                    user.uid,
+                  );
+                },
+              },
+            ],
+          );
+        }
+
+        Toast.show({
+          type: 'success',
+          text1: 'Event Updated',
+          text2: 'Event successfully updated.',
+        });
+      } else {
+        // Create a new event
+        await addEventToCrew(
+          crewId,
+          { title, date, unconfirmed, location },
+          user.uid,
+        );
+
+        // Set user status for the event date
+        setStatusForCrew(crewId, date, true);
+        addMemberToChat(`${crewId}_${date}`, user.uid);
+
+        Toast.show({
+          type: 'success',
+          text1: 'Event Added',
+          text2: 'Event successfully added.',
+        });
+      }
+    } catch (error) {
+      console.error('Error saving event:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to save event.',
+      });
+    } finally {
+      setIsAddingEvent(false);
+      setAddEventVisible(false);
+      setEditingEvent(null);
+    }
+  };
+
   const handleAddToCalendar = async (event: CrewEvent) => {
     const { status } = await ExpoCalendar.requestCalendarPermissionsAsync();
     if (status !== 'granted') {
@@ -359,10 +503,10 @@ const CrewCalendarScreen: React.FC = () => {
       )?.displayName;
       const eventDetails = {
         title: `${event.title} with ${crew?.name || 'your crew'}`,
-        startDate: new Date(event.startDate),
-        endDate: new Date(event.startDate), // Same date since events are single-day
+        startDate: new Date(event.date),
+        endDate: new Date(event.date),
         location: event.location,
-        notes: `Event created in GoingOutApp by ${eventCreatorName}`,
+        notes: `Event created in Flock by ${eventCreatorName}`,
         allDay: true,
         alarms: [{ relativeOffset: -60 * 30 }],
       };
@@ -466,14 +610,19 @@ const CrewCalendarScreen: React.FC = () => {
   };
 
   const handleAddEvent = (day: string) => {
-    router.push({
-      pathname: '/crews/event-poll/create',
-      params: { crewId, initialDate: day },
-    });
+    setSelectedDate(day);
+    setEditingEvent(null);
+    setAddEventVisible(true);
   };
 
-  const handleViewEvent = (event: CrewEvent) => {
-    setViewingEvent(event);
+  const handleEditEvent = (day: string, evt: CrewEvent) => {
+    setSelectedDate(day);
+    setEditingEvent(evt);
+    setAddEventVisible(true);
+  };
+
+  const handleViewEvent = (evt: CrewEvent) => {
+    setViewingEvent(evt);
     setViewEventModalVisible(true);
   };
 
@@ -538,6 +687,26 @@ const CrewCalendarScreen: React.FC = () => {
         </View>
       </Modal>
 
+      <AddEventModal
+        isVisible={addEventVisible}
+        onClose={() => {
+          setAddEventVisible(false);
+          setEditingEvent(null);
+        }}
+        onSubmit={handleSaveEvent}
+        loading={isAddingEvent}
+        defaultTitle={editingEvent?.title}
+        defaultDate={editingEvent?.date || selectedDate || undefined}
+        defaultUnconfirmed={editingEvent?.unconfirmed}
+        defaultLocation={editingEvent?.location}
+        isEditing={!!editingEvent}
+        onDelete={() => editingEvent?.id && handleDeleteEvent(editingEvent.id)}
+        onAddToCalendar={
+          editingEvent ? () => handleAddToCalendar(editingEvent) : undefined
+        }
+        crewId={crewId}
+      />
+
       {viewingEvent && (
         <EventInfoModal
           isVisible={viewEventModalVisible}
@@ -596,6 +765,7 @@ const CrewCalendarScreen: React.FC = () => {
                 handlePokeCrew={handlePokeCrew}
                 navigateToUserProfile={navigateToUserProfile}
                 onAddEvent={handleAddEvent}
+                onEditEvent={handleEditEvent}
                 onViewEvent={handleViewEvent}
                 events={dayEvents}
               />
