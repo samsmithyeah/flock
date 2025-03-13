@@ -8,7 +8,7 @@ import {
   Alert,
 } from 'react-native';
 import { useLocalSearchParams, router, useNavigation } from 'expo-router';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +19,7 @@ import moment from 'moment';
 import Toast from 'react-native-toast-message';
 import useGlobalStyles from '@/styles/globalStyles';
 import LoadingOverlay from '@/components/LoadingOverlay';
+import CustomButton from '@/components/CustomButton';
 
 type ResponseOption = {
   date: string;
@@ -133,13 +134,13 @@ const ResponseScreen: React.FC = () => {
       return;
     }
 
-    // Check if any response has been selected
-    const hasAnyResponse = responses.some((r) => r.response !== null);
-    if (!hasAnyResponse) {
+    // Check if all dates have been responded to
+    const allDatesResponded = responses.every((r) => r.response !== null);
+    if (!allDatesResponded) {
       Toast.show({
         type: 'error',
         text1: 'Error',
-        text2: 'Please respond to at least one date',
+        text2: 'Please respond to all dates before submitting',
       });
       return;
     }
@@ -205,6 +206,46 @@ const ResponseScreen: React.FC = () => {
     }
   };
 
+  // Add this function to handle poll deletion
+  const handleDeletePoll = () => {
+    Alert.alert(
+      'Delete Poll',
+      'Are you sure you want to delete this poll? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            if (!pollId) return;
+
+            try {
+              setSubmitting(true);
+              await deleteDoc(doc(db, 'event-polls', pollId));
+              Toast.show({
+                type: 'success',
+                text1: 'Success',
+                text2: 'Poll deleted successfully',
+              });
+              router.replace({
+                pathname: '/crews/event-poll',
+                params: { crewId },
+              });
+            } catch (error) {
+              console.error('Error deleting poll:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'Failed to delete poll',
+              });
+              setSubmitting(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   // Set header buttons
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -216,12 +257,12 @@ const ResponseScreen: React.FC = () => {
       headerRight: () => (
         <TouchableOpacity
           onPress={handleSubmit}
-          disabled={submitting || !responses.some((r) => r.response !== null)}
+          disabled={submitting || !responses.every((r) => r.response !== null)}
         >
           <Text
             style={[
               styles.headerButtonText,
-              (submitting || !responses.some((r) => r.response !== null)) &&
+              (submitting || !responses.every((r) => r.response !== null)) &&
                 styles.disabledHeaderButton,
             ]}
           >
@@ -359,6 +400,18 @@ const ResponseScreen: React.FC = () => {
             <Text style={styles.locationText}>{poll?.location}</Text>
           </View>
         )}
+
+        {/* Add delete button for poll creator */}
+        {user?.uid === poll?.createdBy && (
+          <CustomButton
+            title="Delete poll"
+            onPress={handleDeletePoll}
+            variant="danger"
+            icon={{ name: 'trash-outline' }}
+            style={styles.deleteButton}
+            loading={submitting}
+          />
+        )}
       </View>
 
       <Text style={styles.instructionsText}>
@@ -486,5 +539,8 @@ const styles = StyleSheet.create({
   },
   disabledHeaderButton: {
     opacity: 0.5,
+  },
+  deleteButton: {
+    marginTop: 16,
   },
 });

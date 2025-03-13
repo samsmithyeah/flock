@@ -1,7 +1,14 @@
 import React, { useState, useEffect, useLayoutEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Alert,
+  TouchableOpacity,
+} from 'react-native';
 import { useLocalSearchParams, router, useNavigation } from 'expo-router';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
 import { useCrews } from '@/context/CrewsContext';
@@ -33,6 +40,9 @@ const PollDetailsScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [hasResponded, setHasResponded] = useState(false);
+  const [selectedDateForEvent, setSelectedDateForEvent] = useState<
+    string | null
+  >(null);
 
   // Fetch crew name for display
   useEffect(() => {
@@ -118,6 +128,16 @@ const PollDetailsScreen: React.FC = () => {
     return () => unsubscribe();
   }, [pollId, router, user]);
 
+  // Set the best date as the default selected date when poll data loads
+  useEffect(() => {
+    if (poll && !selectedDateForEvent && !poll.finalized) {
+      const bestDate = findBestDate(poll);
+      if (bestDate) {
+        setSelectedDateForEvent(bestDate);
+      }
+    }
+  }, [poll]);
+
   const goToRespondScreen = () => {
     router.push({
       pathname: '/crews/event-poll/respond',
@@ -149,12 +169,12 @@ const PollDetailsScreen: React.FC = () => {
   };
 
   const handleCreateEvent = async () => {
-    if (!poll || !user || !crewId) return;
+    if (!poll || !user || !crewId || !selectedDateForEvent) return;
 
     if (!poll.finalized) {
       Alert.alert(
-        'Finalize Poll',
-        'Do you want to finalize this poll and create an event with the selected date?',
+        'Finalise poll',
+        `Do you want to finalise this poll and create an event for ${getFormattedDate(selectedDateForEvent)}?`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -162,20 +182,9 @@ const PollDetailsScreen: React.FC = () => {
             onPress: async () => {
               try {
                 setSubmitting(true);
-                // Find best date based on responses
-                const bestDate = findBestDate(poll);
 
-                if (!bestDate) {
-                  Toast.show({
-                    type: 'error',
-                    text1: 'Error',
-                    text2: 'Could not determine the best date',
-                  });
-                  return;
-                }
-
-                // Finalize the poll
-                await finalizePoll(pollId, bestDate);
+                // Finalize the poll with the selected date
+                await finalizePoll(pollId, selectedDateForEvent);
 
                 // Create an event based on poll results
                 await createEventFromPoll(crewId, pollId, user.uid);
@@ -189,7 +198,7 @@ const PollDetailsScreen: React.FC = () => {
                 // Navigate to crew calendar
                 router.push({
                   pathname: '/crews/[crewId]/calendar',
-                  params: { crewId, date: bestDate },
+                  params: { crewId, date: selectedDateForEvent },
                 });
               } catch (error) {
                 console.error('Error finalizing poll:', error);
@@ -212,6 +221,40 @@ const PollDetailsScreen: React.FC = () => {
         params: { crewId, date: poll.selectedDate },
       });
     }
+  };
+
+  const handleDeletePoll = () => {
+    Alert.alert(
+      'Delete Poll',
+      'Are you sure you want to delete this poll? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setSubmitting(true);
+              await deleteDoc(doc(db, 'event-polls', pollId));
+              Toast.show({
+                type: 'success',
+                text1: 'Success',
+                text2: 'Poll deleted successfully',
+              });
+              router.back();
+            } catch (error) {
+              console.error('Error deleting poll:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'Failed to delete poll',
+              });
+              setSubmitting(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const getResponseIcon = (response: PollOptionResponse) => {
@@ -246,6 +289,12 @@ const PollDetailsScreen: React.FC = () => {
     return optionScores[0].score > 0 ? optionScores[0] : null;
   };
 
+  const handleDateSelection = (date: string) => {
+    if (!poll?.finalized && user?.uid === poll?.createdBy) {
+      setSelectedDateForEvent(date);
+    }
+  };
+
   const renderOptionsWithResponses = () => {
     if (!poll) return null;
 
@@ -255,6 +304,13 @@ const PollDetailsScreen: React.FC = () => {
       <View style={styles.optionsContainer}>
         <Text style={styles.sectionTitle}>Date options:</Text>
 
+        {!poll.finalized && user?.uid === poll?.createdBy && (
+          <Text style={styles.selectionInstructions}>
+            Tap on a date to select it for the event. The recommended date is
+            highlighted.
+          </Text>
+        )}
+
         {poll.options.map((option, index) => {
           const { yesCount, maybeCount, noCount, totalResponses } =
             getResponseCountsByType(index);
@@ -262,80 +318,105 @@ const PollDetailsScreen: React.FC = () => {
             poll.finalized && poll.selectedDate === option.date;
           const isBestOption =
             bestOption && bestOption.date === option.date && !poll.finalized;
+          const isUserSelected =
+            selectedDateForEvent === option.date && !poll.finalized;
 
           return (
-            <View
+            <TouchableOpacity
               key={option.date}
-              style={[
-                styles.optionCard,
-                isSelectedDate && styles.selectedDateCard,
-                isBestOption && styles.bestOptionCard,
-              ]}
+              onPress={() => handleDateSelection(option.date)}
+              disabled={poll.finalized || user?.uid !== poll?.createdBy}
+              activeOpacity={poll.finalized ? 1 : 0.7}
             >
-              <View style={styles.dateHeader}>
-                <View style={styles.dateHeaderLeft}>
-                  <Text style={styles.dateText}>
-                    {getFormattedDate(option.date)}
-                  </Text>
-                  {isBestOption && (
-                    <View style={styles.mostVotesTag}>
-                      <Ionicons name="star" size={14} color="#FFD700" />
-                      <Text style={styles.mostVotesText}>Most votes</Text>
+              <View
+                style={[
+                  styles.optionCard,
+                  isSelectedDate && styles.selectedDateCard,
+                  isBestOption && styles.bestOptionCard,
+                  isUserSelected && styles.userSelectedCard,
+                ]}
+              >
+                <View style={styles.dateHeader}>
+                  <View style={styles.dateHeaderLeft}>
+                    <Text style={styles.dateText}>
+                      {getFormattedDate(option.date)}
+                    </Text>
+                    {isBestOption && (
+                      <View style={styles.mostVotesTag}>
+                        <Ionicons name="star" size={14} color="#FFD700" />
+                        <Text style={styles.mostVotesText}>Most votes</Text>
+                      </View>
+                    )}
+                    {isUserSelected && (
+                      <View style={styles.userSelectedTag}>
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={14}
+                          color="#4CAF50"
+                        />
+                        <Text style={styles.userSelectedText}>
+                          Selected for event
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {isSelectedDate && (
+                    <View style={styles.selectedBadge}>
+                      <Text style={styles.selectedBadgeText}>Selected</Text>
                     </View>
                   )}
                 </View>
 
-                {isSelectedDate && (
-                  <View style={styles.selectedBadge}>
-                    <Text style={styles.selectedBadgeText}>Selected</Text>
+                <View style={styles.responseStats}>
+                  <View style={styles.statItem}>
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={16}
+                      color="#4CAF50"
+                    />
+                    <Text style={styles.statText}>{yesCount}</Text>
                   </View>
-                )}
-              </View>
-
-              <View style={styles.responseStats}>
-                <View style={styles.statItem}>
-                  <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
-                  <Text style={styles.statText}>{yesCount}</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Ionicons name="help-circle" size={16} color="#FFA000" />
-                  <Text style={styles.statText}>{maybeCount}</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Ionicons name="close-circle" size={16} color="#F44336" />
-                  <Text style={styles.statText}>{noCount}</Text>
-                </View>
-
-                {/* Show weighted score for non-finalized polls */}
-                {!poll.finalized && (
-                  <View style={styles.scoreItem}>
-                    <Text style={styles.scoreText}>
-                      Score: {(yesCount + maybeCount * 0.5).toFixed(1)}
-                    </Text>
+                  <View style={styles.statItem}>
+                    <Ionicons name="help-circle" size={16} color="#FFA000" />
+                    <Text style={styles.statText}>{maybeCount}</Text>
                   </View>
-                )}
-              </View>
+                  <View style={styles.statItem}>
+                    <Ionicons name="close-circle" size={16} color="#F44336" />
+                    <Text style={styles.statText}>{noCount}</Text>
+                  </View>
 
-              {totalResponses > 0 && (
-                <View style={styles.respondentsList}>
-                  {Object.entries(option.responses || {}).map(
-                    ([userId, response]) => {
-                      const respondent = usersCache[userId];
-                      if (!respondent) return null;
-
-                      return (
-                        <View key={userId} style={styles.respondentItem}>
-                          {getResponseIcon(response)}
-                          <Text style={styles.respondentName}>
-                            {respondent.displayName || 'Unknown User'}
-                          </Text>
-                        </View>
-                      );
-                    },
+                  {/* Show weighted score for non-finalized polls */}
+                  {!poll.finalized && (
+                    <View style={styles.scoreItem}>
+                      <Text style={styles.scoreText}>
+                        Score: {(yesCount + maybeCount * 0.5).toFixed(1)}
+                      </Text>
+                    </View>
                   )}
                 </View>
-              )}
-            </View>
+
+                {totalResponses > 0 && (
+                  <View style={styles.respondentsList}>
+                    {Object.entries(option.responses || {}).map(
+                      ([userId, response]) => {
+                        const respondent = usersCache[userId];
+                        if (!respondent) return null;
+
+                        return (
+                          <View key={userId} style={styles.respondentItem}>
+                            {getResponseIcon(response)}
+                            <Text style={styles.respondentName}>
+                              {respondent.displayName || 'Unknown User'}
+                            </Text>
+                          </View>
+                        );
+                      },
+                    )}
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
           );
         })}
       </View>
@@ -426,6 +507,7 @@ const PollDetailsScreen: React.FC = () => {
               loading={submitting}
               icon={{ name: 'calendar-outline' }}
               style={styles.button}
+              disabled={!selectedDateForEvent}
             />
           )}
 
@@ -435,6 +517,18 @@ const PollDetailsScreen: React.FC = () => {
               onPress={handleCreateEvent}
               variant="primary"
               icon={{ name: 'calendar-outline' }}
+              style={styles.button}
+            />
+          )}
+
+          {/* Delete button for poll creator */}
+          {user?.uid === poll?.createdBy && (
+            <CustomButton
+              title="Delete poll"
+              onPress={handleDeletePoll}
+              variant="danger"
+              icon={{ name: 'trash-outline' }}
+              loading={submitting}
               style={styles.button}
             />
           )}
@@ -500,7 +594,7 @@ const styles = StyleSheet.create({
   pollInfo: {
     flexDirection: 'row',
     marginBottom: 20,
-    paddingBottom: 16,
+    paddingBottom: 4,
   },
   infoItem: {
     flexDirection: 'row',
@@ -639,5 +733,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     color: '#333',
+  },
+  userSelectedCard: {
+    borderColor: '#4CAF50',
+    borderWidth: 2,
+  },
+  userSelectedTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  userSelectedText: {
+    fontSize: 12,
+    color: '#4CAF50',
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  selectionInstructions: {
+    fontSize: 14,
+    color: '#666',
+    fontStyle: 'italic',
+    marginBottom: 8,
   },
 });

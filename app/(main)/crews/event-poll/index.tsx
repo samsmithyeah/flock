@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderRadius: 10,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: '#E0E0E0',
   },
   finalizedPoll: {

@@ -90,7 +90,7 @@ export const notifyCrewMembersOnEventWrite = onDocumentWritten(
     const eventTitle = eventDoc.title || 'Untitled event';
 
     // Get formatted date string
-    const dateStr = getEventDateString(eventDoc.date);
+    const dateStr = getEventDateString(eventDoc.date || eventDoc.startDate);
 
     let notificationBody = '';
     if (isCreated) {
