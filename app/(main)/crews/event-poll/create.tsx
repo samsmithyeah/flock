@@ -11,7 +11,6 @@ import { useLocalSearchParams, router, useNavigation } from 'expo-router';
 import { useUser } from '@/context/UserContext';
 import { Calendar } from 'react-native-calendars';
 import moment from 'moment';
-import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { createEventPoll } from '@/utils/eventPollHelpers';
 import useGlobalStyles from '@/styles/globalStyles';
@@ -146,12 +145,12 @@ const CreateEventPollScreen: React.FC = () => {
       headerRight: () => (
         <TouchableOpacity
           onPress={handleCreatePoll}
-          disabled={isSubmitting || !title.trim() || selectedDates.length === 0}
+          disabled={isSubmitting || !title.trim() || selectedDates.length < 2}
         >
           <Text
             style={[
               styles.headerButtonText,
-              (isSubmitting || !title.trim() || selectedDates.length === 0) &&
+              (isSubmitting || !title.trim() || selectedDates.length < 2) &&
                 styles.disabledHeaderButton,
             ]}
           >
@@ -196,7 +195,7 @@ const CreateEventPollScreen: React.FC = () => {
         hasBorder
       />
 
-      <Text style={styles.sectionTitle}>Select Potential Dates</Text>
+      <Text style={styles.sectionTitle}>Select potential dates</Text>
       <Text style={styles.sectionDescription}>
         Tap on dates to select multiple options for your poll
       </Text>
@@ -216,31 +215,9 @@ const CreateEventPollScreen: React.FC = () => {
           }}
         />
       </View>
-
-      <View style={styles.selectedDatesContainer}>
-        <Text style={styles.selectedDatesTitle}>
-          Selected Dates ({selectedDates.length})
-        </Text>
-        {selectedDates.length > 0 ? (
-          selectedDates.sort().map((date) => (
-            <View key={date} style={styles.selectedDateItem}>
-              <Text style={styles.selectedDateText}>
-                {moment(date).format('ddd, MMM D, YYYY')}
-              </Text>
-              <TouchableOpacity
-                onPress={() =>
-                  setSelectedDates(selectedDates.filter((d) => d !== date))
-                }
-                style={styles.removeButton}
-              >
-                <Ionicons name="close-circle" size={20} color="#FF6B6B" />
-              </TouchableOpacity>
-            </View>
-          ))
-        ) : (
-          <Text style={styles.noDateText}>No dates selected</Text>
-        )}
-      </View>
+      <Text style={styles.sectionDescription}>
+        {selectedDates.length} date{selectedDates.length !== 1 && 's'} selected
+      </Text>
     </ScrollView>
   );
 };
@@ -261,7 +238,7 @@ const styles = StyleSheet.create({
   sectionDescription: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 12,
+    marginVertical: 12,
   },
   calendarContainer: {
     backgroundColor: '#FFF',
@@ -270,43 +247,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 2,
     borderColor: '#E0E0E0',
-  },
-  selectedDatesContainer: {
-    marginTop: 20,
-    backgroundColor: '#F7F7F7',
-    borderRadius: 8,
-    padding: 12,
-  },
-  selectedDatesTitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 10,
-    color: '#333',
-  },
-  selectedDateItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
-    padding: 12,
-    marginVertical: 4,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#E0E0E0',
-  },
-  selectedDateText: {
-    fontSize: 14,
-    color: '#333',
-  },
-  removeButton: {
-    padding: 4,
-  },
-  noDateText: {
-    fontSize: 14,
-    color: '#999',
-    fontStyle: 'italic',
-    textAlign: 'center',
-    paddingVertical: 12,
   },
   headerButtonText: {
     fontSize: 16,

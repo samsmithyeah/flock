@@ -74,7 +74,7 @@ const EventPollsScreen: React.FC = () => {
 
     setLoading(true);
 
-    const pollsRef = collection(db, 'event-polls');
+    const pollsRef = collection(db, 'event_polls');
     const q = query(pollsRef, where('crewId', '==', crewId));
 
     const unsubscribe = onSnapshot(
@@ -240,7 +240,7 @@ const EventPollsScreen: React.FC = () => {
           })
         }
       >
-        <Text style={styles.createButtonText}>Create a Poll</Text>
+        <Text style={styles.createButtonText}>Create a poll</Text>
       </TouchableOpacity>
     </View>
   );
@@ -357,15 +357,11 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   createButton: {
-    backgroundColor: '#1e90ff',
+    marginTop: 12,
     paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginTop: 8,
   },
   createButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
+    color: '#1e90ff',
+    fontSize: 20,
   },
 });

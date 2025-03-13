@@ -25,14 +25,23 @@ function handleNotificationRedirect(
   data: any,
   router: ReturnType<typeof useRouter>,
 ) {
-  const { screen, crewId, chatId, senderId, date, userId } = data;
+  const { screen, crewId, chatId, senderId, date, userId, pollId } = data;
   switch (screen) {
     case 'Crew':
-      if (crewId) {
+      if (crewId && date) {
         router.push(
           {
             pathname: '/(main)/crews/[crewId]',
-            params: { crewId, ...(date ? { date } : {}) },
+            params: { crewId, ...{ date } },
+          },
+          { withAnchor: true },
+        );
+      }
+      if (crewId) {
+        router.push(
+          {
+            pathname: '/(main)/crews/[crewId]/calendar',
+            params: { crewId },
           },
           { withAnchor: true },
         );
@@ -74,6 +83,28 @@ function handleNotificationRedirect(
       break;
     case 'Invitations':
       router.push('/(main)/invitations');
+      break;
+    case 'EventPollRespond':
+      if (pollId) {
+        router.push(
+          {
+            pathname: '/(main)/crews/event-poll/respond',
+            params: { pollId },
+          },
+          { withAnchor: true },
+        );
+      }
+      break;
+    case 'EventPollDetails':
+      if (pollId) {
+        router.push(
+          {
+            pathname: '/(main)/crews/event-poll/[pollId]',
+            params: { pollId },
+          },
+          { withAnchor: true },
+        );
+      }
       break;
     default:
       console.warn(`Unknown screen "${screen}" received in notification.`);

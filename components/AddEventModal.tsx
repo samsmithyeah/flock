@@ -261,7 +261,10 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
           >
             <Ionicons name="people-outline" size={18} color="#1e90ff" />
             <Text style={styles.pollLinkText}>
-              Need to decide a date with the crew? Create an event date poll
+              Need to decide a date with the crew?{' '}
+              <Text style={styles.pollLinkBold}>
+                Create an event date poll instead
+              </Text>
             </Text>
           </TouchableOpacity>
 
@@ -367,7 +370,6 @@ const styles = StyleSheet.create({
   },
   pollLinkContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
     paddingVertical: 12,
     marginVertical: 5,
     borderWidth: 1,
@@ -380,6 +382,14 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     color: '#1e90ff',
     fontSize: 14,
+    flexWrap: 'wrap',
+    flex: 1,
+  },
+  pollLinkBold: {
+    marginLeft: 8,
+    color: '#1e90ff',
+    fontSize: 14,
+    fontWeight: 'bold',
     flexWrap: 'wrap',
     flex: 1,
   },

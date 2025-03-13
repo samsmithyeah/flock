@@ -63,7 +63,7 @@ service cloud.firestore {
     }
     
     // Event Polls Collection
-    match /event-polls/{pollId} {
+    match /event_polls/{pollId} {
       // Allow reading polls for authenticated users
       allow read: if request.auth != null;
       

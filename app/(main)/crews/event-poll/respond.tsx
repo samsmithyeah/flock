@@ -55,7 +55,7 @@ const ResponseScreen: React.FC = () => {
       }
 
       try {
-        const pollRef = doc(db, 'event-polls', pollId);
+        const pollRef = doc(db, 'event_polls', pollId);
         const pollSnap = await getDoc(pollRef);
 
         if (pollSnap.exists()) {
@@ -221,7 +221,7 @@ const ResponseScreen: React.FC = () => {
 
             try {
               setSubmitting(true);
-              await deleteDoc(doc(db, 'event-polls', pollId));
+              await deleteDoc(doc(db, 'event_polls', pollId));
               Toast.show({
                 type: 'success',
                 text1: 'Success',

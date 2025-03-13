@@ -19,6 +19,11 @@ import { notifyContactsOnNewUser } from './notifications/notifyContactsOnNewUser
 import { getMatchedUsersFromContacts } from './utils/getMatchesUsersFromContacts';
 import { updatePhoneNumberHash } from './utils/updatePhoneNumberHash';
 import { updateUserContacts } from './utils/updateUserContacts';
+import { notifyCrewMembersOnPollCreation } from './notifications/notifyCrewMembersOnPollCreation';
+import { notifyCrewMembersOnPollResponse } from './notifications/notifyCrewMembersOnPollResponse';
+import { notifyCrewMembersOnPollFinalization } from './notifications/notifyCrewMembersOnPollFinalization';
+import { notifyPollCreatorOnAllResponded } from './notifications/notifyPollCreatorOnAllResponded';
+import { notifyCrewMembersOnPollDeletion } from './notifications/notifyCrewMembersOnPollDeletion';
 
 export {
   notifyCrewMembersOnEventWrite,
@@ -42,6 +47,11 @@ export {
   getMatchedUsersFromContacts,
   updatePhoneNumberHash,
   updateUserContacts,
+  notifyCrewMembersOnPollCreation,
+  notifyCrewMembersOnPollResponse,
+  notifyCrewMembersOnPollFinalization,
+  notifyPollCreatorOnAllResponded,
+  notifyCrewMembersOnPollDeletion,
 };
 
 // Initialize Firebase Admin SDK

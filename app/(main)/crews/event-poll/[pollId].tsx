@@ -85,7 +85,7 @@ const PollDetailsScreen: React.FC = () => {
       return;
     }
 
-    const pollRef = doc(db, 'event-polls', pollId);
+    const pollRef = doc(db, 'event_polls', pollId);
     const unsubscribe = onSnapshot(
       pollRef,
       (docSnap) => {
@@ -235,7 +235,7 @@ const PollDetailsScreen: React.FC = () => {
           onPress: async () => {
             try {
               setSubmitting(true);
-              await deleteDoc(doc(db, 'event-polls', pollId));
+              await deleteDoc(doc(db, 'event_polls', pollId));
               Toast.show({
                 type: 'success',
                 text1: 'Success',
@@ -347,7 +347,7 @@ const PollDetailsScreen: React.FC = () => {
                         <Text style={styles.mostVotesText}>Most votes</Text>
                       </View>
                     )}
-                    {isUserSelected && (
+                    {isUserSelected && poll.createdBy === user?.uid && (
                       <View style={styles.userSelectedTag}>
                         <Ionicons
                           name="checkmark-circle"
@@ -478,7 +478,7 @@ const PollDetailsScreen: React.FC = () => {
             You haven't responded to this poll yet
           </Text>
           <CustomButton
-            title="Respond to Poll"
+            title="Respond to poll"
             onPress={goToRespondScreen}
             variant="primary"
             icon={{ name: 'create-outline' }}
@@ -513,7 +513,7 @@ const PollDetailsScreen: React.FC = () => {
 
           {poll?.finalized && poll?.selectedDate && (
             <CustomButton
-              title="View in calendar"
+              title="View in crew calendar"
               onPress={handleCreateEvent}
               variant="primary"
               icon={{ name: 'calendar-outline' }}

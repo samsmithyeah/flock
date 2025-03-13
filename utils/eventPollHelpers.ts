@@ -28,7 +28,7 @@ export const createEventPoll = async (
   },
 ) => {
   try {
-    const pollRef = collection(db, 'event-polls');
+    const pollRef = collection(db, 'event_polls');
 
     const newPoll = {
       title: pollData.title,
@@ -57,7 +57,7 @@ export const createEventPoll = async (
  */
 export const getCrewPolls = async (crewId: string) => {
   try {
-    const pollsRef = collection(db, 'event-polls');
+    const pollsRef = collection(db, 'event_polls');
     const q = query(pollsRef, where('crewId', '==', crewId));
     const snapshot = await getDocs(q);
 
@@ -78,7 +78,7 @@ export const getPollById = async (
   pollId: string,
 ): Promise<EventPoll | null> => {
   try {
-    const pollRef = doc(db, 'event-polls', pollId);
+    const pollRef = doc(db, 'event_polls', pollId);
     const pollDoc = await getDoc(pollRef);
 
     if (!pollDoc.exists()) {
@@ -104,7 +104,7 @@ export const respondToPollOption = async (
   responses: { [dateString: string]: PollOptionResponse },
 ) => {
   try {
-    const pollRef = doc(db, 'event-polls', pollId);
+    const pollRef = doc(db, 'event_polls', pollId);
     const pollDoc = await getDoc(pollRef);
 
     if (!pollDoc.exists()) {
@@ -150,7 +150,7 @@ export const respondToPollOption = async (
  */
 export const finalizePoll = async (pollId: string, selectedDate: string) => {
   try {
-    const pollRef = doc(db, 'event-polls', pollId);
+    const pollRef = doc(db, 'event_polls', pollId);
 
     await updateDoc(pollRef, {
       finalized: true,
