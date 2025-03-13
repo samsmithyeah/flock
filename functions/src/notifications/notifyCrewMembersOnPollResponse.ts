@@ -115,9 +115,8 @@ export const notifyCrewMembersOnPollResponse = onDocumentUpdated(
     const notificationBody = `${responderName} responded to the poll "${pollTitle}".`;
 
     // Exclude the responder from receiving the notification
-    // Also exclude the poll creator as they might get too many notifications
     const memberIdsToNotify = memberIds.filter(
-      (id: string) => id !== responderId && id !== afterData.createdBy
+      (id: string) => id !== responderId
     );
 
     if (memberIdsToNotify.length === 0) {

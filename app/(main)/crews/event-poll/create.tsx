@@ -172,6 +172,7 @@ const CreateEventPollScreen: React.FC = () => {
         value={title}
         onChangeText={setTitle}
         autoCapitalize="sentences"
+        returnKeyType="done"
         hasBorder
       />
 
@@ -192,6 +193,8 @@ const CreateEventPollScreen: React.FC = () => {
         value={location}
         onChangeText={setLocation}
         autoCapitalize="sentences"
+        returnKeyType="done"
+        enablesReturnKeyAutomatically
         hasBorder
       />
 

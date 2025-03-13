@@ -175,9 +175,6 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
       const formattedContacts: Contact[] = deviceContacts
         .map((contact) => {
           if (!contact.id) {
-            console.log(
-              `⚠️ Contact without ID skipped: ${JSON.stringify(contact)}`,
-            );
             return null;
           }
 
@@ -193,9 +190,6 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
               .filter((number) => number !== '') || [];
 
           if (sanitizedPhoneNumbers.length === 0) {
-            console.log(
-              `⚠️ Contact "${contact.name || 'Unnamed Contact'}" skipped due to no valid phone numbers.`,
-            );
             return null; // Skip contacts without valid phone numbers
           }
 

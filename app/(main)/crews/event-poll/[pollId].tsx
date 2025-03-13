@@ -526,7 +526,7 @@ const PollDetailsScreen: React.FC = () => {
             <CustomButton
               title="Delete poll"
               onPress={handleDeletePoll}
-              variant="danger"
+              variant="secondaryDanger"
               icon={{ name: 'trash-outline' }}
               loading={submitting}
               style={styles.button}

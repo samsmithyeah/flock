@@ -22,7 +22,7 @@ export default function CrewsStackLayout() {
         name="[crewId]/calendar"
         options={{ title: 'Crew calendar' }}
       />
-      <Stack.Screen name="event-poll" options={{ title: 'Date polls' }} />
+      <Stack.Screen name="event-poll/index" options={{ title: 'Date polls' }} />
       <Stack.Screen
         name="event-poll/create"
         options={{
