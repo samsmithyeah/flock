@@ -8,7 +8,7 @@ import {
   Alert,
 } from 'react-native';
 import { useLocalSearchParams, router, useNavigation } from 'expo-router';
-import { doc, getDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,7 +19,7 @@ import moment from 'moment';
 import Toast from 'react-native-toast-message';
 import useGlobalStyles from '@/styles/globalStyles';
 import LoadingOverlay from '@/components/LoadingOverlay';
-import CustomButton from '@/components/CustomButton';
+import EventInfoCard from '@/components/EventInfoCard';
 
 type ResponseOption = {
   date: string;
@@ -206,46 +206,6 @@ const ResponseScreen: React.FC = () => {
     }
   };
 
-  // Add this function to handle poll deletion
-  const handleDeletePoll = () => {
-    Alert.alert(
-      'Delete Poll',
-      'Are you sure you want to delete this poll? This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            if (!pollId) return;
-
-            try {
-              setSubmitting(true);
-              await deleteDoc(doc(db, 'event_polls', pollId));
-              Toast.show({
-                type: 'success',
-                text1: 'Success',
-                text2: 'Poll deleted successfully',
-              });
-              router.replace({
-                pathname: '/crews/event-poll',
-                params: { crewId },
-              });
-            } catch (error) {
-              console.error('Error deleting poll:', error);
-              Toast.show({
-                type: 'error',
-                text1: 'Error',
-                text2: 'Failed to delete poll',
-              });
-              setSubmitting(false);
-            }
-          },
-        },
-      ],
-    );
-  };
-
   // Set header buttons
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -387,32 +347,7 @@ const ResponseScreen: React.FC = () => {
       style={globalStyles.containerWithHeader}
       contentContainerStyle={styles.scrollContent}
     >
-      <View style={styles.pollInfo}>
-        <Text style={styles.pollTitle}>{poll?.title}</Text>
-
-        {poll?.description && (
-          <Text style={styles.pollDescription}>{poll.description}</Text>
-        )}
-
-        {poll?.location && (
-          <View style={styles.locationContainer}>
-            <Ionicons name="location-outline" size={18} color="#666" />
-            <Text style={styles.locationText}>{poll?.location}</Text>
-          </View>
-        )}
-
-        {/* Add delete button for poll creator */}
-        {user?.uid === poll?.createdBy && (
-          <CustomButton
-            title="Delete poll"
-            onPress={handleDeletePoll}
-            variant="secondaryDanger"
-            icon={{ name: 'trash-outline' }}
-            style={styles.deleteButton}
-            loading={submitting}
-          />
-        )}
-      </View>
+      <EventInfoCard poll={poll} />
 
       <Text style={styles.instructionsText}>
         Please indicate your availability for each proposed date:
@@ -429,35 +364,10 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 30,
   },
-  pollInfo: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#E0E0E0',
-    padding: 16,
-    marginBottom: 20,
-  },
-  pollTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 8,
-    color: '#333',
-  },
-  pollDescription: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 12,
-  },
-  locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  locationText: {
-    fontSize: 14,
-    color: '#666',
-    marginLeft: 6,
-  },
+  // Remove styles that are now in the EventInfoCard component:
+  // pollInfo, pollTitle, pollDescription, locationContainer, locationText
+
+  // ...existing code...
   instructionsText: {
     fontSize: 16,
     fontWeight: '500',
@@ -539,8 +449,5 @@ const styles = StyleSheet.create({
   },
   disabledHeaderButton: {
     opacity: 0.5,
-  },
-  deleteButton: {
-    marginTop: 16,
   },
 });

@@ -179,11 +179,7 @@ const EventPollsScreen: React.FC = () => {
         style={[styles.pollItem, item.finalized && styles.finalizedPoll]}
         onPress={() =>
           router.push({
-            pathname: item.finalized
-              ? '/crews/event-poll/[pollId]'
-              : user && item.options.some((opt) => opt.responses?.[user.uid])
-                ? '/crews/event-poll/[pollId]'
-                : '/crews/event-poll/respond',
+            pathname: '/crews/event-poll/[pollId]',
             params: { pollId: item.id, crewId },
           })
         }

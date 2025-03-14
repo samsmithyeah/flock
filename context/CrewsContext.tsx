@@ -428,15 +428,29 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     try {
       for (const crewId of fetchedCrewIds) {
         const eventsRef = collection(db, 'crews', crewId, 'events');
-        const crewQuery = query(eventsRef, orderBy('date'));
+        const crewQuery = query(eventsRef, orderBy('date', 'asc'));
         const snapshot = await getDocs(crewQuery);
         const crewDayCount: { [day: string]: number } = {};
         weekDates.forEach((day) => (crewDayCount[day] = 0));
         snapshot.docs.forEach((docSnap) => {
           const evt = docSnap.data() as any;
-          const eventDate = evt.date;
-          if (weekDates.includes(eventDate)) {
-            crewDayCount[eventDate] += 1;
+
+          // Handle both old format (startDate/endDate) and new format (date)
+          if (evt.date) {
+            // New format with single date
+            if (weekDates.includes(evt.date)) {
+              crewDayCount[evt.date] += 1;
+            }
+          } else if (evt.startDate && evt.endDate) {
+            // Old format with date range
+            const start = moment(evt.startDate, 'YYYY-MM-DD');
+            const end = moment(evt.endDate, 'YYYY-MM-DD');
+            weekDates.forEach((day) => {
+              const d = moment(day, 'YYYY-MM-DD');
+              if (d.isBetween(start, end, 'day', '[]')) {
+                crewDayCount[day] += 1;
+              }
+            });
           }
         });
         newMap[crewId] = crewDayCount;
@@ -463,9 +477,23 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     weekDates.forEach((day) => (crewDayCount[day] = 0));
     snapshotDocs.forEach((docSnap) => {
       const evt = docSnap.data();
-      const eventDate = evt.date;
-      if (weekDates.includes(eventDate)) {
-        crewDayCount[eventDate] += 1;
+
+      // Handle both old format (startDate/endDate) and new format (date)
+      if (evt.date) {
+        // New format with single date
+        if (weekDates.includes(evt.date)) {
+          crewDayCount[evt.date] += 1;
+        }
+      } else if (evt.startDate && evt.endDate) {
+        // Old format with date range
+        const start = moment(evt.startDate, 'YYYY-MM-DD');
+        const end = moment(evt.endDate, 'YYYY-MM-DD');
+        weekDates.forEach((day) => {
+          const d = moment(day, 'YYYY-MM-DD');
+          if (d.isBetween(start, end, 'day', '[]')) {
+            crewDayCount[day] += 1;
+          }
+        });
       }
     });
     setCrewEventsMap((prevMap) => {

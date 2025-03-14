@@ -9,10 +9,10 @@ import {
   where,
   Timestamp,
   serverTimestamp,
-  writeBatch,
 } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { EventPoll, PollOptionResponse } from '@/types/EventPoll';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 /**
  * Create a new event poll in a crew
@@ -146,6 +146,51 @@ export const respondToPollOption = async (
 };
 
 /**
+ * Remove a user's responses from a poll
+ */
+export const removeResponseFromPoll = async (
+  pollId: string,
+  userId: string,
+) => {
+  try {
+    const pollRef = doc(db, 'event_polls', pollId);
+    const pollDoc = await getDoc(pollRef);
+
+    if (!pollDoc.exists()) {
+      throw new Error('Poll not found');
+    }
+
+    const pollData = pollDoc.data() as Omit<EventPoll, 'id'>;
+    const updatedOptions = [...pollData.options];
+
+    // Remove the user's response from each option
+    updatedOptions.forEach((option, index) => {
+      if (option.responses && option.responses[userId]) {
+        const updatedResponses = { ...option.responses };
+        delete updatedResponses[userId];
+        updatedOptions[index] = {
+          ...option,
+          responses: updatedResponses,
+        };
+      }
+    });
+
+    await updateDoc(pollRef, {
+      options: updatedOptions,
+    });
+
+    return {
+      id: pollId,
+      ...pollData,
+      options: updatedOptions,
+    };
+  } catch (error) {
+    console.error('Error removing poll response:', error);
+    throw error;
+  }
+};
+
+/**
  * Finalize a poll by selecting a date
  */
 export const finalizePoll = async (pollId: string, selectedDate: string) => {
@@ -193,51 +238,22 @@ export const createEventFromPoll = async (
 
     const docRef = await addDoc(eventRef, eventData);
 
-    // Get user responses for the selected date
-    // Since we've checked poll.selectedDate is not null above, we can safely use it
-    const selectedDate = poll.selectedDate; // This is definitely a string now
-    const selectedOption = poll.options.find(
-      (option) => option.date === selectedDate,
-    );
-    if (selectedOption && selectedOption.responses) {
-      // Set availability statuses based on poll responses
-      const batch = writeBatch(db);
-
-      Object.entries(selectedOption.responses).forEach(
-        ([respondentId, response]) => {
-          // "yes" and "maybe" responses should be marked as available
-          // "no" responses should be marked as unavailable
-          // Any other responses are ignored
-          const isAvailable = () => {
-            if (response === 'yes' || response === 'maybe') {
-              return true;
-            }
-            if (response === 'no') {
-              return false;
-            }
-            return null;
-          };
-
-          const userStatusRef = doc(
-            db,
-            'crews',
-            crewId,
-            'statuses',
-            selectedDate,
-            'userStatuses',
-            respondentId,
-          );
-
-          batch.set(userStatusRef, {
-            date: selectedDate,
-            upForGoingOutTonight: isAvailable(),
-            timestamp: Timestamp.now(),
-          });
-        },
+    try {
+      // Use cloud function to update user statuses
+      const functions = getFunctions();
+      const updateStatusesFromPollFn = httpsCallable(
+        functions,
+        'updateStatusesFromPoll',
       );
-
-      // Commit all status updates
-      await batch.commit();
+      await updateStatusesFromPollFn({
+        pollId,
+        crewId,
+        selectedDate: poll.selectedDate,
+      });
+      console.log('Successfully updated user statuses from poll');
+    } catch (error) {
+      // Log error but don't prevent event creation
+      console.error('Error updating statuses via cloud function:', error);
     }
 
     return {

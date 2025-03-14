@@ -89,7 +89,17 @@ const CrewCalendarScreen: React.FC = () => {
   // Set selected date if provided as a route param
   useEffect(() => {
     if (date) {
-      setSelectedDate(date);
+      const today = moment().startOf('day');
+      if (moment(date).isBefore(today)) {
+        setSelectedDate(today.format('YYYY-MM-DD'));
+        Toast.show({
+          type: 'info',
+          text1: 'Date is in the past',
+          text2: 'Showing today instead.',
+        });
+      } else {
+        setSelectedDate(date);
+      }
     }
   }, [date]);
 

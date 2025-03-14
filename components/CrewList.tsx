@@ -26,6 +26,29 @@ const CrewList: React.FC<CrewListProps> = ({
   orderEditable = false,
   onOrderChange,
 }) => {
+  const handlePress = (crew: Crew) => {
+    console.log('handlePress, crew:', crew);
+    console.log('handlePress, currentDate:', currentDate);
+    if (currentDate) {
+      console.log('navigate to calendar');
+      router.push(
+        {
+          pathname: '/crews/[crewId]/calendar',
+          params: { crewId: crew.id, date: currentDate },
+        },
+        { withAnchor: true },
+      );
+      return;
+    }
+    router.push(
+      {
+        pathname: '/crews/[crewId]',
+        params: { crewId: crew.id },
+      },
+      { withAnchor: true },
+    );
+  };
+
   return (
     <View style={styles.container}>
       <DraggableFlatList
@@ -56,12 +79,7 @@ const CrewList: React.FC<CrewListProps> = ({
               <TouchableOpacity
                 style={[styles.crewItem, isActive && styles.draggingItem]}
                 onLongPress={orderEditable ? drag : undefined}
-                onPress={() =>
-                  router.push({
-                    pathname: '/crews/[crewId]',
-                    params: { crewId: item.id, date: currentDate },
-                  })
-                }
+                onPress={() => handlePress(item)}
                 disabled={isActive}
                 accessibilityLabel={`Navigate to ${item.name} Crew`}
                 accessibilityHint={`Opens the ${item.name} Crew screen for the selected date`}

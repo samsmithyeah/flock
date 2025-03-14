@@ -18,12 +18,14 @@ import {
   findBestDate,
   createEventFromPoll,
   finalizePoll,
+  removeResponseFromPoll,
 } from '@/utils/eventPollHelpers';
 import { getFormattedDate } from '@/utils/dateHelpers';
 import Toast from 'react-native-toast-message';
 import useGlobalStyles from '@/styles/globalStyles';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import CustomButton from '@/components/CustomButton';
+import EventInfoCard from '@/components/EventInfoCard';
 
 const PollDetailsScreen: React.FC = () => {
   const { pollId, crewId } = useLocalSearchParams<{
@@ -43,6 +45,7 @@ const PollDetailsScreen: React.FC = () => {
   const [selectedDateForEvent, setSelectedDateForEvent] = useState<
     string | null
   >(null);
+  const [removingResponse, setRemovingResponse] = useState(false);
 
   // Fetch crew name for display
   useEffect(() => {
@@ -168,6 +171,15 @@ const PollDetailsScreen: React.FC = () => {
     };
   };
 
+  const handleNavigateToEvent = () => {
+    if (!poll || !crewId || !poll.selectedDate) return;
+
+    router.push({
+      pathname: '/crews/[crewId]/calendar',
+      params: { crewId, date: poll.selectedDate },
+    });
+  };
+
   const handleCreateEvent = async () => {
     if (!poll || !user || !crewId || !selectedDateForEvent) return;
 
@@ -216,10 +228,8 @@ const PollDetailsScreen: React.FC = () => {
       );
     } else if (poll.selectedDate) {
       // If already finalized, just navigate to the calendar
-      router.push({
-        pathname: '/crews/[crewId]/calendar',
-        params: { crewId, date: poll.selectedDate },
-      });
+      console.log('Navigating to crew calendar');
+      await handleNavigateToEvent();
     }
   };
 
@@ -234,7 +244,7 @@ const PollDetailsScreen: React.FC = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              setSubmitting(true);
+              setLoading(true);
               await deleteDoc(doc(db, 'event_polls', pollId));
               Toast.show({
                 type: 'success',
@@ -249,7 +259,44 @@ const PollDetailsScreen: React.FC = () => {
                 text1: 'Error',
                 text2: 'Failed to delete poll',
               });
-              setSubmitting(false);
+              setLoading(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleRemoveResponse = async () => {
+    if (!user || !pollId) return;
+
+    Alert.alert(
+      'Remove Response',
+      'Are you sure you want to remove your response from this poll?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setRemovingResponse(true);
+              await removeResponseFromPoll(pollId, user.uid);
+              setHasResponded(false);
+              Toast.show({
+                type: 'success',
+                text1: 'Success',
+                text2: 'Your response has been removed',
+              });
+            } catch (error) {
+              console.error('Error removing response:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'Failed to remove your response',
+              });
+            } finally {
+              setRemovingResponse(false);
             }
           },
         },
@@ -432,71 +479,43 @@ const PollDetailsScreen: React.FC = () => {
       style={globalStyles.containerWithHeader}
       contentContainerStyle={styles.scrollContent}
     >
-      <View style={styles.pollHeader}>
-        <Text style={styles.pollTitle}>{poll?.title}</Text>
-
-        {poll?.finalized ? (
-          <View style={styles.finalizedBadge}>
-            <Text style={styles.finalizedText}>Finalised</Text>
+      <EventInfoCard poll={poll} showExtendedInfo={true}>
+        {(!user || !hasResponded) && !poll?.finalized && (
+          <View style={styles.responsePrompt}>
+            <Text style={styles.promptText}>
+              You haven't responded to this poll yet
+            </Text>
+            <CustomButton
+              title="Respond to poll"
+              onPress={goToRespondScreen}
+              variant="primary"
+              icon={{ name: 'create-outline' }}
+              style={styles.respondButton}
+            />
           </View>
-        ) : (
-          <Text style={styles.pollStatus}>Poll in progress</Text>
         )}
-      </View>
-
-      {poll?.description && (
-        <Text style={styles.pollDescription}>{poll.description}</Text>
-      )}
-
-      {poll?.location && (
-        <View style={styles.locationContainer}>
-          <Ionicons name="location-outline" size={18} color="#666" />
-          <Text style={styles.locationText}>{poll.location}</Text>
-        </View>
-      )}
-
-      <View style={styles.pollInfo}>
-        <View style={styles.infoItem}>
-          <Ionicons name="calendar-outline" size={18} color="#666" />
-          <Text style={styles.infoText}>
-            {poll?.options.length}{' '}
-            {poll?.options.length === 1 ? 'date' : 'dates'} proposed
-          </Text>
-        </View>
-        <View style={styles.infoItem}>
-          <Ionicons name="person-outline" size={18} color="#666" />
-          <Text style={styles.infoText}>
-            {poll && Object.keys(poll.options[0]?.responses || {}).length}{' '}
-            responses
-          </Text>
-        </View>
-      </View>
-
-      {(!user || !hasResponded) && !poll?.finalized && (
-        <View style={styles.responsePrompt}>
-          <Text style={styles.promptText}>
-            You haven't responded to this poll yet
-          </Text>
-          <CustomButton
-            title="Respond to poll"
-            onPress={goToRespondScreen}
-            variant="primary"
-            icon={{ name: 'create-outline' }}
-            style={styles.respondButton}
-          />
-        </View>
-      )}
+      </EventInfoCard>
 
       {hasResponded && (
         <View>
           {!poll?.finalized && (
-            <CustomButton
-              title="Edit response"
-              onPress={goToRespondScreen}
-              variant="secondary"
-              icon={{ name: 'create-outline' }}
-              style={styles.button}
-            />
+            <>
+              <CustomButton
+                title="Edit response"
+                onPress={goToRespondScreen}
+                variant="secondary"
+                icon={{ name: 'create-outline' }}
+                style={styles.button}
+              />
+              <CustomButton
+                title="Remove response"
+                onPress={handleRemoveResponse}
+                variant="secondaryDanger"
+                icon={{ name: 'trash-outline' }}
+                style={styles.button}
+                loading={removingResponse}
+              />
+            </>
           )}
 
           {user?.uid === poll?.createdBy && !poll?.finalized && (
@@ -514,7 +533,7 @@ const PollDetailsScreen: React.FC = () => {
           {poll?.finalized && poll?.selectedDate && (
             <CustomButton
               title="View in crew calendar"
-              onPress={handleCreateEvent}
+              onPress={handleNavigateToEvent}
               variant="primary"
               icon={{ name: 'calendar-outline' }}
               style={styles.button}
@@ -526,9 +545,8 @@ const PollDetailsScreen: React.FC = () => {
             <CustomButton
               title="Delete poll"
               onPress={handleDeletePoll}
-              variant="secondaryDanger"
+              variant="danger"
               icon={{ name: 'trash-outline' }}
-              loading={submitting}
               style={styles.button}
             />
           )}
@@ -546,65 +564,6 @@ export default PollDetailsScreen;
 const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 30,
-  },
-  pollHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  pollTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#333',
-    flex: 1,
-  },
-  finalizedBadge: {
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginLeft: 8,
-  },
-  finalizedText: {
-    fontSize: 12,
-    color: '#4CAF50',
-    fontWeight: '600',
-  },
-  pollStatus: {
-    fontSize: 14,
-    color: '#FFA000',
-    fontWeight: '500',
-  },
-  pollDescription: {
-    fontSize: 16,
-    color: '#555',
-    marginBottom: 12,
-  },
-  locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  locationText: {
-    fontSize: 14,
-    color: '#666',
-    marginLeft: 6,
-  },
-  pollInfo: {
-    flexDirection: 'row',
-    marginBottom: 20,
-    paddingBottom: 4,
-  },
-  infoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  infoText: {
-    fontSize: 14,
-    color: '#666',
-    marginLeft: 6,
   },
   responsePrompt: {
     backgroundColor: '#E3F2FD',
@@ -629,7 +588,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   optionsContainer: {
-    marginTop: 20,
+    marginTop: 8,
   },
   sectionTitle: {
     fontSize: 18,
