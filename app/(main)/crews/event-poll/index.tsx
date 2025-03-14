@@ -18,6 +18,7 @@ import Toast from 'react-native-toast-message';
 import useGlobalStyles from '@/styles/globalStyles';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { useNavigation } from 'expo-router';
+import Badge from '@/components/Badge';
 
 const EventPollsScreen: React.FC = () => {
   const { crewId } = useLocalSearchParams<{ crewId: string }>();
@@ -188,9 +189,7 @@ const EventPollsScreen: React.FC = () => {
           <View style={styles.pollHeader}>
             <Text style={styles.pollTitle}>{item.title}</Text>
             {item.finalized && (
-              <View style={styles.finalizedBadge}>
-                <Text style={styles.finalizedText}>Finalised</Text>
-              </View>
+              <Badge text="Finalised" variant="success" style={styles.badge} />
             )}
           </View>
 
@@ -300,17 +299,8 @@ const styles = StyleSheet.create({
     color: '#333',
     flex: 1,
   },
-  finalizedBadge: {
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
+  badge: {
     marginLeft: 8,
-  },
-  finalizedText: {
-    fontSize: 12,
-    color: '#4CAF50',
-    fontWeight: '500',
   },
   pollDetails: {
     fontSize: 14,

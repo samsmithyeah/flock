@@ -26,6 +26,7 @@ import useGlobalStyles from '@/styles/globalStyles';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import CustomButton from '@/components/CustomButton';
 import EventInfoCard from '@/components/EventInfoCard';
+import Badge from '@/components/Badge';
 
 const PollDetailsScreen: React.FC = () => {
   const { pollId, crewId } = useLocalSearchParams<{
@@ -304,6 +305,13 @@ const PollDetailsScreen: React.FC = () => {
     );
   };
 
+  const handleEditPoll = () => {
+    router.push({
+      pathname: '/crews/event-poll/edit',
+      params: { pollId, crewId },
+    });
+  };
+
   const getResponseIcon = (response: PollOptionResponse) => {
     switch (response) {
       case 'yes':
@@ -389,29 +397,25 @@ const PollDetailsScreen: React.FC = () => {
                       {getFormattedDate(option.date)}
                     </Text>
                     {isBestOption && (
-                      <View style={styles.mostVotesTag}>
-                        <Ionicons name="star" size={14} color="#FFD700" />
-                        <Text style={styles.mostVotesText}>Most votes</Text>
-                      </View>
+                      <Badge
+                        text="Most votes"
+                        variant="highlight"
+                        icon={{ name: 'star' }}
+                        style={styles.badge}
+                      />
                     )}
                     {isUserSelected && poll.createdBy === user?.uid && (
-                      <View style={styles.userSelectedTag}>
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={14}
-                          color="#4CAF50"
-                        />
-                        <Text style={styles.userSelectedText}>
-                          Selected for event
-                        </Text>
-                      </View>
+                      <Badge
+                        text="Selected for event"
+                        variant="success"
+                        icon={{ name: 'checkmark-circle' }}
+                        style={styles.badge}
+                      />
                     )}
                   </View>
 
                   {isSelectedDate && (
-                    <View style={styles.selectedBadge}>
-                      <Text style={styles.selectedBadgeText}>Selected</Text>
-                    </View>
+                    <Badge text="Selected" variant="success" />
                   )}
                 </View>
 
@@ -479,7 +483,12 @@ const PollDetailsScreen: React.FC = () => {
       style={globalStyles.containerWithHeader}
       contentContainerStyle={styles.scrollContent}
     >
-      <EventInfoCard poll={poll} showExtendedInfo={true}>
+      <EventInfoCard
+        poll={poll}
+        showExtendedInfo={true}
+        onEdit={handleEditPoll}
+        canEdit={user?.uid === poll?.createdBy}
+      >
         {(!user || !hasResponded) && !poll?.finalized && (
           <View style={styles.responsePrompt}>
             <Text style={styles.promptText}>
@@ -620,17 +629,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
   },
-  selectedBadge: {
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  selectedBadgeText: {
-    fontSize: 12,
-    color: 'white',
-    fontWeight: '500',
-  },
   responseStats: {
     flexDirection: 'row',
     marginVertical: 8,
@@ -670,17 +668,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     backgroundColor: '#FFFEF0',
   },
-  mostVotesTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  mostVotesText: {
-    fontSize: 12,
-    color: '#FFA000',
-    fontWeight: '600',
-    marginLeft: 4,
-  },
   scoreItem: {
     backgroundColor: '#F5F5F5',
     paddingHorizontal: 8,
@@ -697,21 +684,13 @@ const styles = StyleSheet.create({
     borderColor: '#4CAF50',
     borderWidth: 2,
   },
-  userSelectedTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  userSelectedText: {
-    fontSize: 12,
-    color: '#4CAF50',
-    fontWeight: '600',
-    marginLeft: 4,
-  },
   selectionInstructions: {
     fontSize: 14,
     color: '#666',
     fontStyle: 'italic',
     marginBottom: 8,
+  },
+  badge: {
+    marginTop: 4,
   },
 });

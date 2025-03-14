@@ -25,6 +25,7 @@ import { notifyCrewMembersOnPollFinalization } from './notifications/notifyCrewM
 import { notifyPollCreatorOnAllResponded } from './notifications/notifyPollCreatorOnAllResponded';
 import { notifyCrewMembersOnPollDeletion } from './notifications/notifyCrewMembersOnPollDeletion';
 import { updateStatusesFromPoll } from './utils/updateStatusesFromPoll';
+import { notifyCrewMembersOnPollEdit } from './notifications/notifyCrewMembersOnPollEdit';
 
 export {
   notifyCrewMembersOnEventWrite,
@@ -54,6 +55,7 @@ export {
   notifyPollCreatorOnAllResponded,
   notifyCrewMembersOnPollDeletion,
   updateStatusesFromPoll,
+  notifyCrewMembersOnPollEdit,
 };
 
 // Initialize Firebase Admin SDK

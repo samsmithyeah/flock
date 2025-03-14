@@ -1,36 +1,35 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { EventPoll } from '@/types/EventPoll';
+import Badge from '@/components/Badge';
 
 type EventInfoCardProps = {
   poll: EventPoll | null;
   showExtendedInfo?: boolean;
   children?: React.ReactNode;
+  onEdit?: () => void;
+  canEdit?: boolean;
 };
 
 const EventInfoCard: React.FC<EventInfoCardProps> = ({
   poll,
   showExtendedInfo = true,
   children,
+  onEdit,
+  canEdit = false,
 }) => {
   if (!poll) return null;
 
   return (
     <View style={styles.container}>
-      <View style={styles.infoIconContainer}>
-        <Ionicons name="information-circle" size={24} color="#E0E0E0" />
-      </View>
-
       <View style={styles.pollHeader}>
         <Text style={styles.pollTitle}>{poll.title}</Text>
 
         {poll.finalized ? (
-          <View style={styles.finalizedBadge}>
-            <Text style={styles.finalizedText}>Finalised</Text>
-          </View>
+          <Badge text="Finalised" variant="success" />
         ) : (
-          <Text style={styles.pollStatus}>Poll in progress</Text>
+          <Badge text="Poll in progress" variant="warning" />
         )}
       </View>
 
@@ -63,6 +62,18 @@ const EventInfoCard: React.FC<EventInfoCardProps> = ({
         </View>
       )}
 
+      {/* Edit button - moved to bottom of card info but before children */}
+      {canEdit && !poll.finalized && onEdit && (
+        <TouchableOpacity
+          onPress={onEdit}
+          style={styles.editButton}
+          activeOpacity={0.6}
+        >
+          <Ionicons name="pencil" size={16} color="#1e90ff" />
+          <Text style={styles.editButtonText}>Edit poll details</Text>
+        </TouchableOpacity>
+      )}
+
       {children}
     </View>
   );
@@ -78,41 +89,17 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     position: 'relative',
   },
-  infoIconContainer: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    zIndex: 1,
-  },
   pollHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
-    marginRight: 24, // Leave space for the info icon
   },
   pollTitle: {
     fontSize: 20,
     fontWeight: '600',
     color: '#333',
     flex: 1,
-  },
-  finalizedBadge: {
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginLeft: 8,
-  },
-  finalizedText: {
-    fontSize: 12,
-    color: '#4CAF50',
-    fontWeight: '600',
-  },
-  pollStatus: {
-    fontSize: 14,
-    color: '#FFA000',
-    fontWeight: '500',
   },
   pollDescription: {
     fontSize: 16,
@@ -141,6 +128,25 @@ const styles = StyleSheet.create({
   infoText: {
     fontSize: 14,
     color: '#666',
+    marginLeft: 6,
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    backgroundColor: '#f0f8ff',
+    marginTop: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e1f0ff',
+  },
+  editButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#1e90ff',
     marginLeft: 6,
   },
 });

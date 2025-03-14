@@ -31,6 +31,13 @@ export default function CrewsStackLayout() {
         }}
       />
       <Stack.Screen
+        name="event-poll/edit"
+        options={{
+          title: 'Edit poll',
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
         name="event-poll/[pollId]"
         options={{
           title: 'Poll details',

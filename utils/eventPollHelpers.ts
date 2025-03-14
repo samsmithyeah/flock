@@ -304,3 +304,29 @@ export const findBestDate = (poll: EventPoll): string | null => {
   // Return the date with the highest score
   return dateScores[0].date;
 };
+
+/**
+ * Update an event poll's basic details
+ */
+export const updateEventPoll = async (
+  pollId: string,
+  updates: {
+    title?: string;
+    description?: string;
+    location?: string;
+    options?: { date: string; responses: Record<string, PollOptionResponse> }[];
+  },
+) => {
+  try {
+    console.log('Updating event poll:', pollId, updates);
+    const pollRef = doc(db, 'event_polls', pollId);
+    await updateDoc(pollRef, updates);
+
+    // Fetch the updated poll to confirm changes
+    const updatedPoll = await getPollById(pollId);
+    return updatedPoll;
+  } catch (error) {
+    console.error('Error updating event poll:', error);
+    throw error;
+  }
+};

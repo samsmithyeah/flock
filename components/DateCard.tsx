@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getFormattedDate } from '@/utils/dateHelpers';
 import AvailabilityModal from '@/components/AvailabilityModal';
+import Badge from '@/components/Badge';
 
 interface DateCardProps {
   date: string;
@@ -120,26 +121,28 @@ const DateCard: React.FC<DateCardProps> = ({
       <View style={styles.actionsRow}>
         {matches > 0 && (
           <TouchableOpacity
-            style={styles.matchesContainer}
             onPress={() => onPressMatches(date)}
             accessibilityLabel={`${matches} matches`}
             accessibilityHint={`Tap to view your matching crews on ${getFormattedDate(date)}`}
           >
-            <Text style={styles.matchesText}>
-              {matches === 1 ? '🎉 1 match' : `🎉 ${matches} matches`}
-            </Text>
+            <Badge
+              text={`🎉 ${matches} ${matches === 1 ? 'match' : 'matches'}`}
+              variant="primary"
+              style={styles.badgeContainer}
+            />
           </TouchableOpacity>
         )}
         {events > 0 && (
           <TouchableOpacity
-            style={styles.eventsContainer}
             onPress={() => onPressEvents(date)}
             accessibilityLabel={`${events} events`}
             accessibilityHint={`Tap to view events on ${getFormattedDate(date)}`}
           >
-            <Text style={styles.matchesText}>
-              {events === 1 ? '📅 1 event' : `📅 ${events} events`}
-            </Text>
+            <Badge
+              text={`📅 ${events} ${events === 1 ? 'event' : 'events'}`}
+              variant="info"
+              style={styles.badgeContainer}
+            />
           </TouchableOpacity>
         )}
       </View>
@@ -199,23 +202,11 @@ const styles = StyleSheet.create({
   actionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8, // Add gap between badges
   },
-  matchesContainer: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    backgroundColor: '#1E90FF',
-    borderRadius: 5,
-    alignSelf: 'flex-start',
-    marginRight: 4,
+  badgeContainer: {
+    marginVertical: 4,
   },
-  eventsContainer: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    backgroundColor: '#66c9de',
-    borderRadius: 5,
-    alignSelf: 'flex-start',
-  },
-  matchesText: { color: '#FFFFFF', fontSize: 12, fontWeight: '500' },
   iconButton: {
     marginLeft: 6,
   },
