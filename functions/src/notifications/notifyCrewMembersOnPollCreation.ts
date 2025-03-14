@@ -115,7 +115,6 @@ export const notifyCrewMembersOnPollCreation = onDocumentCreated(
         crewId,
         pollId,
         screen: 'EventPollRespond',
-        params: { id: pollId },
       },
     }));
 

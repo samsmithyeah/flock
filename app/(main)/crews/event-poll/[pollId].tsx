@@ -27,6 +27,8 @@ import LoadingOverlay from '@/components/LoadingOverlay';
 import CustomButton from '@/components/CustomButton';
 import EventInfoCard from '@/components/EventInfoCard';
 import Badge from '@/components/Badge';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '@/firebase';
 
 const PollDetailsScreen: React.FC = () => {
   const { pollId, crewId } = useLocalSearchParams<{
@@ -47,6 +49,8 @@ const PollDetailsScreen: React.FC = () => {
     string | null
   >(null);
   const [removingResponse, setRemovingResponse] = useState(false);
+  const [sendingReminders, setSendingReminders] = useState(false); // New state for reminders
+  const [nonRespondingCount, setNonRespondingCount] = useState(0);
 
   // Fetch crew name for display
   useEffect(() => {
@@ -108,6 +112,11 @@ const PollDetailsScreen: React.FC = () => {
             setHasResponded(userHasVoted);
           }
 
+          // Calculate how many crew members haven't responded
+          if (pollData.crewId) {
+            calculateNonRespondingMembers(pollData);
+          }
+
           setLoading(false);
         } else {
           Toast.show({
@@ -131,6 +140,36 @@ const PollDetailsScreen: React.FC = () => {
 
     return () => unsubscribe();
   }, [pollId, router, user]);
+
+  // Calculate non-responding members count
+  const calculateNonRespondingMembers = async (pollData: EventPoll) => {
+    try {
+      if (!pollData.crewId) return;
+
+      const crew = await fetchCrew(pollData.crewId);
+      if (!crew || !crew.memberIds) return;
+
+      // Find all members who have responded to at least one option
+      const respondedMemberIds = new Set<string>();
+      pollData.options.forEach((option) => {
+        if (option.responses) {
+          Object.keys(option.responses).forEach((memberId) => {
+            respondedMemberIds.add(memberId);
+          });
+        }
+      });
+
+      // Calculate number of members who haven't responded
+      const nonResponding = crew.memberIds.filter(
+        (memberId) =>
+          !respondedMemberIds.has(memberId) && memberId !== user?.uid,
+      ).length;
+
+      setNonRespondingCount(nonResponding);
+    } catch (error) {
+      console.error('Error calculating non-responding members:', error);
+    }
+  };
 
   // Set the best date as the default selected date when poll data loads
   useEffect(() => {
@@ -312,6 +351,54 @@ const PollDetailsScreen: React.FC = () => {
     });
   };
 
+  // New function to handle sending reminders
+  const handleSendReminders = async () => {
+    if (!user || !pollId || !crewId) return;
+
+    Alert.alert(
+      'Send reminders',
+      `Send notifications to ${nonRespondingCount} crew member${nonRespondingCount !== 1 ? 's' : ''} who have not yet responded?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send',
+          onPress: async () => {
+            try {
+              setSendingReminders(true);
+
+              const notifyNonRespondingMembers = httpsCallable(
+                functions,
+                'notifyNonRespondingPollMembers',
+              );
+
+              const result = await notifyNonRespondingMembers({
+                pollId,
+                userId: user.uid,
+              });
+
+              const data = result.data as { success: boolean; message: string };
+
+              Toast.show({
+                type: data.success ? 'success' : 'info',
+                text1: data.success ? 'Success' : 'Information',
+                text2: data.message,
+              });
+            } catch (error) {
+              console.error('Error sending reminders:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'Failed to send reminders. Please try again.',
+              });
+            } finally {
+              setSendingReminders(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const getResponseIcon = (response: PollOptionResponse) => {
     switch (response) {
       case 'yes':
@@ -415,7 +502,7 @@ const PollDetailsScreen: React.FC = () => {
                   </View>
 
                   {isSelectedDate && (
-                    <Badge text="Selected" variant="success" />
+                    <Badge text="Chosen date" variant="success" />
                   )}
                 </View>
 
@@ -507,38 +594,6 @@ const PollDetailsScreen: React.FC = () => {
 
       {hasResponded && (
         <View>
-          {!poll?.finalized && (
-            <>
-              <CustomButton
-                title="Edit response"
-                onPress={goToRespondScreen}
-                variant="secondary"
-                icon={{ name: 'create-outline' }}
-                style={styles.button}
-              />
-              <CustomButton
-                title="Remove response"
-                onPress={handleRemoveResponse}
-                variant="secondaryDanger"
-                icon={{ name: 'trash-outline' }}
-                style={styles.button}
-                loading={removingResponse}
-              />
-            </>
-          )}
-
-          {user?.uid === poll?.createdBy && !poll?.finalized && (
-            <CustomButton
-              title="Finalise poll and create event"
-              onPress={handleCreateEvent}
-              variant="primary"
-              loading={submitting}
-              icon={{ name: 'calendar-outline' }}
-              style={styles.button}
-              disabled={!selectedDateForEvent}
-            />
-          )}
-
           {poll?.finalized && poll?.selectedDate && (
             <CustomButton
               title="View in crew calendar"
@@ -548,16 +603,60 @@ const PollDetailsScreen: React.FC = () => {
               style={styles.button}
             />
           )}
+          {!poll?.finalized && (
+            <>
+              <CustomButton
+                title="Edit your response"
+                onPress={goToRespondScreen}
+                variant="secondary"
+                icon={{ name: 'create-outline' }}
+                style={styles.button}
+              />
+              <CustomButton
+                title="Remove your response"
+                onPress={handleRemoveResponse}
+                variant="secondaryDanger"
+                icon={{ name: 'trash-outline' }}
+                style={styles.button}
+                loading={removingResponse}
+              />
+            </>
+          )}
 
-          {/* Delete button for poll creator */}
-          {user?.uid === poll?.createdBy && (
-            <CustomButton
-              title="Delete poll"
-              onPress={handleDeletePoll}
-              variant="danger"
-              icon={{ name: 'trash-outline' }}
-              style={styles.button}
-            />
+          {/* Show reminder button only for poll creator, non-finalized polls, and when there are non-responding members */}
+          {user?.uid === poll?.createdBy && !poll?.finalized && (
+            <View>
+              {nonRespondingCount > 0 && (
+                <CustomButton
+                  title="Poke non-responders"
+                  onPress={handleSendReminders}
+                  variant="secondary"
+                  loading={sendingReminders}
+                  icon={{ name: 'notifications-outline' }}
+                  style={styles.button}
+                />
+              )}
+              <CustomButton
+                title="Finalise poll and create event"
+                onPress={handleCreateEvent}
+                variant="primary"
+                loading={submitting}
+                icon={{ name: 'calendar-outline' }}
+                style={styles.button}
+                disabled={!selectedDateForEvent}
+              />
+
+              {/* Delete button for poll creator */}
+              {user?.uid === poll?.createdBy && (
+                <CustomButton
+                  title="Delete poll"
+                  onPress={handleDeletePoll}
+                  variant="danger"
+                  icon={{ name: 'trash-outline' }}
+                  style={styles.button}
+                />
+              )}
+            </View>
           )}
         </View>
       )}

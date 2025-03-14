@@ -27,8 +27,6 @@ const CrewList: React.FC<CrewListProps> = ({
   onOrderChange,
 }) => {
   const handlePress = (crew: Crew) => {
-    console.log('handlePress, crew:', crew);
-    console.log('handlePress, currentDate:', currentDate);
     if (currentDate) {
       console.log('navigate to calendar');
       router.push(
