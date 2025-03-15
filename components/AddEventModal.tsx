@@ -1,3 +1,5 @@
+// /components/AddEventModal.tsx
+
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -22,12 +24,14 @@ type AddEventModalProps = {
   onClose: () => void;
   onSubmit: (
     title: string,
-    date: string,
+    start: string,
+    end: string,
     unconfirmed: boolean,
     location: string,
   ) => void;
   onDelete: () => void;
-  defaultDate?: string;
+  defaultStart?: string;
+  defaultEnd?: string;
   defaultTitle?: string;
   isEditing?: boolean;
   loading?: boolean;
@@ -42,7 +46,8 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
   onClose,
   onSubmit,
   onDelete,
-  defaultDate,
+  defaultStart,
+  defaultEnd,
   defaultTitle = '',
   isEditing = false,
   loading = false,
@@ -51,26 +56,42 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
   onAddToCalendar,
   crewId,
 }) => {
-  const router = useRouter();
-  const initialDate = defaultDate || moment().format('YYYY-MM-DD');
+  const initialDate = defaultStart || moment().format('YYYY-MM-DD');
+  const initialEndDate = defaultEnd || initialDate;
 
   const [title, setTitle] = useState(defaultTitle);
   const [titleError, setTitleError] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(initialDate);
-  const [tempSelectedDate, setTempSelectedDate] = useState(initialDate);
+  const [selectedDates, setSelectedDates] = useState({
+    start: initialDate,
+    end: initialEndDate,
+  });
+  const [tempSelectedDates, setTempSelectedDates] = useState({
+    start: initialDate,
+    end: initialEndDate,
+  });
   const [isCalendarVisible, setIsCalendarVisible] = useState(false);
   const [isUnconfirmed, setIsUnconfirmed] = useState(defaultUnconfirmed);
   const [location, setLocation] = useState(defaultLocation);
 
+  const router = useRouter();
+
   useEffect(() => {
     setTitle(defaultTitle);
     setTitleError(false);
-    setSelectedDate(defaultDate || moment().format('YYYY-MM-DD'));
-    setTempSelectedDate(defaultDate || moment().format('YYYY-MM-DD'));
+    setSelectedDates({ start: initialDate, end: initialEndDate });
+    setTempSelectedDates({ start: initialDate, end: initialEndDate });
     setIsCalendarVisible(false);
     setIsUnconfirmed(defaultUnconfirmed);
     setLocation(defaultLocation);
-  }, [defaultTitle, defaultDate, defaultUnconfirmed, defaultLocation]);
+  }, [
+    defaultTitle,
+    defaultStart,
+    defaultEnd,
+    defaultUnconfirmed,
+    defaultLocation,
+    initialDate,
+    initialEndDate,
+  ]);
 
   const handleSave = () => {
     if (!title.trim()) {
@@ -78,7 +99,13 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
       return;
     }
     setTitleError(false);
-    onSubmit(title, selectedDate, isUnconfirmed, location);
+    onSubmit(
+      title,
+      selectedDates.start,
+      selectedDates.end,
+      isUnconfirmed,
+      location,
+    );
   };
 
   const handleDelete = () => {
@@ -87,30 +114,67 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
   };
 
   const openCalendar = () => {
-    setTempSelectedDate(selectedDate);
+    setTempSelectedDates(selectedDates);
     setIsCalendarVisible(true);
   };
 
   const discardCalendar = () => {
-    setTempSelectedDate(selectedDate);
+    setTempSelectedDates(selectedDates);
     setIsCalendarVisible(false);
   };
 
   const saveCalendar = () => {
-    setSelectedDate(tempSelectedDate);
+    const { start, end } = tempSelectedDates;
+    setSelectedDates({
+      start,
+      end: end && moment(end).isValid() ? end : start,
+    });
     setIsCalendarVisible(false);
   };
 
   const handleDayPress = (day: { dateString: string }) => {
-    setTempSelectedDate(day.dateString);
+    const { start, end } = tempSelectedDates;
+    if (!start || end) {
+      setTempSelectedDates({ start: day.dateString, end: '' });
+    } else if (moment(day.dateString).isAfter(start)) {
+      setTempSelectedDates({ start, end: day.dateString });
+    } else {
+      setTempSelectedDates({ start: day.dateString, end: '' });
+    }
   };
 
-  const getMarkedDate = () => ({
-    [tempSelectedDate]: {
-      selected: true,
-      selectedColor: '#5f9ea0',
-    },
-  });
+  const getMarkedDates = () => {
+    const { start, end } = tempSelectedDates;
+    const marked: Record<string, any> = {};
+    if (start) {
+      if (end && start !== end) {
+        marked[start] = {
+          startingDay: true,
+          color: '#5f9ea0',
+          textColor: 'white',
+        };
+        marked[end] = {
+          endingDay: true,
+          color: '#5f9ea0',
+          textColor: 'white',
+        };
+        let current = moment(start).add(1, 'day');
+        while (current.isBefore(end)) {
+          const dateString = current.format('YYYY-MM-DD');
+          marked[dateString] = { color: '#b2d8d8', textColor: 'black' };
+          current = current.add(1, 'day');
+        }
+      } else {
+        marked[start] = {
+          startingDay: true,
+          endingDay: true,
+          color: '#5f9ea0',
+          textColor: 'white',
+        };
+      }
+    }
+    return marked;
+  };
 
   const handleClose = () => {
     onClose();
@@ -181,9 +245,10 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
             </TouchableOpacity>
             <Calendar
               minDate={moment().format('YYYY-MM-DD')}
-              markedDates={getMarkedDate()}
+              markedDates={getMarkedDates()}
               onDayPress={handleDayPress}
-              current={tempSelectedDate}
+              markingType="period"
+              current={tempSelectedDates.start}
               theme={{
                 selectedDayBackgroundColor: '#5f9ea0',
                 selectedDayTextColor: '#ffffff',
@@ -226,13 +291,24 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
           )}
           <Text style={styles.label}>Event date</Text>
           <View style={styles.dateContainer}>
-            <Text style={styles.dateText}>
-              {getFormattedDate(selectedDate)}
-            </Text>
-            <TouchableOpacity
-              style={styles.calendarButtonContainer}
-              onPress={openCalendar}
-            >
+            {selectedDates.start !== selectedDates.end ? (
+              <>
+                <Text style={styles.dateText}>
+                  {getFormattedDate(selectedDates.start, true)}
+                </Text>
+                <View style={styles.arrowIcon}>
+                  <Ionicons name="arrow-forward" size={16} color="#333" />
+                </View>
+                <Text style={styles.dateText}>
+                  {getFormattedDate(selectedDates.end, true)}
+                </Text>
+              </>
+            ) : (
+              <Text style={styles.dateText}>
+                {getFormattedDate(selectedDates.start)}
+              </Text>
+            )}
+            <TouchableOpacity style={styles.iconWrapper} onPress={openCalendar}>
               <Ionicons name="calendar-outline" size={20} color="#1e90ff" />
             </TouchableOpacity>
           </View>
@@ -319,7 +395,7 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     fontWeight: '300',
   },
-  calendarButtonContainer: {
+  iconWrapper: {
     marginLeft: 8,
   },
   switchContainer: {
@@ -367,6 +443,9 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  arrowIcon: {
+    marginHorizontal: 4,
   },
   pollLinkContainer: {
     flexDirection: 'row',

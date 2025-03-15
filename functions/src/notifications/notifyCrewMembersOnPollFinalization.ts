@@ -30,7 +30,7 @@ export const notifyCrewMembersOnPollFinalization = onDocumentUpdated(
       return null;
     }
 
-    const { crewId, title, selectedDate } = afterData;
+    const { crewId, title, selectedDate, selectedEndDate, duration } = afterData;
 
     if (!crewId || !selectedDate) {
       console.log('Missing required data (crewId or selectedDate).');
@@ -72,12 +72,22 @@ export const notifyCrewMembersOnPollFinalization = onDocumentUpdated(
     const userData = userDoc.data() as { displayName?: string };
     const actorName = userData.displayName || 'Someone';
 
-    // Format the selected date
-    const formattedDate = getFormattedDate(selectedDate);
+    // Format the selected dates
+    const formattedStartDate = getFormattedDate(selectedDate);
 
     // Create notification message
     const pollTitle = title || 'Untitled Poll';
-    const notificationBody = `${actorName} finalised the poll "${pollTitle}". The selected date is ${formattedDate}.`;
+    let notificationBody = '';
+
+    if (duration > 1) {
+      const formattedEndDate = selectedEndDate ?
+        getFormattedDate(selectedEndDate) :
+        getFormattedDate(selectedDate); // Fallback
+
+      notificationBody = `${actorName} finalised the poll "${pollTitle}". Selected dates: ${formattedStartDate} to ${formattedEndDate} (${duration} days).`;
+    } else {
+      notificationBody = `${actorName} finalised the poll "${pollTitle}". The selected date is ${formattedStartDate}.`;
+    }
 
     // Exclude the actor from receiving the notification
     const memberIdsToNotify = memberIds.filter((id: string) => id !== actorUserId);

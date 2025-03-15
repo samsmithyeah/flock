@@ -15,6 +15,7 @@ import { getPollById, updateEventPoll } from '@/utils/eventPollHelpers';
 import useGlobalStyles from '@/styles/globalStyles';
 import CustomTextInput from '@/components/CustomTextInput';
 import LoadingOverlay from '@/components/LoadingOverlay';
+import { Ionicons } from '@expo/vector-icons';
 
 const EditEventPollScreen: React.FC = () => {
   const { pollId, crewId } = useLocalSearchParams<{
@@ -29,6 +30,7 @@ const EditEventPollScreen: React.FC = () => {
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
+  const [duration, setDuration] = useState(1); // Default to 1 day
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [originalDateOptions, setOriginalDateOptions] = useState<string[]>([]);
@@ -69,6 +71,7 @@ const EditEventPollScreen: React.FC = () => {
           setTitle(pollData.title);
           setDescription(pollData.description || '');
           setLocation(pollData.location || '');
+          setDuration(pollData.duration || 1); // Set duration from poll data
 
           // Get dates from options
           const dates = pollData.options.map((option) => option.date);
@@ -139,6 +142,14 @@ const EditEventPollScreen: React.FC = () => {
     return markedDates;
   };
 
+  const incrementDuration = () => {
+    setDuration((prev) => Math.min(14, prev + 1)); // Cap at 14 days
+  };
+
+  const decrementDuration = () => {
+    setDuration((prev) => Math.max(1, prev - 1)); // Minimum 1 day
+  };
+
   const validateForm = () => {
     if (!title.trim()) {
       Toast.show({
@@ -172,6 +183,7 @@ const EditEventPollScreen: React.FC = () => {
         title: title.trim(),
         description: description.trim(),
         location: location.trim(),
+        duration: duration, // Add duration to updates
       };
 
       // Handle date options - only add new dates if there are responses
@@ -269,6 +281,7 @@ const EditEventPollScreen: React.FC = () => {
     isSubmitting,
     description,
     location,
+    duration,
   ]);
 
   if (loading) {
@@ -312,6 +325,47 @@ const EditEventPollScreen: React.FC = () => {
         hasBorder
       />
 
+      {/* Duration selector */}
+      <View style={styles.durationSection}>
+        <Text style={styles.sectionTitle}>Event Duration</Text>
+        <Text style={styles.sectionDescription}>
+          How many days will this event last?
+        </Text>
+
+        <View style={styles.durationSelector}>
+          <TouchableOpacity
+            onPress={decrementDuration}
+            style={styles.durationButton}
+            disabled={duration <= 1}
+          >
+            <Ionicons
+              name="remove-circle"
+              size={32}
+              color={duration <= 1 ? '#CCCCCC' : '#5f9ea0'}
+            />
+          </TouchableOpacity>
+
+          <View style={styles.durationDisplay}>
+            <Text style={styles.durationNumber}>{duration}</Text>
+            <Text style={styles.durationLabel}>
+              {duration === 1 ? 'day' : 'days'}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            onPress={incrementDuration}
+            style={styles.durationButton}
+            disabled={duration >= 14}
+          >
+            <Ionicons
+              name="add-circle"
+              size={32}
+              color={duration >= 14 ? '#CCCCCC' : '#5f9ea0'}
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
+
       <Text style={styles.sectionTitle}>Edit date options</Text>
       {hasResponses && (
         <Text style={styles.warningText}>
@@ -341,6 +395,13 @@ const EditEventPollScreen: React.FC = () => {
       <Text style={styles.sectionDescription}>
         {selectedDates.length} date{selectedDates.length !== 1 && 's'} selected
       </Text>
+
+      {duration > 1 && (
+        <Text style={styles.multiDayNote}>
+          Note: Each selected date represents a potential start date for your{' '}
+          {duration}-day event.
+        </Text>
+      )}
     </ScrollView>
   );
 };
@@ -383,5 +444,43 @@ const styles = StyleSheet.create({
     color: '#FF6B6B',
     marginTop: 4,
     fontStyle: 'italic',
+  },
+  durationSection: {
+    marginTop: 10,
+  },
+  durationSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    backgroundColor: '#FFF',
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    marginVertical: 10,
+  },
+  durationButton: {
+    padding: 8,
+  },
+  durationDisplay: {
+    alignItems: 'center',
+    paddingHorizontal: 30,
+  },
+  durationNumber: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  durationLabel: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 4,
+  },
+  multiDayNote: {
+    fontSize: 14,
+    color: '#e67e22',
+    fontStyle: 'italic',
+    marginTop: 8,
+    textAlign: 'center',
   },
 });

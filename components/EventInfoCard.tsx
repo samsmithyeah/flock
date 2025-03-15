@@ -44,6 +44,14 @@ const EventInfoCard: React.FC<EventInfoCardProps> = ({
         </View>
       )}
 
+      {/* Show duration information if greater than 1 day */}
+      {poll.duration && poll.duration > 1 && (
+        <View style={styles.durationContainer}>
+          <Ionicons name="time-outline" size={18} color="#666" />
+          <Text style={styles.durationText}>{poll.duration} day event</Text>
+        </View>
+      )}
+
       {showExtendedInfo && poll.options && (
         <View style={styles.pollInfo}>
           <View style={styles.infoItem}>
@@ -109,9 +117,19 @@ const styles = StyleSheet.create({
   locationContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   locationText: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 6,
+  },
+  durationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  durationText: {
     fontSize: 14,
     color: '#666',
     marginLeft: 6,

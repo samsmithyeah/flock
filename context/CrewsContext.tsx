@@ -428,7 +428,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     try {
       for (const crewId of fetchedCrewIds) {
         const eventsRef = collection(db, 'crews', crewId, 'events');
-        const crewQuery = query(eventsRef, orderBy('date', 'asc'));
+        const crewQuery = query(eventsRef, orderBy('startDate', 'asc'));
         const snapshot = await getDocs(crewQuery);
         const crewDayCount: { [day: string]: number } = {};
         weekDates.forEach((day) => (crewDayCount[day] = 0));

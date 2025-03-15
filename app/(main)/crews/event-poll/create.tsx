@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Switch,
 } from 'react-native';
 import { useLocalSearchParams, router, useNavigation } from 'expo-router';
 import { useUser } from '@/context/UserContext';
@@ -15,6 +16,7 @@ import Toast from 'react-native-toast-message';
 import { createEventPoll } from '@/utils/eventPollHelpers';
 import useGlobalStyles from '@/styles/globalStyles';
 import CustomTextInput from '@/components/CustomTextInput';
+import { Ionicons } from '@expo/vector-icons';
 
 const CreateEventPollScreen: React.FC = () => {
   const { crewId, initialDate } = useLocalSearchParams<{
@@ -31,6 +33,8 @@ const CreateEventPollScreen: React.FC = () => {
   const [selectedDates, setSelectedDates] = useState<string[]>(
     initialDate ? [initialDate] : [],
   );
+  const [isMultiDay, setIsMultiDay] = useState(false);
+  const [duration, setDuration] = useState(1); // Default to 1 day
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSelectDate = (day: { dateString: string }) => {
@@ -56,6 +60,12 @@ const CreateEventPollScreen: React.FC = () => {
     });
 
     return markedDates;
+  };
+
+  const toggleMultiDay = (value: boolean) => {
+    setIsMultiDay(value);
+    // Reset duration when toggling - set to 1 if off, 2 if on
+    setDuration(value ? 2 : 1);
   };
 
   const validateForm = () => {
@@ -91,6 +101,7 @@ const CreateEventPollScreen: React.FC = () => {
         description,
         location,
         dates: selectedDates.sort(),
+        duration: isMultiDay ? duration : 1, // Always use 1 if multi-day is disabled
       });
 
       Toast.show({
@@ -198,6 +209,58 @@ const CreateEventPollScreen: React.FC = () => {
         hasBorder
       />
 
+      {/* Multi-day toggle */}
+      <View style={styles.optionRow}>
+        <Text style={styles.optionLabel}>Multi-day event?</Text>
+        <Switch
+          value={isMultiDay}
+          onValueChange={toggleMultiDay}
+          trackColor={{ false: '#D1D1D1', true: '#a0d0d0' }}
+          thumbColor={isMultiDay ? '#5f9ea0' : '#f4f3f4'}
+        />
+      </View>
+
+      {/* Duration selector - only shown if multi-day is toggled on */}
+      {isMultiDay && (
+        <View style={styles.durationSection}>
+          <Text style={styles.sectionTitle}>Event Duration</Text>
+          <Text style={styles.sectionDescription}>
+            How many days will this event last?
+          </Text>
+
+          <View style={styles.durationSelector}>
+            <TouchableOpacity
+              onPress={() => setDuration((prev) => Math.max(2, prev - 1))} // Min 2 days for multi-day
+              style={styles.durationButton}
+              disabled={duration <= 2}
+            >
+              <Ionicons
+                name="remove-circle"
+                size={32}
+                color={duration <= 2 ? '#CCCCCC' : '#5f9ea0'}
+              />
+            </TouchableOpacity>
+
+            <View style={styles.durationDisplay}>
+              <Text style={styles.durationNumber}>{duration}</Text>
+              <Text style={styles.durationLabel}>days</Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => setDuration((prev) => Math.min(14, prev + 1))}
+              style={styles.durationButton}
+              disabled={duration >= 14}
+            >
+              <Ionicons
+                name="add-circle"
+                size={32}
+                color={duration >= 14 ? '#CCCCCC' : '#5f9ea0'}
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       <Text style={styles.sectionTitle}>Select potential dates</Text>
       <Text style={styles.sectionDescription}>
         Tap on dates to select multiple options for your poll
@@ -221,6 +284,13 @@ const CreateEventPollScreen: React.FC = () => {
       <Text style={styles.sectionDescription}>
         {selectedDates.length} date{selectedDates.length !== 1 && 's'} selected
       </Text>
+
+      {isMultiDay && (
+        <Text style={styles.multiDayNote}>
+          Note: Each selected date represents a potential start date for your{' '}
+          {duration}-day event.
+        </Text>
+      )}
     </ScrollView>
   );
 };
@@ -241,7 +311,7 @@ const styles = StyleSheet.create({
   sectionDescription: {
     fontSize: 14,
     color: '#666',
-    marginVertical: 12,
+    marginBottom: 8,
   },
   calendarContainer: {
     backgroundColor: '#FFF',
@@ -257,5 +327,62 @@ const styles = StyleSheet.create({
   },
   disabledHeaderButton: {
     opacity: 0.5,
+  },
+  durationSection: {
+    marginTop: 10,
+  },
+  durationSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    backgroundColor: '#FFF',
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    marginVertical: 10,
+  },
+  durationButton: {
+    padding: 8,
+  },
+  durationDisplay: {
+    alignItems: 'center',
+    paddingHorizontal: 30,
+  },
+  durationNumber: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  durationLabel: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 4,
+  },
+  multiDayNote: {
+    fontSize: 14,
+    color: '#e67e22',
+    fontStyle: 'italic',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  optionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  optionLabel: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
+    marginLeft: 8,
   },
 });

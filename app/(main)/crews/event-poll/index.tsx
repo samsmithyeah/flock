@@ -146,6 +146,7 @@ const EventPollsScreen: React.FC = () => {
   const renderPollItem = ({ item }: { item: EventPoll }) => {
     // Find how many dates have been proposed
     const dateCount = item.options.length;
+    const hasMultiDays = item.duration > 1;
 
     // Calculate response statistics
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -198,12 +199,22 @@ const EventPollsScreen: React.FC = () => {
             {memberCount} {memberCount === 1 ? 'response' : 'responses'}
           </Text>
 
+          {hasMultiDays && (
+            <View style={styles.multiDayContainer}>
+              <Ionicons name="time-outline" size={14} color="#00796B" />
+              <Text style={styles.multiDayText}>{item.duration}-day event</Text>
+            </View>
+          )}
+
           {item.finalized && item.selectedDate && (
             <View style={styles.selectedDateContainer}>
               <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
               <Text style={styles.selectedDateText}>
                 {item.selectedDate
                   ? getFormattedDate(item.selectedDate.toString())
+                  : ''}
+                {item.selectedEndDate && item.duration > 1
+                  ? ` to ${getFormattedDate(item.selectedEndDate)}`
                   : ''}
               </Text>
             </View>
@@ -349,5 +360,17 @@ const styles = StyleSheet.create({
   createButtonText: {
     color: '#1e90ff',
     fontSize: 20,
+  },
+  multiDayContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  multiDayText: {
+    fontSize: 14,
+    color: '#00796B',
+    marginLeft: 4,
+    fontStyle: 'italic',
   },
 });

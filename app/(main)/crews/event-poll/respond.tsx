@@ -238,6 +238,16 @@ const ResponseScreen: React.FC = () => {
       const date = responseOption.date;
       const formattedDate = getFormattedDate(date);
 
+      // Calculate end date for multi-day events
+      let dateRangeText = '';
+      if (poll && poll.duration && poll.duration > 1) {
+        const endDate = moment(date)
+          .add(poll.duration - 1, 'days')
+          .format('YYYY-MM-DD');
+        const formattedEndDate = getFormattedDate(endDate);
+        dateRangeText = ` to ${formattedEndDate}`;
+      }
+
       // Check if day is weekend
       const dayOfWeek = moment(date).day();
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
@@ -245,7 +255,17 @@ const ResponseScreen: React.FC = () => {
       return (
         <View key={date} style={styles.dateCard}>
           <View style={styles.dateHeader}>
-            <Text style={styles.dateText}>{formattedDate}</Text>
+            <View style={styles.dateHeaderLeft}>
+              <Text style={styles.dateText}>
+                {formattedDate}
+                {dateRangeText}
+              </Text>
+              {poll?.duration && poll.duration > 1 && (
+                <Text style={styles.durationLabel}>
+                  {poll.duration}-day event
+                </Text>
+              )}
+            </View>
             {isWeekend && <Text style={styles.weekendLabel}>Weekend</Text>}
           </View>
 
@@ -331,8 +351,6 @@ const ResponseScreen: React.FC = () => {
               </Text>
             </TouchableOpacity>
           </View>
-
-          {/* Remove the clear response button as we now clear by tapping the same response again */}
         </View>
       );
     });
@@ -386,11 +404,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  dateHeaderLeft: {
+    flex: 1,
+  },
   dateText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
     flex: 1,
+  },
+  durationLabel: {
+    fontSize: 13,
+    color: '#00796B',
+    marginTop: 4,
+    fontStyle: 'italic',
   },
   weekendLabel: {
     fontSize: 12,

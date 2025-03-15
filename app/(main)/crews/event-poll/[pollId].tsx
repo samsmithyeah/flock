@@ -226,7 +226,7 @@ const PollDetailsScreen: React.FC = () => {
     if (!poll.finalized) {
       Alert.alert(
         'Finalise poll',
-        `Do you want to finalise this poll and create an event for ${getFormattedDate(selectedDateForEvent)}?`,
+        `Do you want to finalise this poll and create ${poll.duration > 1 ? `a ${poll.duration}-day event` : 'an event'} starting on ${getFormattedDate(selectedDateForEvent)}?`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -235,8 +235,12 @@ const PollDetailsScreen: React.FC = () => {
               try {
                 setSubmitting(true);
 
-                // Finalize the poll with the selected date
-                await finalizePoll(pollId, selectedDateForEvent);
+                // Finalize the poll with the selected date and duration
+                await finalizePoll(
+                  pollId,
+                  selectedDateForEvent,
+                  poll.duration || 1,
+                );
 
                 // Create an event based on poll results
                 await createEventFromPoll(crewId, pollId, user.uid);
@@ -268,7 +272,6 @@ const PollDetailsScreen: React.FC = () => {
       );
     } else if (poll.selectedDate) {
       // If already finalized, just navigate to the calendar
-      console.log('Navigating to crew calendar');
       await handleNavigateToEvent();
     }
   };

@@ -6,10 +6,15 @@ import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
 import { getFormattedDate } from '../utils/dateHelpers';
 
-// Remove the date range function as it's no longer needed
-const getEventDateString = (date: string): string => {
-  if (!date) return '';
-  return getFormattedDate(date);
+const getEventDateRangeString = (startDate: string, endDate: string): string => {
+  if (!startDate || !endDate) return '';
+  if (startDate === endDate) {
+    return getFormattedDate(startDate);
+  } else {
+    const start = getFormattedDate(startDate, true);
+    const end = getFormattedDate(endDate, true);
+    return `${start} - ${end}`;
+  }
 };
 
 export const notifyCrewMembersOnEventWrite = onDocumentWritten(
@@ -89,13 +94,16 @@ export const notifyCrewMembersOnEventWrite = onDocumentWritten(
     const eventDoc = isDeleted ? beforeData : afterData;
     const eventTitle = eventDoc.title || 'Untitled event';
 
-    // Get formatted date string
-    const dateStr = getEventDateString(eventDoc.date || eventDoc.startDate);
+    // Build the date range string for create scenario (or you could do it for update too).
+    const dateRangeStr = getEventDateRangeString(
+      eventDoc.startDate,
+      eventDoc.endDate
+    );
 
     let notificationBody = '';
     if (isCreated) {
-      // e.g. "Sam added 'Birthday Bash' on Jan 5."
-      notificationBody = `${actorName} created a new event "${eventTitle}" happening ${dateStr}.`;
+      // e.g. "Sam added 'Birthday Bash' on Jan 5 - Jan 8."
+      notificationBody = `${actorName} created a new event "${eventTitle}" happening ${dateRangeStr}.`;
     } else if (isUpdated) {
       // e.g. "Sam updated 'Birthday Bash'."
       notificationBody = `${actorName} updated the event "${eventTitle}".`;
@@ -157,7 +165,7 @@ export const notifyCrewMembersOnEventWrite = onDocumentWritten(
       data: {
         crewId,
         eventId,
-        date: eventDoc.date,
+        date: eventDoc.startDate,
         screen: 'Crew',
       },
     }));

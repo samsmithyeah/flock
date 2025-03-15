@@ -1,3 +1,5 @@
+// utils/addEventToCrew.ts
+
 import {
   collection,
   addDoc,
@@ -15,7 +17,8 @@ export const addEventToCrew = async (
   crewId: string,
   eventData: {
     title: string;
-    date: string;
+    startDate: string;
+    endDate: string;
     unconfirmed?: boolean;
     location?: string;
     description?: string;
@@ -26,7 +29,8 @@ export const addEventToCrew = async (
     const eventRef = collection(db, 'crews', crewId, 'events');
     const newEvent = {
       title: eventData.title,
-      date: eventData.date,
+      startDate: eventData.startDate,
+      endDate: eventData.endDate,
       location: eventData.location || '',
       description: eventData.description || '',
       createdBy: userId,
@@ -52,7 +56,8 @@ export const updateEventInCrew = async (
   userId: string,
   eventData: {
     title?: string;
-    date?: string;
+    startDate: string;
+    endDate: string;
     unconfirmed?: boolean;
     location?: string;
     description?: string;

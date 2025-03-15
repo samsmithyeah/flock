@@ -46,6 +46,18 @@ const CARD_WIDTH = width * 0.75;
 const CARD_MARGIN = 16;
 const TOTAL_CARD_WIDTH = CARD_WIDTH + CARD_MARGIN;
 
+// Helper: return an array of dates between start and end (inclusive)
+const getDatesBetween = (start: string, end: string): string[] => {
+  const dates: string[] = [];
+  let current = moment(start, 'YYYY-MM-DD');
+  const last = moment(end, 'YYYY-MM-DD');
+  while (current.isSameOrBefore(last, 'day')) {
+    dates.push(current.format('YYYY-MM-DD'));
+    current.add(1, 'day');
+  }
+  return dates;
+};
+
 const CrewCalendarScreen: React.FC = () => {
   const { crewId, date } = useLocalSearchParams<{
     crewId: string;
@@ -191,7 +203,7 @@ const CrewCalendarScreen: React.FC = () => {
     if (!crewId || !weekDates.length || !user) return;
 
     const eventsRef = collection(db, 'crews', crewId, 'events');
-    const q = query(eventsRef, orderBy('date'));
+    const q = query(eventsRef, orderBy('startDate'));
 
     const unsub = onSnapshot(
       q,
@@ -206,14 +218,20 @@ const CrewCalendarScreen: React.FC = () => {
           groupedByDay[day] = [];
         });
 
-        // Group events by their date
+        const isDayWithinEvent = (day: string, event: CrewEvent) => {
+          const d = moment(day, 'YYYY-MM-DD');
+          const start = moment(event.startDate, 'YYYY-MM-DD');
+          const end = moment(event.endDate, 'YYYY-MM-DD');
+          return d.isBetween(start, end, 'day', '[]');
+        };
+
         for (const event of allEvents) {
-          const eventDate = event.date;
-          if (weekDates.includes(eventDate)) {
-            groupedByDay[eventDate].push(event);
+          for (const day of weekDates) {
+            if (isDayWithinEvent(day, event)) {
+              groupedByDay[day].push(event);
+            }
           }
         }
-
         setEventsForWeek(groupedByDay);
       },
       (error) => {
@@ -338,32 +356,33 @@ const CrewCalendarScreen: React.FC = () => {
           style: 'destructive',
           onPress: async () => {
             try {
+              const eventDates = getDatesBetween(
+                editingEvent.startDate,
+                editingEvent.endDate,
+              );
               await deleteEventFromCrew(crewId, eventId);
               Toast.show({
                 type: 'success',
                 text1: 'Deleted',
                 text2: 'Event was removed successfully.',
               });
-
-              // Check if user is available on the event date
-              const eventDate = editingEvent.date;
-              const userIsAvailable = isUserUpForDay(eventDate);
-
-              if (userIsAvailable) {
+              const userIsAvailableOnAnyDate = eventDates.some((day) =>
+                isUserUpForDay(day),
+              );
+              if (userIsAvailableOnAnyDate) {
                 Alert.alert(
                   'Clear availability',
-                  'Do you want to clear your availability on the deleted event date?',
+                  'Do you want to clear your availability on the deleted event date(s)?',
                   [
                     { text: 'No', style: 'cancel' },
                     {
                       text: 'Yes',
                       onPress: () => {
                         if (!user) return;
-                        setStatusForCrew(crewId, eventDate, null);
-                        removeMemberFromChat(
-                          `${crewId}_${eventDate}`,
-                          user.uid,
-                        );
+                        eventDates.forEach((day) => {
+                          setStatusForCrew(crewId, day, null);
+                          removeMemberFromChat(`${crewId}_${day}`, user.uid);
+                        });
                       },
                     },
                   ],
@@ -386,7 +405,8 @@ const CrewCalendarScreen: React.FC = () => {
 
   const handleSaveEvent = async (
     title: string,
-    date: string,
+    start: string,
+    end: string,
     unconfirmed?: boolean,
     location?: string,
   ) => {
@@ -394,34 +414,42 @@ const CrewCalendarScreen: React.FC = () => {
     setIsAddingEvent(true);
     try {
       if (editingEvent) {
-        // Handle updating an existing event
+        const normalizedOldDates = getDatesBetween(
+          moment(editingEvent.startDate).format('YYYY-MM-DD'),
+          moment(editingEvent.endDate).format('YYYY-MM-DD'),
+        );
+        const normalizedNewDates = getDatesBetween(
+          moment(start).format('YYYY-MM-DD'),
+          moment(end).format('YYYY-MM-DD'),
+        );
         await updateEventInCrew(crewId, editingEvent.id, user.uid, {
           title,
-          date,
+          startDate: start,
+          endDate: end,
           unconfirmed,
           location,
         });
-
-        // Set user status for the event date
-        setStatusForCrew(crewId, date, true);
-        addMemberToChat(`${crewId}_${date}`, user.uid);
-
-        // If the date changed, handle availability for the old date
-        if (editingEvent.date !== date && isUserUpForDay(editingEvent.date)) {
+        normalizedNewDates.forEach((day) => {
+          setStatusForCrew(crewId, day, true);
+          addMemberToChat(`${crewId}_${day}`, user.uid);
+        });
+        const removedDates = normalizedOldDates.filter(
+          (day) => !normalizedNewDates.includes(day) && isUserUpForDay(day),
+        );
+        if (removedDates.length > 0) {
           Alert.alert(
             'Update availability',
-            'The event date has changed. Do you want to mark yourself as not available on the previous date?',
+            'The event dates have changed. Do you want to mark yourself as not available on the removed date(s)?',
             [
               { text: 'No', style: 'cancel' },
               {
                 text: 'Yes',
                 onPress: () => {
                   if (!user) return;
-                  setStatusForCrew(crewId, editingEvent.date, false);
-                  removeMemberFromChat(
-                    `${crewId}_${editingEvent.date}`,
-                    user.uid,
-                  );
+                  removedDates.forEach((day) => {
+                    setStatusForCrew(crewId, day, false);
+                    removeMemberFromChat(`${crewId}_${day}`, user.uid);
+                  });
                 },
               },
             ],
@@ -437,14 +465,14 @@ const CrewCalendarScreen: React.FC = () => {
         // Create a new event
         await addEventToCrew(
           crewId,
-          { title, date, unconfirmed, location },
+          { title, startDate: start, endDate: end, unconfirmed, location },
           user.uid,
         );
-
-        // Set user status for the event date
-        setStatusForCrew(crewId, date, true);
-        addMemberToChat(`${crewId}_${date}`, user.uid);
-
+        const eventDates = getDatesBetween(start, end);
+        eventDates.forEach((day) => {
+          setStatusForCrew(crewId, day, true);
+          addMemberToChat(`${crewId}_${day}`, user.uid);
+        });
         Toast.show({
           type: 'success',
           text1: 'Event Added',
@@ -513,8 +541,8 @@ const CrewCalendarScreen: React.FC = () => {
       )?.displayName;
       const eventDetails = {
         title: `${event.title} with ${crew?.name || 'your crew'}`,
-        startDate: new Date(event.date),
-        endDate: new Date(event.date),
+        startDate: new Date(event.startDate),
+        endDate: new Date(event.endDate),
         location: event.location,
         notes: `Event created in Flock by ${eventCreatorName}`,
         allDay: true,
@@ -706,7 +734,8 @@ const CrewCalendarScreen: React.FC = () => {
         onSubmit={handleSaveEvent}
         loading={isAddingEvent}
         defaultTitle={editingEvent?.title}
-        defaultDate={editingEvent?.date || selectedDate || undefined}
+        defaultStart={editingEvent?.startDate || selectedDate || undefined}
+        defaultEnd={editingEvent?.endDate || selectedDate || undefined}
         defaultUnconfirmed={editingEvent?.unconfirmed}
         defaultLocation={editingEvent?.location}
         isEditing={!!editingEvent}

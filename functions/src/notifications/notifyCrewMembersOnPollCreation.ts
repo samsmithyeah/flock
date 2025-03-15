@@ -21,7 +21,7 @@ export const notifyCrewMembersOnPollCreation = onDocumentCreated(
       return null;
     }
 
-    const { crewId, title, createdBy } = pollData;
+    const { crewId, title, createdBy, duration } = pollData;
 
     if (!crewId || !createdBy) {
       console.log('Missing required poll data (crewId or createdBy).');
@@ -60,7 +60,8 @@ export const notifyCrewMembersOnPollCreation = onDocumentCreated(
 
     // Create notification message
     const pollTitle = title || 'Untitled Poll';
-    const notificationBody = `${actorName} created a new poll to pick a date for "${pollTitle}" .`;
+    const durationText = duration > 1 ? ` (${duration}-day event)` : '';
+    const notificationBody = `${actorName} created a new poll to pick a date for "${pollTitle}"${durationText}.`;
 
     // Exclude the creator from receiving the notification
     const memberIdsToNotify = memberIds.filter((id: string) => id !== createdBy);

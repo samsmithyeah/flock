@@ -13,6 +13,7 @@ import {
 import { db } from '@/firebase';
 import { EventPoll, PollOptionResponse } from '@/types/EventPoll';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import moment from 'moment';
 
 /**
  * Create a new event poll in a crew
@@ -25,6 +26,7 @@ export const createEventPoll = async (
     description?: string;
     location?: string;
     dates: string[];
+    duration: number;
   },
 ) => {
   try {
@@ -41,6 +43,7 @@ export const createEventPoll = async (
       createdBy: userId,
       createdAt: serverTimestamp(),
       crewId,
+      duration: pollData.duration || 1, // Default to 1 day if not specified
       finalized: false,
     };
 
@@ -191,18 +194,38 @@ export const removeResponseFromPoll = async (
 };
 
 /**
+ * Calculate the end date based on start date and duration
+ */
+export const calculateEndDate = (
+  startDate: string,
+  duration: number,
+): string => {
+  if (duration <= 1) return startDate; // Same day for single-day events
+
+  return moment(startDate)
+    .add(duration - 1, 'days')
+    .format('YYYY-MM-DD');
+};
+
+/**
  * Finalize a poll by selecting a date
  */
-export const finalizePoll = async (pollId: string, selectedDate: string) => {
+export const finalizePoll = async (
+  pollId: string,
+  selectedDate: string,
+  duration: number = 1,
+) => {
   try {
     const pollRef = doc(db, 'event_polls', pollId);
+    const selectedEndDate = calculateEndDate(selectedDate, duration);
 
     await updateDoc(pollRef, {
       finalized: true,
       selectedDate,
+      selectedEndDate,
     });
 
-    return { success: true };
+    return { success: true, startDate: selectedDate, endDate: selectedEndDate };
   } catch (error) {
     console.error('Error finalizing poll:', error);
     throw error;
@@ -226,9 +249,16 @@ export const createEventFromPoll = async (
 
     // Create the event
     const eventRef = collection(db, 'crews', crewId, 'events');
+
+    // Calculate end date if not already set
+    const endDate =
+      poll.selectedEndDate ||
+      calculateEndDate(poll.selectedDate, poll.duration || 1);
+
     const eventData = {
       title: poll.title,
-      date: poll.selectedDate, // Use single date field
+      startDate: poll.selectedDate, // Use startDate field
+      endDate: endDate, // Use endDate field
       location: poll.location || '',
       description: poll.description || '',
       createdBy: userId,
@@ -314,6 +344,7 @@ export const updateEventPoll = async (
     title?: string;
     description?: string;
     location?: string;
+    duration?: number;
     options?: { date: string; responses: Record<string, PollOptionResponse> }[];
   },
 ) => {
