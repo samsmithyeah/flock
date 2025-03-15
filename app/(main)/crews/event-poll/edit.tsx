@@ -167,14 +167,6 @@ const EditEventPollScreen: React.FC = () => {
     try {
       setIsSubmitting(true);
 
-      // Log the current values before update to verify
-      console.log('Current values being submitted:', {
-        title,
-        description,
-        location,
-        selectedDates: selectedDates.length,
-      });
-
       // Prepare updates - ensure we're using the latest state
       const updates: any = {
         title: title.trim(),
@@ -213,8 +205,6 @@ const EditEventPollScreen: React.FC = () => {
           responses: {},
         }));
       }
-
-      console.log('Updating poll with data:', JSON.stringify(updates));
 
       // Use our new helper function to ensure all fields are updated
       await updateEventPoll(pollId, updates);

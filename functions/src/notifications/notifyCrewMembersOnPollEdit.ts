@@ -110,7 +110,11 @@ export const notifyCrewMembersOnPollEdit = onDocumentUpdated(
     if (hasNewDates) {
       notificationBody = `${actorName} added new date options to "${title}"`;
     } else if (titleChanged) {
-      notificationBody = `${actorName} updated the poll "${title}"`;
+      notificationBody = `${actorName} changed the poll "${beforeData.title}" to "${title}"`;
+    } else if (locationChanged) {
+      notificationBody = `${actorName} updated the location for "${title}"`;
+    } else if (descriptionChanged) {
+      notificationBody = `${actorName} updated the description for "${title}"`;
     } else {
       notificationBody = `${actorName} edited details for the poll "${title}"`;
     }
@@ -167,7 +171,7 @@ export const notifyCrewMembersOnPollEdit = onDocumentUpdated(
       data: {
         crewId,
         pollId,
-        screen: 'EventPoll',
+        screen: 'EventPollDetails',
         params: { pollId, crewId },
       },
     }));

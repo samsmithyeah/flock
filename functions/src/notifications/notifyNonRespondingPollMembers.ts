@@ -164,7 +164,7 @@ export const notifyNonRespondingPollMembers = functions.https.onCall(
 
       // Prepare notification message
       const pollTitle = title || 'an event';
-      const messageBody = `${senderName} wants to remind you to respond to the poll for ${pollTitle}!`;
+      const messageBody = `${senderName} wants to remind you to respond to the poll for "${pollTitle}"!`;
 
       // Send notifications
       const messages: ExpoPushMessage[] = expoPushTokens.map((pushToken) => ({

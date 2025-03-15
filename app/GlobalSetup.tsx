@@ -28,19 +28,23 @@ function handleNotificationRedirect(
   const { screen, crewId, chatId, senderId, date, userId, pollId } = data;
   switch (screen) {
     case 'Crew':
+      console.log('Crew:', crewId);
+      console.log('Date:', date);
       if (crewId && date) {
+        console.log('Navigating to crew calendar');
         router.push(
           {
-            pathname: '/(main)/crews/[crewId]',
+            pathname: '/(main)/crews/[crewId]/calendar',
             params: { crewId, ...{ date } },
           },
           { withAnchor: true },
         );
+        break;
       }
       if (crewId) {
         router.push(
           {
-            pathname: '/(main)/crews/[crewId]/calendar',
+            pathname: '/(main)/crews/[crewId]',
             params: { crewId },
           },
           { withAnchor: true },

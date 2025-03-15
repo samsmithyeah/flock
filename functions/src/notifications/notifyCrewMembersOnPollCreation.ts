@@ -60,7 +60,7 @@ export const notifyCrewMembersOnPollCreation = onDocumentCreated(
 
     // Create notification message
     const pollTitle = title || 'Untitled Poll';
-    const notificationBody = `${actorName} created a new poll "${pollTitle}" to pick a date.`;
+    const notificationBody = `${actorName} created a new poll to pick a date for "${pollTitle}" .`;
 
     // Exclude the creator from receiving the notification
     const memberIdsToNotify = memberIds.filter((id: string) => id !== createdBy);

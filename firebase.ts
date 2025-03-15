@@ -37,7 +37,7 @@ try {
     throw e;
   }
 }
-const db = getFirestore(app, '(default)');
+const db = getFirestore(app);
 const functions = getFunctions(app);
 const storage = getStorage(app);
 

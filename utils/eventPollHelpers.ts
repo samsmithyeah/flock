@@ -318,7 +318,6 @@ export const updateEventPoll = async (
   },
 ) => {
   try {
-    console.log('Updating event poll:', pollId, updates);
     const pollRef = doc(db, 'event_polls', pollId);
     await updateDoc(pollRef, updates);
 
