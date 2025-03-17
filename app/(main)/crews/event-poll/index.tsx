@@ -19,6 +19,7 @@ import useGlobalStyles from '@/styles/globalStyles';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { useNavigation } from 'expo-router';
 import Badge from '@/components/Badge';
+import CustomSearchInput from '@/components/CustomSearchInput';
 
 const EventPollsScreen: React.FC = () => {
   const { crewId } = useLocalSearchParams<{ crewId: string }>();
@@ -31,6 +32,20 @@ const EventPollsScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [crewName, setCrewName] = useState('');
   const [creatorNames, setCreatorNames] = useState<Record<string, string>>({});
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [filteredPolls, setFilteredPolls] = useState<EventPoll[]>([]);
+
+  // Filter polls based on search query
+  useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setFilteredPolls(polls);
+    } else {
+      const filtered = polls.filter((poll) =>
+        poll.title.toLowerCase().includes(searchQuery.toLowerCase()),
+      );
+      setFilteredPolls(filtered);
+    }
+  }, [searchQuery, polls]);
 
   useLayoutEffect(() => {
     if (crewName) {
@@ -260,14 +275,29 @@ const EventPollsScreen: React.FC = () => {
 
   return (
     <View style={globalStyles.containerWithHeader}>
+      <CustomSearchInput
+        searchQuery={searchQuery}
+        onSearchQueryChange={setSearchQuery}
+      />
       <FlatList
-        data={polls}
+        data={filteredPolls}
         renderItem={renderPollItem}
         keyExtractor={(item) => item.id}
         contentContainerStyle={
-          polls.length === 0 ? styles.emptyList : styles.list
+          filteredPolls.length === 0 ? styles.emptyList : styles.list
         }
-        ListEmptyComponent={renderEmptyState()}
+        ListEmptyComponent={
+          searchQuery.trim() !== '' && filteredPolls.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No matching polls found</Text>
+              <Text style={styles.emptySubText}>
+                Try a different search term
+              </Text>
+            </View>
+          ) : (
+            renderEmptyState()
+          )
+        }
       />
     </View>
   );
@@ -277,7 +307,7 @@ export default EventPollsScreen;
 
 const styles = StyleSheet.create({
   list: {
-    paddingVertical: 8,
+    paddingTop: 12,
   },
   emptyList: {
     flexGrow: 1,

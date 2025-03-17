@@ -222,8 +222,8 @@ const CreateEventPollScreen: React.FC = () => {
 
       {/* Duration selector - only shown if multi-day is toggled on */}
       {isMultiDay && (
-        <View style={styles.durationSection}>
-          <Text style={styles.sectionTitle}>Event Duration</Text>
+        <View>
+          <Text style={styles.sectionTitle}>Event duration</Text>
           <Text style={styles.sectionDescription}>
             How many days will this event last?
           </Text>
@@ -327,9 +327,6 @@ const styles = StyleSheet.create({
   },
   disabledHeaderButton: {
     opacity: 0.5,
-  },
-  durationSection: {
-    marginTop: 10,
   },
   durationSelector: {
     flexDirection: 'row',
