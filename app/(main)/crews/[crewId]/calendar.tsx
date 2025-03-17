@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import {
   View,
   TouchableOpacity,
@@ -38,7 +38,7 @@ import {
   updateEventInCrew,
 } from '@/utils/addEventToCrew';
 import { CrewEvent } from '@/types/CrewEvent';
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams, router, useNavigation } from 'expo-router';
 import * as ExpoCalendar from 'expo-calendar';
 
 const { width } = Dimensions.get('window');
@@ -69,6 +69,7 @@ const CrewCalendarScreen: React.FC = () => {
     useCrews();
   const { addMemberToChat, removeMemberFromChat } = useCrewDateChat();
   const globalStyles = useglobalStyles();
+  const navigation = useNavigation();
 
   const [crew, setCrew] = useState<Crew | null>(null);
   const [members, setMembers] = useState<User[]>([]);
@@ -97,6 +98,18 @@ const CrewCalendarScreen: React.FC = () => {
   const [eventsForWeek, setEventsForWeek] = useState<{
     [day: string]: CrewEvent[];
   }>({});
+
+  useLayoutEffect(() => {
+    if (crew) {
+      navigation.setOptions({
+        title: `${crew.name}'s crew calendar`,
+      });
+    } else {
+      navigation.setOptions({
+        title: 'Crew calendar',
+      });
+    }
+  }, [crew]);
 
   // Set selected date if provided as a route param
   useEffect(() => {

@@ -1,6 +1,6 @@
 // components/CrewList.tsx
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { TouchableOpacity, Text, View, StyleSheet } from 'react-native';
 import DraggableFlatList, {
   ScaleDecorator,
@@ -26,6 +26,13 @@ const CrewList: React.FC<CrewListProps> = ({
   orderEditable = false,
   onOrderChange,
 }) => {
+  // Ensure we're working with unique crews
+  const uniqueCrews = useMemo(() => {
+    const uniqueMap = new Map<string, Crew>();
+    crews.forEach((crew) => uniqueMap.set(crew.id, crew));
+    return Array.from(uniqueMap.values());
+  }, [crews]);
+
   const handlePress = (crew: Crew) => {
     if (currentDate) {
       console.log('navigate to calendar');
@@ -50,7 +57,7 @@ const CrewList: React.FC<CrewListProps> = ({
   return (
     <View style={styles.container}>
       <DraggableFlatList
-        data={crews}
+        data={uniqueCrews}
         onDragEnd={({ data }) => onOrderChange?.(data)}
         keyExtractor={(item) => item.id}
         renderItem={({ item, drag, isActive }) => {
@@ -117,7 +124,7 @@ const CrewList: React.FC<CrewListProps> = ({
         }
         contentContainerStyle={[
           styles.listContent,
-          crews.length === 0 && styles.emptyContainer,
+          uniqueCrews.length === 0 && styles.emptyContainer,
         ]}
       />
     </View>
