@@ -326,23 +326,24 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
             <Switch
               onValueChange={() => setIsUnconfirmed(!isUnconfirmed)}
               value={!isUnconfirmed}
-              trackColor={{ false: '#767577', true: '#81b0ff' }}
-              thumbColor={!isUnconfirmed ? '#f5dd4b' : '#f4f3f4'}
+              trackColor={{ false: '#D1D1D1', true: '#a0d0d0' }}
+              thumbColor={isUnconfirmed ? '#5f9ea0' : '#f4f3f4'}
             />
           </View>
-
-          <TouchableOpacity
-            style={styles.pollLinkContainer}
-            onPress={navigateToEventPoll}
-          >
-            <Ionicons name="people-outline" size={18} color="#1e90ff" />
-            <Text style={styles.pollLinkText}>
-              Need to decide a date with the crew?{' '}
-              <Text style={styles.pollLinkBold}>
-                Create an event date poll instead
+          {isUnconfirmed && (
+            <TouchableOpacity
+              style={styles.pollLinkContainer}
+              onPress={navigateToEventPoll}
+            >
+              <Ionicons name="people-outline" size={18} color="#1e90ff" />
+              <Text style={styles.pollLinkText}>
+                Need to decide a date with the crew?{' '}
+                <Text style={styles.pollLinkBold}>
+                  Create an event date poll instead
+                </Text>
               </Text>
-            </Text>
-          </TouchableOpacity>
+            </TouchableOpacity>
+          )}
 
           {isEditing && (
             <>
