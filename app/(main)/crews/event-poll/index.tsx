@@ -48,21 +48,27 @@ const EventPollsScreen: React.FC = () => {
   }, [searchQuery, polls]);
 
   useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() =>
+            router.push({
+              pathname: '/crews/event-poll/create',
+              params: { crewId },
+            })
+          }
+        >
+          <Ionicons name="add-circle" size={30} color="#1e90ff" />
+        </TouchableOpacity>
+      ),
+    });
     if (crewName) {
       navigation.setOptions({
         title: `Event polls for ${crewName}`,
-        headerRight: () => (
-          <TouchableOpacity
-            onPress={() =>
-              router.push({
-                pathname: '/crews/event-poll/create',
-                params: { crewId },
-              })
-            }
-          >
-            <Ionicons name="add-circle" size={30} color="#1e90ff" />
-          </TouchableOpacity>
-        ),
+      });
+    } else {
+      navigation.setOptions({
+        title: '',
       });
     }
   }, [crewName, navigation]);

@@ -21,12 +21,14 @@ import moment, { Moment } from 'moment';
 import { db, pokeCrew } from '@/firebase';
 import { useUser } from '@/context/UserContext';
 import { User } from '@/types/User';
+import { MaterialIcons } from '@expo/vector-icons';
 import { Crew } from '@/types/Crew';
 import { useCrews } from '@/context/CrewsContext';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import Toast from 'react-native-toast-message';
 import { useCrewDateChat } from '@/context/CrewDateChatContext';
 import useglobalStyles from '@/styles/globalStyles';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Calendar } from 'react-native-calendars';
 import WeekNavButtons from '@/components/WeekNavButtons';
 import DayContainer from '@/components/DayContainer';
@@ -38,7 +40,7 @@ import {
   updateEventInCrew,
 } from '@/utils/addEventToCrew';
 import { CrewEvent } from '@/types/CrewEvent';
-import { useLocalSearchParams, router, useNavigation } from 'expo-router';
+import { useLocalSearchParams, useNavigation, router } from 'expo-router';
 import * as ExpoCalendar from 'expo-calendar';
 
 const { width } = Dimensions.get('window');
@@ -63,13 +65,12 @@ const CrewCalendarScreen: React.FC = () => {
     crewId: string;
     date?: string;
   }>();
-
+  const navigation = useNavigation();
   const { user } = useUser();
-  const { setStatusForCrew, usersCache, subscribeToUsers, fetchCrew } =
-    useCrews();
+  const { setStatusForCrew, usersCache, subscribeToUsers } = useCrews();
   const { addMemberToChat, removeMemberFromChat } = useCrewDateChat();
   const globalStyles = useglobalStyles();
-  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
 
   const [crew, setCrew] = useState<Crew | null>(null);
   const [members, setMembers] = useState<User[]>([]);
@@ -100,16 +101,31 @@ const CrewCalendarScreen: React.FC = () => {
   }>({});
 
   useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() =>
+            router.push({
+              pathname: '/crews/crew-settings',
+              params: { crewId },
+            })
+          }
+        >
+          <MaterialIcons name="settings" size={24} color="black" />
+        </TouchableOpacity>
+      ),
+      headerStatusBarHeight: insets.top,
+    });
     if (crew) {
       navigation.setOptions({
         title: `${crew.name}'s crew calendar`,
       });
     } else {
       navigation.setOptions({
-        title: 'Crew calendar',
+        title: '',
       });
     }
-  }, [crew]);
+  }, [navigation, crew, crewId, insets.top]);
 
   // Set selected date if provided as a route param
   useEffect(() => {
@@ -149,32 +165,6 @@ const CrewCalendarScreen: React.FC = () => {
       return;
     }
 
-    const fetchCrewData = async () => {
-      try {
-        const crewData = await fetchCrew(crewId);
-        if (crewData) {
-          setCrew(crewData);
-          if (crewData.memberIds) {
-            subscribeToUsers(crewData.memberIds);
-          }
-        } else {
-          router.push('/crews/');
-        }
-      } catch (error) {
-        console.error('Error fetching crew:', error);
-        Toast.show({
-          type: 'error',
-          text1: 'Error',
-          text2: 'Could not fetch crew data',
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchCrewData();
-
-    // Also listen for real-time updates
     const crewRef = doc(db, 'crews', crewId);
     const unsubscribeCrew = onSnapshot(
       crewRef,
@@ -189,16 +179,24 @@ const CrewCalendarScreen: React.FC = () => {
         } else {
           router.push('/crews/');
         }
+        setLoading(false);
       },
       (error) => {
         if (error.code === 'permission-denied') return;
         console.error('Error in crew snapshot:', error);
+        setLoading(false);
       },
     );
 
     return () => unsubscribeCrew();
-  }, [crewId, user, fetchCrew, subscribeToUsers]);
+  }, [crewId, user]);
 
+  // Subscribe to crew member data
+  useEffect(() => {
+    if (crew && crew.memberIds && crew.memberIds.length > 0) {
+      subscribeToUsers(crew.memberIds);
+    }
+  }, [crew, subscribeToUsers]);
   // Update members from cached users
   useEffect(() => {
     if (crew && crew.memberIds && crew.memberIds.length > 0) {
