@@ -175,7 +175,10 @@ const EventInfoCard: React.FC<EventInfoCardProps> = ({
           <View style={styles.infoItem}>
             <Ionicons name="person-outline" size={18} color="#666" />
             <Text style={styles.infoText}>
-              {Object.keys(poll.options[0]?.responses || {}).length} responses
+              {Object.keys(poll.options[0]?.responses || {}).length}{' '}
+              {Object.keys(poll.options[0]?.responses || {}).length === 1
+                ? 'response'
+                : 'responses'}
             </Text>
           </View>
         </View>
