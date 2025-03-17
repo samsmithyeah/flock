@@ -323,7 +323,6 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         const otherMemberIds = memberIds.filter((id) => id !== user.uid);
 
         // Fetch details for other members in parallel
-        console.log('Fetching user details from fetchChats');
         const otherMembers: User[] = await Promise.all(
           otherMemberIds.map((uid) => fetchUserDetailsWithRetry(uid)),
         );

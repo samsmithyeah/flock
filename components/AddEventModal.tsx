@@ -13,6 +13,7 @@ import {
 import moment from 'moment';
 import { Calendar } from 'react-native-calendars';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { useRouter } from 'expo-router';
 import CustomModal from '@/components/CustomModal';
 import CustomTextInput from './CustomTextInput';
 import CustomButton from './CustomButton';
@@ -37,6 +38,7 @@ type AddEventModalProps = {
   defaultUnconfirmed?: boolean;
   defaultLocation?: string;
   onAddToCalendar?: () => void;
+  crewId: string;
 };
 
 const AddEventModal: React.FC<AddEventModalProps> = ({
@@ -52,6 +54,7 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
   defaultUnconfirmed = true,
   defaultLocation = '',
   onAddToCalendar,
+  crewId,
 }) => {
   const initialDate = defaultStart || moment().format('YYYY-MM-DD');
   const initialEndDate = defaultEnd || initialDate;
@@ -69,6 +72,8 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
   const [isCalendarVisible, setIsCalendarVisible] = useState(false);
   const [isUnconfirmed, setIsUnconfirmed] = useState(defaultUnconfirmed);
   const [location, setLocation] = useState(defaultLocation);
+
+  const router = useRouter();
 
   useEffect(() => {
     setTitle(defaultTitle);
@@ -177,8 +182,8 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
 
   const confirmAddToCalendar = () => {
     Alert.alert(
-      'Add to calendar',
-      'Do you want to add this event to your calendar?',
+      'Add to phone calendar',
+      'Do you want to add this event to your phone calendar?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -189,6 +194,15 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
         },
       ],
     );
+  };
+
+  const navigateToEventPoll = () => {
+    onClose();
+    // Pass crewId when navigating to the event poll creation screen
+    router.push({
+      pathname: '/crews/event-poll/create',
+      params: { crewId },
+    });
   };
 
   const buttons = [
@@ -248,8 +262,9 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
           </View>
         </View>
       </Modal>
+
       <CustomModal
-        isVisible={isVisible && !isCalendarVisible}
+        isVisible={isVisible}
         onClose={handleClose}
         title={isEditing ? 'Edit event' : 'Add a new event'}
         buttons={buttons}
@@ -279,13 +294,13 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
             {selectedDates.start !== selectedDates.end ? (
               <>
                 <Text style={styles.dateText}>
-                  {getFormattedDate(selectedDates.start, true)}
+                  {getFormattedDate(selectedDates.start, 'short')}
                 </Text>
                 <View style={styles.arrowIcon}>
                   <Ionicons name="arrow-forward" size={16} color="#333" />
                 </View>
                 <Text style={styles.dateText}>
-                  {getFormattedDate(selectedDates.end, true)}
+                  {getFormattedDate(selectedDates.end, 'short')}
                 </Text>
               </>
             ) : (
@@ -311,19 +326,34 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
             <Switch
               onValueChange={() => setIsUnconfirmed(!isUnconfirmed)}
               value={!isUnconfirmed}
-              trackColor={{ false: '#767577', true: '#81b0ff' }}
-              thumbColor={!isUnconfirmed ? '#f5dd4b' : '#f4f3f4'}
+              trackColor={{ false: '#D1D1D1', true: '#a0d0d0' }}
+              thumbColor={isUnconfirmed ? '#5f9ea0' : '#f4f3f4'}
             />
           </View>
+          {isUnconfirmed && (
+            <TouchableOpacity
+              style={styles.pollLinkContainer}
+              onPress={navigateToEventPoll}
+            >
+              <Ionicons name="people-outline" size={18} color="#1e90ff" />
+              <Text style={styles.pollLinkText}>
+                Need to decide a date with the crew?{' '}
+                <Text style={styles.pollLinkBold}>
+                  Create an event date poll instead
+                </Text>
+              </Text>
+            </TouchableOpacity>
+          )}
+
           {isEditing && (
             <>
               {onAddToCalendar && (
                 <CustomButton
-                  title="Add to calendar"
+                  title="Add to phone calendar"
                   onPress={confirmAddToCalendar}
                   variant="secondary"
-                  accessibilityLabel="Add to Calendar"
-                  accessibilityHint="Add the current event to your calendar"
+                  accessibilityLabel="Add to phone calendar"
+                  accessibilityHint="Add the current event to your phone's calendar"
                   icon={{ name: 'calendar-outline' }}
                 />
               )}
@@ -417,5 +447,30 @@ const styles = StyleSheet.create({
   },
   arrowIcon: {
     marginHorizontal: 4,
+  },
+  pollLinkContainer: {
+    flexDirection: 'row',
+    paddingVertical: 12,
+    marginVertical: 5,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    backgroundColor: '#f9f9f9',
+    paddingHorizontal: 10,
+  },
+  pollLinkText: {
+    marginLeft: 8,
+    color: '#1e90ff',
+    fontSize: 14,
+    flexWrap: 'wrap',
+    flex: 1,
+  },
+  pollLinkBold: {
+    marginLeft: 8,
+    color: '#1e90ff',
+    fontSize: 14,
+    fontWeight: 'bold',
+    flexWrap: 'wrap',
+    flex: 1,
   },
 });

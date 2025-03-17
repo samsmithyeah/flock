@@ -41,11 +41,23 @@ const EventCrewsListScreen: React.FC = () => {
   useEffect(() => {
     /**
      * 1. Filter which crews actually have events on this date
+     * Ensure we have unique crew IDs even if multiple events exist on the same day
      */
     const matchingCrewIds = dateEventCrews[date] || [];
-    const filteredCrews = crews.filter((crew) =>
-      matchingCrewIds.includes(crew.id),
-    );
+
+    // Use Map to ensure each crew appears only once
+    const uniqueCrewMap = new Map<string, Crew>();
+
+    crews.forEach((crew) => {
+      if (matchingCrewIds.includes(crew.id) && !uniqueCrewMap.has(crew.id)) {
+        uniqueCrewMap.set(crew.id, crew);
+      }
+    });
+
+    // Convert map back to array for state
+    const filteredCrews = Array.from(uniqueCrewMap.values());
+    console.log(`Found ${filteredCrews.length} unique crews for ${date}`);
+
     setEventCrews(filteredCrews);
 
     /**

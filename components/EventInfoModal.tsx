@@ -59,7 +59,7 @@ const EventInfoModal: React.FC<EventInfoModalProps> = ({
 
   const confirmAddToCalendar = () => {
     Alert.alert(
-      'Add to calendar',
+      'Add to phone calendar',
       'Do you want to add this event to your calendar?',
       [
         { text: 'Cancel', style: 'cancel' },
@@ -94,13 +94,13 @@ const EventInfoModal: React.FC<EventInfoModalProps> = ({
         {event.startDate !== event.endDate ? (
           <>
             <Text style={styles.text}>
-              {getFormattedDate(event.startDate, true)}
+              {getFormattedDate(event.startDate, 'short')}
             </Text>
             <View style={styles.arrowIcon}>
               <Ionicons name="arrow-forward" size={16} color="#333" />
             </View>
             <Text style={styles.text}>
-              {getFormattedDate(event.endDate, true)}
+              {getFormattedDate(event.endDate, 'short')}
             </Text>
           </>
         ) : (
@@ -117,11 +117,11 @@ const EventInfoModal: React.FC<EventInfoModalProps> = ({
 
       {onAddToCalendar && (
         <CustomButton
-          title="Add to calendar"
+          title="Add to phone calendar"
           onPress={confirmAddToCalendar}
           variant="secondary"
-          accessibilityLabel="Add to Calendar"
-          accessibilityHint="Add the current event to your calendar"
+          accessibilityLabel="Add to phone clendar"
+          accessibilityHint="Add the current event to your phone's calendar"
           icon={{ name: 'calendar-outline' }}
           style={{ marginTop: 16 }}
         />

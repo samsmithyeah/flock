@@ -1,6 +1,6 @@
 // components/CrewList.tsx
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { TouchableOpacity, Text, View, StyleSheet } from 'react-native';
 import DraggableFlatList, {
   ScaleDecorator,
@@ -26,10 +26,38 @@ const CrewList: React.FC<CrewListProps> = ({
   orderEditable = false,
   onOrderChange,
 }) => {
+  // Ensure we're working with unique crews
+  const uniqueCrews = useMemo(() => {
+    const uniqueMap = new Map<string, Crew>();
+    crews.forEach((crew) => uniqueMap.set(crew.id, crew));
+    return Array.from(uniqueMap.values());
+  }, [crews]);
+
+  const handlePress = (crew: Crew) => {
+    if (currentDate) {
+      console.log('navigate to calendar');
+      router.push(
+        {
+          pathname: '/crews/[crewId]/calendar',
+          params: { crewId: crew.id, date: currentDate },
+        },
+        { withAnchor: true },
+      );
+      return;
+    }
+    router.push(
+      {
+        pathname: '/crews/[crewId]',
+        params: { crewId: crew.id },
+      },
+      { withAnchor: true },
+    );
+  };
+
   return (
     <View style={styles.container}>
       <DraggableFlatList
-        data={crews}
+        data={uniqueCrews}
         onDragEnd={({ data }) => onOrderChange?.(data)}
         keyExtractor={(item) => item.id}
         renderItem={({ item, drag, isActive }) => {
@@ -56,12 +84,7 @@ const CrewList: React.FC<CrewListProps> = ({
               <TouchableOpacity
                 style={[styles.crewItem, isActive && styles.draggingItem]}
                 onLongPress={orderEditable ? drag : undefined}
-                onPress={() =>
-                  router.push({
-                    pathname: '/crews/[crewId]',
-                    params: { crewId: item.id, date: currentDate },
-                  })
-                }
+                onPress={() => handlePress(item)}
                 disabled={isActive}
                 accessibilityLabel={`Navigate to ${item.name} Crew`}
                 accessibilityHint={`Opens the ${item.name} Crew screen for the selected date`}
@@ -101,7 +124,7 @@ const CrewList: React.FC<CrewListProps> = ({
         }
         contentContainerStyle={[
           styles.listContent,
-          crews.length === 0 && styles.emptyContainer,
+          uniqueCrews.length === 0 && styles.emptyContainer,
         ]}
       />
     </View>

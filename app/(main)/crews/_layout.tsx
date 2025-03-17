@@ -14,7 +14,40 @@ export default function CrewsStackLayout() {
         name="add-members"
         options={{ title: 'Add members', presentation: 'modal' }}
       />
-      <Stack.Screen name="crew" options={{ title: 'Crew' }} />
+      <Stack.Screen
+        name="[crewId]"
+        options={{ title: 'Crew', headerShown: true }}
+      />
+      <Stack.Screen
+        name="[crewId]/calendar"
+        options={{ title: 'Crew calendar' }}
+      />
+      <Stack.Screen name="event-poll/index" options={{ title: 'Date polls' }} />
+      <Stack.Screen
+        name="event-poll/create"
+        options={{
+          title: 'Create date poll',
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
+        name="event-poll/edit"
+        options={{
+          title: 'Edit poll',
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
+        name="event-poll/[pollId]"
+        options={{
+          title: 'Poll details',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen
+        name="event-poll/respond"
+        options={{ title: 'Respond to poll', presentation: 'modal' }}
+      />
     </Stack>
   );
 }

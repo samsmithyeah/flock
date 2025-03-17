@@ -266,11 +266,8 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
         };
       }
 
-      console.log(`[DMChat] Setting up message listener for: ${dmId}`);
-
       // Initialize pagination info if it doesn't exist - outside the callback to avoid dependency
       if (!messagePaginationInfo[dmId]) {
-        console.log(`[DMChat] Initializing pagination info for: ${dmId}`);
         // Use a stable initialization approach
         setMessagePaginationInfo((prev) => {
           // Only update if it doesn't already exist
@@ -319,10 +316,6 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
         async (querySnapshot) => {
           if (!user?.uid) return;
           try {
-            console.log(
-              `[DMChat] Got ${querySnapshot.docs.length} messages for ${dmId}`,
-            );
-
             // Store the last document for pagination
             const lastVisible =
               querySnapshot.docs.length > 0
@@ -332,11 +325,6 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
             // Update pagination info with proper hasMore value
             // Check if this is exactly the page size to determine if there are probably more
             const hasMore = querySnapshot.docs.length >= MESSAGES_PER_LOAD;
-
-            // Log key info for debugging
-            console.log(
-              `[DMChat] Updated pagination info for ${dmId}: hasMore=${hasMore}, docs count=${querySnapshot.docs.length}`,
-            );
 
             // Don't set hasMore=false if we got a full page of messages
             setMessagePaginationInfo((prev) => {
@@ -376,10 +364,6 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
                 } else {
                   // Use the pendingUserFetches cache to prevent duplicate calls.
                   if (!pendingUserFetches.current[senderId]) {
-                    console.log(
-                      'Fetching user details from directmessagescontext for',
-                      senderId,
-                    );
                     pendingUserFetches.current[senderId] =
                       fetchUserDetails(senderId);
                   }
@@ -423,10 +407,6 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
               // Sort all messages by date (oldest first for display)
               mergedMessages.sort(
                 (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-              );
-
-              console.log(
-                `[DMChat] Total messages for ${dmId}: ${mergedMessages.length}`,
               );
               return { ...prev, [dmId]: mergedMessages };
             });
