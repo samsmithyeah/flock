@@ -94,13 +94,13 @@ const EventInfoModal: React.FC<EventInfoModalProps> = ({
         {event.startDate !== event.endDate ? (
           <>
             <Text style={styles.text}>
-              {getFormattedDate(event.startDate, true)}
+              {getFormattedDate(event.startDate, 'short')}
             </Text>
             <View style={styles.arrowIcon}>
               <Ionicons name="arrow-forward" size={16} color="#333" />
             </View>
             <Text style={styles.text}>
-              {getFormattedDate(event.endDate, true)}
+              {getFormattedDate(event.endDate, 'short')}
             </Text>
           </>
         ) : (

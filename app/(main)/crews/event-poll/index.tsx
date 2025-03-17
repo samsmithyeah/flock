@@ -211,10 +211,13 @@ const EventPollsScreen: React.FC = () => {
               <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
               <Text style={styles.selectedDateText}>
                 {item.selectedDate
-                  ? getFormattedDate(item.selectedDate.toString())
+                  ? getFormattedDate(
+                      item.selectedDate.toString(),
+                      hasMultiDays ? 'medium' : 'long',
+                    )
                   : ''}
                 {item.selectedEndDate && item.duration > 1
-                  ? ` to ${getFormattedDate(item.selectedEndDate)}`
+                  ? ` to ${getFormattedDate(item.selectedEndDate, 'medium')}`
                   : ''}
               </Text>
             </View>

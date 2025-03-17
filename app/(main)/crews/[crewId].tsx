@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useLayoutEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Dimensions,
+} from 'react-native';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
@@ -13,6 +19,10 @@ import useGlobalStyles from '@/styles/globalStyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { Image } from 'expo-image';
+
+const { height } = Dimensions.get('window');
+const BASE_HEIGHT = 852;
+const vs = (size: number) => (height / BASE_HEIGHT) * size;
 
 const CrewLandingScreen: React.FC = () => {
   const { crewId } = useLocalSearchParams<{ crewId: string }>();
@@ -172,54 +182,54 @@ export default CrewLandingScreen;
 const styles = StyleSheet.create({
   crewInfo: {
     alignItems: 'center',
-    marginVertical: 24,
+    marginVertical: vs(24),
   },
   crewImage: {
-    width: 100,
-    height: 100,
+    width: vs(100),
+    height: vs(100),
     borderRadius: 50,
-    marginBottom: 16,
+    marginBottom: vs(16),
   },
   crewImagePlaceholder: {
-    width: 100,
-    height: 100,
+    width: vs(100),
+    height: vs(100),
     borderRadius: 50,
     backgroundColor: '#f0f0f0',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: vs(16),
   },
   crewName: {
-    fontSize: 24,
+    fontSize: vs(24),
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 4,
+    marginBottom: vs(4),
   },
   memberCount: {
     fontSize: 16,
     color: '#666',
   },
   navigationCards: {
-    marginTop: 16,
+    marginTop: vs(16),
   },
   navCard: {
     backgroundColor: '#fff',
     borderRadius: 10,
     borderWidth: 2,
     borderColor: '#E0E0E0',
-    padding: 20,
-    marginBottom: 16,
+    padding: vs(20),
+    marginBottom: vs(16),
     alignItems: 'center',
   },
   navCardTitle: {
-    fontSize: 18,
+    fontSize: vs(18),
     fontWeight: '600',
-    marginTop: 12,
-    marginBottom: 8,
+    marginTop: vs(12),
+    marginBottom: vs(8),
     color: '#333',
   },
   navCardDescription: {
-    fontSize: 14,
+    fontSize: vs(14),
     color: '#666',
     textAlign: 'center',
   },

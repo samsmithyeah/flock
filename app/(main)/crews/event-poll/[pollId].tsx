@@ -48,8 +48,7 @@ const PollDetailsScreen: React.FC = () => {
   const [selectedDateForEvent, setSelectedDateForEvent] = useState<
     string | null
   >(null);
-  const [removingResponse, setRemovingResponse] = useState(false);
-  const [sendingReminders, setSendingReminders] = useState(false); // New state for reminders
+
   const [nonRespondingCount, setNonRespondingCount] = useState(0);
 
   // Fetch crew name for display
@@ -248,13 +247,14 @@ const PollDetailsScreen: React.FC = () => {
                 Toast.show({
                   type: 'success',
                   text1: 'Success',
-                  text2: 'Event created successfully',
-                });
-
-                // Navigate to crew calendar
-                router.push({
-                  pathname: '/crews/[crewId]/calendar',
-                  params: { crewId, date: selectedDateForEvent },
+                  text2:
+                    'Event created successfully. Tap to view it in the crew calendar.',
+                  onPress: () => {
+                    router.push({
+                      pathname: '/crews/[crewId]/calendar',
+                      params: { crewId, date: selectedDateForEvent },
+                    });
+                  },
                 });
               } catch (error) {
                 console.error('Error finalizing poll:', error);
@@ -323,7 +323,6 @@ const PollDetailsScreen: React.FC = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              setRemovingResponse(true);
               await removeResponseFromPoll(pollId, user.uid);
               setHasResponded(false);
               Toast.show({
@@ -338,8 +337,6 @@ const PollDetailsScreen: React.FC = () => {
                 text1: 'Error',
                 text2: 'Failed to remove your response',
               });
-            } finally {
-              setRemovingResponse(false);
             }
           },
         },
@@ -367,8 +364,6 @@ const PollDetailsScreen: React.FC = () => {
           text: 'Send',
           onPress: async () => {
             try {
-              setSendingReminders(true);
-
               const notifyNonRespondingMembers = httpsCallable(
                 functions,
                 'notifyNonRespondingPollMembers',
@@ -393,8 +388,6 @@ const PollDetailsScreen: React.FC = () => {
                 text1: 'Error',
                 text2: 'Failed to send reminders. Please try again.',
               });
-            } finally {
-              setSendingReminders(false);
             }
           },
         },
@@ -505,7 +498,12 @@ const PollDetailsScreen: React.FC = () => {
                   </View>
 
                   {isSelectedDate && (
-                    <Badge text="Chosen date" variant="success" />
+                    <Badge
+                      text={
+                        poll.duration > 1 ? 'Chosen start date' : 'Chosen date'
+                      }
+                      variant="success"
+                    />
                   )}
                 </View>
 
@@ -564,6 +562,70 @@ const PollDetailsScreen: React.FC = () => {
     );
   };
 
+  // Prepare actions for the dropdown menu
+  const getCardActions = () => {
+    const actions: {
+      id: string;
+      icon: keyof typeof Ionicons.glyphMap;
+      label: string;
+      onPress: () => void;
+      variant?: 'danger';
+    }[] = [];
+
+    if (hasResponded && !poll?.finalized) {
+      actions.push({
+        id: 'editResponse',
+        icon: 'create-outline',
+        label: 'Edit your response',
+        onPress: goToRespondScreen,
+      });
+
+      actions.push({
+        id: 'removeResponse',
+        icon: 'trash-outline',
+        label: 'Remove your response',
+        onPress: handleRemoveResponse,
+      });
+    }
+
+    // Edit poll details action (only for poll creator)
+    if (user?.uid === poll?.createdBy && !poll?.finalized) {
+      actions.push({
+        id: 'editPoll',
+        icon: 'pencil',
+        label: 'Edit poll details',
+        onPress: handleEditPoll,
+      });
+    }
+
+    // Poke non-responders action (only for poll creator when there are non-responders)
+    if (
+      user?.uid === poll?.createdBy &&
+      !poll?.finalized &&
+      nonRespondingCount > 0
+    ) {
+      actions.push({
+        id: 'pokeNonResponders',
+        icon: 'notifications-outline',
+        label: 'Poke non-responders',
+        onPress: handleSendReminders,
+      });
+    }
+
+    // Delete poll action (only for poll creator)
+    if (user?.uid === poll?.createdBy) {
+      actions.push({
+        id: 'deletePoll',
+        icon: 'trash-outline',
+        label: 'Delete poll',
+        onPress: handleDeletePoll,
+        variant: 'danger',
+      });
+    }
+
+    return actions;
+  };
+
   if (loading) {
     return <LoadingOverlay />;
   }
@@ -578,6 +640,7 @@ const PollDetailsScreen: React.FC = () => {
         showExtendedInfo={true}
         onEdit={handleEditPoll}
         canEdit={user?.uid === poll?.createdBy}
+        actions={getCardActions()}
       >
         {(!user || !hasResponded) && !poll?.finalized && (
           <View style={styles.responsePrompt}>
@@ -606,60 +669,18 @@ const PollDetailsScreen: React.FC = () => {
               style={styles.button}
             />
           )}
-          {!poll?.finalized && (
-            <>
-              <CustomButton
-                title="Edit your response"
-                onPress={goToRespondScreen}
-                variant="secondary"
-                icon={{ name: 'create-outline' }}
-                style={styles.button}
-              />
-              <CustomButton
-                title="Remove your response"
-                onPress={handleRemoveResponse}
-                variant="secondaryDanger"
-                icon={{ name: 'trash-outline' }}
-                style={styles.button}
-                loading={removingResponse}
-              />
-            </>
-          )}
 
-          {/* Show reminder button only for poll creator, non-finalized polls, and when there are non-responding members */}
-          {user?.uid === poll?.createdBy && !poll?.finalized && (
-            <View>
-              {nonRespondingCount > 0 && (
-                <CustomButton
-                  title="Poke non-responders"
-                  onPress={handleSendReminders}
-                  variant="secondary"
-                  loading={sendingReminders}
-                  icon={{ name: 'notifications-outline' }}
-                  style={styles.button}
-                />
-              )}
-              <CustomButton
-                title="Finalise poll and create event"
-                onPress={handleCreateEvent}
-                variant="primary"
-                loading={submitting}
-                icon={{ name: 'calendar-outline' }}
-                style={styles.button}
-                disabled={!selectedDateForEvent}
-              />
-
-              {/* Delete button for poll creator */}
-              {user?.uid === poll?.createdBy && (
-                <CustomButton
-                  title="Delete poll"
-                  onPress={handleDeletePoll}
-                  variant="danger"
-                  icon={{ name: 'trash-outline' }}
-                  style={styles.button}
-                />
-              )}
-            </View>
+          {/* Keep only the finalize button and remove the others */}
+          {!poll?.finalized && user?.uid === poll?.createdBy && (
+            <CustomButton
+              title="Finalise poll and create event"
+              onPress={handleCreateEvent}
+              variant="primary"
+              loading={submitting}
+              icon={{ name: 'calendar-outline' }}
+              style={styles.button}
+              disabled={!selectedDateForEvent}
+            />
           )}
         </View>
       )}

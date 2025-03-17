@@ -294,13 +294,13 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
             {selectedDates.start !== selectedDates.end ? (
               <>
                 <Text style={styles.dateText}>
-                  {getFormattedDate(selectedDates.start, true)}
+                  {getFormattedDate(selectedDates.start, 'short')}
                 </Text>
                 <View style={styles.arrowIcon}>
                   <Ionicons name="arrow-forward" size={16} color="#333" />
                 </View>
                 <Text style={styles.dateText}>
-                  {getFormattedDate(selectedDates.end, true)}
+                  {getFormattedDate(selectedDates.end, 'short')}
                 </Text>
               </>
             ) : (
