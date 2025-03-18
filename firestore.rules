@@ -134,6 +134,18 @@ service cloud.firestore {
       }
     }
     
+    // Crew-wide Chats
+    match /crew_chats/{crewId} {
+     // Temporary rule to allow for authenticated users
+      allow read, write, create, update: if request.auth != null;
+      
+      // Messages subcollection
+      match /messages/{messageId} {
+        // Temporary rule to allow for authenticated users
+      allow read, write, create, update: if request.auth != null;
+      }
+    }
+    
     // Helper Functions
     
     // Check if the authenticated user is a member of the crew

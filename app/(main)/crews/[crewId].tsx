@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Dimensions,
+  ScrollView,
 } from 'react-native';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/firebase';
@@ -19,6 +20,7 @@ import useGlobalStyles from '@/styles/globalStyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { Image } from 'expo-image';
+import { useCrewChat } from '@/context/CrewChatContext';
 
 const { height } = Dimensions.get('window');
 const BASE_HEIGHT = 852;
@@ -31,6 +33,7 @@ const CrewLandingScreen: React.FC = () => {
   const { subscribeToUsers } = useCrews();
   const globalStyles = useGlobalStyles();
   const insets = useSafeAreaInsets();
+  const { totalUnread: crewChatUnread } = useCrewChat();
 
   const [crew, setCrew] = useState<Crew | null>(null);
   const [loading, setLoading] = useState(true);
@@ -123,7 +126,7 @@ const CrewLandingScreen: React.FC = () => {
   }
 
   return (
-    <View style={globalStyles.containerWithHeader}>
+    <ScrollView style={globalStyles.containerWithHeader}>
       <View style={styles.crewInfo}>
         {crew.iconUrl ? (
           <Image source={{ uri: crew.iconUrl }} style={styles.crewImage} />
@@ -172,8 +175,40 @@ const CrewLandingScreen: React.FC = () => {
             Create polls to find the best date for your next crew event
           </Text>
         </TouchableOpacity>
+
+        {/* Crew Chat Card */}
+        <TouchableOpacity
+          style={styles.navCard}
+          onPress={() => {
+            router.push(
+              {
+                pathname: '/chats/crew-chat',
+                params: { crewId },
+              },
+              { withAnchor: true },
+            );
+          }}
+        >
+          <Ionicons name="chatbubbles-outline" size={36} color="#0A84FF" />
+          <Text style={styles.navCardTitle}>Crew chat</Text>
+          <Text style={styles.navCardDescription}>
+            Message everyone in the crew
+          </Text>
+          {crewChatUnread > 0 && (
+            <View
+              style={[
+                styles.badge,
+                { position: 'absolute', top: 10, right: 10 },
+              ]}
+            >
+              <Text style={styles.badgeText}>
+                {crewChatUnread > 99 ? '99+' : crewChatUnread}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
-    </View>
+    </ScrollView>
   );
 };
 
@@ -232,5 +267,17 @@ const styles = StyleSheet.create({
     fontSize: vs(14),
     color: '#666',
     textAlign: 'center',
+  },
+  badge: {
+    backgroundColor: '#FF3B30',
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginRight: 8,
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 });

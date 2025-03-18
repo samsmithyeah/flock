@@ -17,6 +17,7 @@ import { InvitationsProvider } from '@/context/InvitationsContext';
 import { CrewDateChatProvider } from '@/context/CrewDateChatContext';
 import { DirectMessagesProvider } from '@/context/DirectMessagesContext';
 import { BadgeCountProvider } from '@/context/BadgeCountContext';
+import { CrewChatProvider } from '@/context/CrewChatContext';
 import GlobalSetup from './GlobalSetup';
 
 LogBox.ignoreLogs([
@@ -69,9 +70,11 @@ function Providers({ children }: { children: ReactNode }) {
         <CrewsProvider>
           <InvitationsProvider>
             <CrewDateChatProvider>
-              <DirectMessagesProvider>
-                <BadgeCountProvider>{children}</BadgeCountProvider>
-              </DirectMessagesProvider>
+              <CrewChatProvider>
+                <DirectMessagesProvider>
+                  <BadgeCountProvider>{children}</BadgeCountProvider>
+                </DirectMessagesProvider>
+              </CrewChatProvider>
             </CrewDateChatProvider>
           </InvitationsProvider>
         </CrewsProvider>
