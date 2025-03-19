@@ -65,6 +65,15 @@ interface CrewDateChat {
   lastRead: { [uid: string]: Timestamp | null };
 }
 
+// Define interface for crew chats (persistent)
+interface CrewChat {
+  id: string; // The crew ID
+  otherMembers: User[];
+  crewName: string;
+  avatarUrl?: string;
+  lastRead: { [uid: string]: Timestamp | null };
+}
+
 // Define the context properties
 interface CrewDateChatContextProps {
   chats: CrewDateChat[];
@@ -79,10 +88,19 @@ interface CrewDateChatContextProps {
   fetchUnreadCount: (chatId: string) => Promise<number>;
   totalUnread: number;
   getChatParticipantsCount: (chatId: string) => number;
-  // Add method to load earlier messages
   loadEarlierMessages: (chatId: string) => Promise<boolean>;
-  // Add pagination info mapping
   messagePaginationInfo: { [chatId: string]: MessagePaginationInfo };
+
+  // New crew chat properties
+  crewChats: CrewChat[];
+  crewMessages: { [crewId: string]: Message[] };
+  fetchCrewChats: () => Promise<void>;
+  sendCrewMessage: (crewId: string, text: string) => Promise<void>;
+  updateCrewLastRead: (crewId: string) => Promise<void>;
+  listenToCrewMessages: (crewId: string) => () => void;
+  fetchCrewUnreadCount: (crewId: string) => Promise<number>;
+  loadEarlierCrewMessages: (crewId: string) => Promise<boolean>;
+  crewMessagePaginationInfo: { [crewId: string]: MessagePaginationInfo };
 }
 
 // Default number of messages to load initially and for pagination
@@ -105,13 +123,26 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 1000; // 1 second
 
+  // New states for crew chat
+  const [crewChats, setCrewChats] = useState<CrewChat[]>([]);
+  const [crewMessages, setCrewMessages] = useState<{
+    [crewId: string]: Message[];
+  }>({});
+
   // Add state for pagination info
   const [messagePaginationInfo, setMessagePaginationInfo] = useState<{
     [chatId: string]: MessagePaginationInfo;
   }>({});
 
+  // Add state for crew chat pagination info
+  const [crewMessagePaginationInfo, setCrewMessagePaginationInfo] = useState<{
+    [crewId: string]: MessagePaginationInfo;
+  }>({});
+
   // Ref to keep track of message listeners
   const listenersRef = useRef<{ [chatId: string]: () => void }>({});
+  // Ref for crew chat message listeners
+  const crewListenersRef = useRef<{ [crewId: string]: () => void }>({});
 
   const pendingBatches = new Map<string, Promise<any>>();
 
@@ -269,30 +300,102 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
     [user?.uid],
   );
 
-  // Function to compute total unread messages
+  // New function to fetch unread count for crew chat
+  const fetchCrewUnreadCount = useCallback(
+    async (crewId: string): Promise<number> => {
+      if (!user?.uid) return 0;
+
+      try {
+        const crewRef = doc(db, 'crews', crewId);
+        const crewDoc = await getDoc(crewRef);
+
+        if (!crewDoc.exists()) {
+          console.warn(`Crew document ${crewId} does not exist.`);
+          return 0;
+        }
+
+        const crewData = crewDoc.data();
+        if (!crewData) return 0;
+
+        const lastRead = crewData.lastRead ? crewData.lastRead[user.uid] : null;
+
+        const messagesRef = collection(db, 'crews', crewId, 'messages');
+
+        let msgQuery;
+        if (lastRead) {
+          // Fetch messages created after lastRead
+          msgQuery = query(messagesRef, where('createdAt', '>', lastRead));
+        } else {
+          // Last read should not be null unless fetching is in progress so return 0
+          return 0;
+        }
+        const countSnapshot = await getCountFromServer(msgQuery);
+        return countSnapshot.data().count;
+      } catch (error: any) {
+        if (!user?.uid) return 0;
+        if (error.code === 'permission-denied') return 0;
+        if (error.code === 'unavailable') {
+          Toast.show({
+            type: 'error',
+            text1: 'Error',
+            text2:
+              'Could not fetch unread count. Please check your connection.',
+          });
+          return 0;
+        }
+        console.error(
+          `Error fetching unread count for crew chat ${crewId}:`,
+          error,
+        );
+        return 0;
+      }
+    },
+    [user?.uid],
+  );
+
+  // Function to compute total unread messages (including crew chats)
   const computeTotalUnread = useCallback(async () => {
-    if (!user?.uid || chats.length === 0) {
+    if (!user?.uid) {
       setTotalUnread(0);
       return;
     }
 
     try {
-      const unreadPromises = chats
-        .filter((chat) => !activeChats.has(chat.id)) // Exclude active chats
+      // Unread count for date-specific chats
+      const dateChatsUnreadPromises = chats
+        .filter((chat) => !activeChats.has(chat.id))
         .map((chat) => fetchUnreadCount(chat.id));
+
+      // Unread count for crew chats
+      const crewChatsUnreadPromises = crewChats
+        .filter((chat) => !activeChats.has(`crew_${chat.id}`))
+        .map((chat) => fetchCrewUnreadCount(chat.id));
+
+      // Combine all unread count promises
+      const unreadPromises = [
+        ...dateChatsUnreadPromises,
+        ...crewChatsUnreadPromises,
+      ];
       const unreadCounts = await Promise.all(unreadPromises);
+
       const total = unreadCounts.reduce((acc, count) => acc + count, 0);
       setTotalUnread(total);
     } catch (error) {
       console.error('Error computing total unread messages:', error);
-      // Optionally handle the error, e.g., show a notification
       Toast.show({
         type: 'error',
         text1: 'Error',
         text2: 'Could not compute total unread messages',
       });
     }
-  }, [user?.uid, chats, fetchUnreadCount, activeChats]);
+  }, [
+    user?.uid,
+    chats,
+    crewChats,
+    fetchUnreadCount,
+    fetchCrewUnreadCount,
+    activeChats,
+  ]);
 
   // Fetch chats
   const fetchChats = useCallback(async () => {
@@ -361,6 +464,62 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
       });
     }
   }, [user?.uid, crews]);
+
+  // New function to fetch crew chats
+  const fetchCrewChats = useCallback(async () => {
+    if (!user?.uid) {
+      console.log('User is signed out. Clearing crew chats.');
+      setCrewChats([]);
+      setCrewMessages({});
+      return;
+    }
+
+    try {
+      const userCrewsQuery = query(
+        collection(db, 'crews'),
+        where('memberIds', 'array-contains', user.uid),
+      );
+
+      const querySnapshot = await getDocs(userCrewsQuery);
+
+      // Map each crew document to a CrewChat object
+      const chatPromises = querySnapshot.docs.map(async (docSnap) => {
+        const crewData = docSnap.data();
+        const memberIds: string[] = crewData.memberIds || [];
+
+        // Exclude the current user's UID to get other members
+        const otherMemberIds = memberIds.filter((id) => id !== user.uid);
+
+        // Fetch details for other members in parallel
+        const otherMembers: User[] = await Promise.all(
+          otherMemberIds.map((uid) => fetchUserDetailsWithRetry(uid)),
+        );
+
+        // Get lastRead timestamp for current user
+        const lastRead = crewData.lastRead || {};
+
+        return {
+          id: docSnap.id,
+          otherMembers,
+          crewName: crewData.name || 'Unknown Crew',
+          avatarUrl: crewData.iconUrl,
+          lastRead,
+        } as CrewChat;
+      });
+
+      // Wait for all chat promises to resolve in parallel
+      const fetchedCrewChats = await Promise.all(chatPromises);
+
+      setCrewChats(fetchedCrewChats);
+    } catch (error) {
+      console.error('Error fetching crew chats:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Could not fetch crew chats',
+      });
+    }
+  }, [user?.uid]);
 
   // Listen to real-time updates in crew date chats
   const listenToChats = useCallback(() => {
@@ -501,6 +660,32 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
     [user?.uid],
   );
 
+  // Send a message in a crew chat
+  const sendCrewMessage = useCallback(
+    async (crewId: string, text: string) => {
+      if (!user?.uid) return;
+
+      try {
+        const messagesRef = collection(db, 'crews', crewId, 'messages');
+        const newMessage = {
+          senderId: user.uid,
+          text,
+          createdAt: serverTimestamp(),
+        };
+        await addDoc(messagesRef, newMessage);
+        console.log(`Message sent in crew chat ${crewId}: "${text}"`);
+      } catch (error) {
+        console.error('Error sending message to crew chat:', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Could not send message.',
+        });
+      }
+    },
+    [user?.uid],
+  );
+
   // Update lastRead timestamp for a specific chat
   const updateLastRead = useCallback(
     async (chatId: string) => {
@@ -519,6 +704,29 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         );
       } catch (error) {
         console.warn(`Error updating lastRead for chat ${chatId}:`, error);
+      }
+    },
+    [user?.uid],
+  );
+
+  // Update lastRead timestamp for a specific crew chat
+  const updateCrewLastRead = useCallback(
+    async (crewId: string) => {
+      if (!user?.uid) return;
+
+      try {
+        const crewRef = doc(db, 'crews', crewId);
+        await setDoc(
+          crewRef,
+          {
+            lastRead: {
+              [user.uid]: serverTimestamp(),
+            },
+          },
+          { merge: true },
+        );
+      } catch (error) {
+        console.warn(`Error updating lastRead for crew chat ${crewId}:`, error);
       }
     },
     [user?.uid],
@@ -746,6 +954,170 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
     [user?.uid, fetchUserDetailsWithRetry, messagePaginationInfo],
   );
 
+  // Modify listenToCrewMessages to avoid re-rendering cycles
+  const listenToCrewMessages = useCallback(
+    (crewId: string) => {
+      if (!user?.uid) return () => {};
+
+      // Clean up existing listener if any
+      if (crewListenersRef.current[crewId]) {
+        crewListenersRef.current[crewId]();
+        delete crewListenersRef.current[crewId];
+      }
+
+      // Initialize pagination info if it doesn't exist - OUTSIDE the dependency cycle
+      if (!crewMessagePaginationInfo[crewId]) {
+        // Use a stable way to initialize that won't re-trigger effects
+        setTimeout(() => {
+          setCrewMessagePaginationInfo((prev) => {
+            // Only update if not already set (prevents loops)
+            if (prev[crewId]) return prev;
+
+            return {
+              ...prev,
+              [crewId]: {
+                hasMore: true,
+                loading: false,
+                lastDoc: null,
+              },
+            };
+          });
+        }, 0);
+      }
+
+      // Rest of the function remains the same
+      const messagesRef = collection(db, 'crews', crewId, 'messages');
+      // Use limit and only get recent messages
+      const msgQuery = query(
+        messagesRef,
+        orderBy('createdAt', 'desc'),
+        limit(MESSAGES_PER_LOAD),
+      );
+
+      // Load cached messages if available
+      const cachedMessages = storage.getString(`crew_messages_${crewId}`);
+      if (cachedMessages) {
+        const parsedCachedMessages: Message[] = JSON.parse(
+          cachedMessages,
+          (key, value) => {
+            if (key === 'createdAt' && typeof value === 'string') {
+              return new Date(value);
+            }
+            return value;
+          },
+        );
+        setCrewMessages((prev) => ({
+          ...prev,
+          [crewId]: parsedCachedMessages,
+        }));
+      }
+
+      const unsubscribe = onSnapshot(
+        msgQuery,
+        async (querySnapshot) => {
+          if (!user?.uid) return;
+          try {
+            // Store the last document for pagination
+            const lastVisible =
+              querySnapshot.docs.length > 0
+                ? querySnapshot.docs[querySnapshot.docs.length - 1]
+                : null;
+
+            // Update pagination info with the last document
+            setCrewMessagePaginationInfo((prev) => ({
+              ...prev,
+              [crewId]: {
+                ...(prev[crewId] || {}),
+                hasMore: querySnapshot.docs.length >= MESSAGES_PER_LOAD,
+                lastDoc: lastVisible,
+                loading: false,
+              },
+            }));
+
+            const fetchedMessages: Message[] = await Promise.all(
+              querySnapshot.docs.map(async (docSnap) => {
+                const msgData = docSnap.data();
+                const senderId: string = msgData.senderId;
+                const sender = await fetchUserDetailsWithRetry(senderId);
+
+                return {
+                  id: docSnap.id,
+                  senderId,
+                  text: msgData.text,
+                  createdAt: msgData.createdAt
+                    ? msgData.createdAt.toDate()
+                    : new Date(),
+                  senderName: sender.displayName,
+                };
+              }),
+            );
+
+            // Sort messages by createdAt (ascending) before setting state
+            const sortedMessages = fetchedMessages.sort(
+              (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+            );
+
+            setCrewMessages((prev) => {
+              // Preserve any previously loaded older messages
+              const existingMessages = prev[crewId] || [];
+
+              // Check for duplicate messages (in case we're refreshing)
+              const mergedMessages = [...existingMessages];
+
+              // Add new messages, avoiding duplicates
+              sortedMessages.forEach((newMsg) => {
+                const isDuplicate = mergedMessages.some(
+                  (existing) => existing.id === newMsg.id,
+                );
+                if (!isDuplicate) {
+                  mergedMessages.push(newMsg);
+                }
+              });
+
+              // Sort messages by date
+              mergedMessages.sort(
+                (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+              );
+
+              return { ...prev, [crewId]: mergedMessages };
+            });
+
+            const messagesToCache = sortedMessages.map((msg) => ({
+              ...msg,
+              createdAt: msg.createdAt.toISOString(),
+            }));
+            storage.set(
+              `crew_messages_${crewId}`,
+              JSON.stringify(messagesToCache),
+            );
+          } catch (error) {
+            console.error('Error processing crew messages snapshot:', error);
+            Toast.show({
+              type: 'error',
+              text1: 'Error',
+              text2: 'Could not process messages updates.',
+            });
+          }
+        },
+        (error: FirestoreError) => {
+          if (!user?.uid) return;
+          if (error.code === 'permission-denied') return;
+          console.error('Error listening to crew messages:', error);
+        },
+      );
+
+      crewListenersRef.current[crewId] = unsubscribe;
+
+      return () => {
+        if (crewListenersRef.current[crewId]) {
+          crewListenersRef.current[crewId]();
+          delete crewListenersRef.current[crewId];
+        }
+      };
+    },
+    [user?.uid, fetchUserDetailsWithRetry],
+  );
+
   // Add function to load earlier messages
   const loadEarlierMessages = useCallback(
     async (chatId: string): Promise<boolean> => {
@@ -874,11 +1246,139 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
     [user?.uid, messagePaginationInfo, fetchUserDetailsWithRetry],
   );
 
+  // Add function to load earlier crew messages
+  const loadEarlierCrewMessages = useCallback(
+    async (crewId: string): Promise<boolean> => {
+      if (!user?.uid || !crewMessagePaginationInfo[crewId]?.hasMore) {
+        return false;
+      }
+
+      const paginationInfo = crewMessagePaginationInfo[crewId];
+      if (paginationInfo?.loading) return false;
+
+      // Set loading state
+      setCrewMessagePaginationInfo((prev) => ({
+        ...prev,
+        [crewId]: {
+          ...prev[crewId],
+          loading: true,
+        },
+      }));
+
+      try {
+        const lastDoc = paginationInfo?.lastDoc;
+        if (!lastDoc) return false;
+
+        const messagesRef = collection(db, 'crews', crewId, 'messages');
+        const olderMessagesQuery = query(
+          messagesRef,
+          orderBy('createdAt', 'desc'),
+          startAfter(lastDoc),
+          limit(MESSAGES_PER_LOAD),
+        );
+
+        const querySnapshot = await getDocs(olderMessagesQuery);
+        const lastVisible =
+          querySnapshot.docs.length > 0
+            ? querySnapshot.docs[querySnapshot.docs.length - 1]
+            : null;
+
+        // Update pagination info
+        setCrewMessagePaginationInfo((prev) => ({
+          ...prev,
+          [crewId]: {
+            hasMore: querySnapshot.docs.length >= MESSAGES_PER_LOAD,
+            lastDoc: lastVisible || prev[crewId].lastDoc,
+            loading: false,
+          },
+        }));
+
+        if (querySnapshot.empty) {
+          return false;
+        }
+
+        // Process and add older messages
+        const olderMessages: Message[] = await Promise.all(
+          querySnapshot.docs.map(async (docSnap) => {
+            const msgData = docSnap.data();
+            const senderId: string = msgData.senderId;
+            const sender = await fetchUserDetailsWithRetry(senderId);
+
+            return {
+              id: docSnap.id,
+              senderId,
+              text: msgData.text,
+              createdAt: msgData.createdAt
+                ? msgData.createdAt.toDate()
+                : new Date(),
+              senderName: sender.displayName,
+            };
+          }),
+        );
+
+        // Sort older messages by date (ascending)
+        const sortedOlderMessages = olderMessages.sort(
+          (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+        );
+
+        // Update messages state by prepending older messages
+        setCrewMessages((prev) => {
+          const existingMessages = prev[crewId] || [];
+
+          // Add older messages, avoiding duplicates
+          const mergedMessages = [...existingMessages];
+
+          sortedOlderMessages.forEach((oldMsg) => {
+            const isDuplicate = mergedMessages.some(
+              (existing) => existing.id === oldMsg.id,
+            );
+            if (!isDuplicate) {
+              mergedMessages.unshift(oldMsg); // Add to the beginning
+            }
+          });
+
+          // Sort all messages by date
+          mergedMessages.sort(
+            (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+          );
+
+          return { ...prev, [crewId]: mergedMessages };
+        });
+
+        return querySnapshot.docs.length > 0;
+      } catch (error) {
+        console.error('Error loading earlier crew messages:', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Could not load earlier messages.',
+        });
+
+        // Reset loading state on error
+        setCrewMessagePaginationInfo((prev) => ({
+          ...prev,
+          [crewId]: {
+            ...prev[crewId],
+            loading: false,
+          },
+        }));
+
+        return false;
+      }
+    },
+    [user?.uid, crewMessagePaginationInfo, fetchUserDetailsWithRetry],
+  );
+
   // Get count of chat participants
   const getChatParticipantsCount = (chatId: string): number => {
     const chat = chats.find((chat) => chat.id === chatId);
     return chat ? chat.otherMembers.length + 1 : 0;
   };
+
+  // Fetch crew chats when user changes
+  useEffect(() => {
+    fetchCrewChats();
+  }, [user?.uid, fetchCrewChats]);
 
   return (
     <CrewDateChatContext.Provider
@@ -897,6 +1397,17 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         getChatParticipantsCount,
         loadEarlierMessages,
         messagePaginationInfo,
+
+        // New crew chat values
+        crewChats,
+        crewMessages,
+        fetchCrewChats,
+        sendCrewMessage,
+        updateCrewLastRead,
+        listenToCrewMessages,
+        fetchCrewUnreadCount,
+        loadEarlierCrewMessages,
+        crewMessagePaginationInfo,
       }}
     >
       {children}

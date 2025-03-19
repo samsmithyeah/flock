@@ -1,5 +1,3 @@
-// app/(main)/chats/crew-date-chat.tsx
-
 import React, {
   useEffect,
   useMemo,
@@ -22,7 +20,6 @@ import { useUser } from '@/context/UserContext';
 import { useCrewDateChat } from '@/context/CrewDateChatContext';
 import { useCrews } from '@/context/CrewsContext';
 import LoadingOverlay from '@/components/LoadingOverlay';
-import { generateChatId } from '@/utils/chatHelpers';
 import {
   doc,
   getDoc,
@@ -38,7 +35,6 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { User } from '@/types/User';
 import ProfilePicturePicker from '@/components/ProfilePicturePicker';
 import { debounce } from 'lodash';
-import moment from 'moment';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { useIsFocused, useFocusEffect } from '@react-navigation/native';
@@ -47,21 +43,17 @@ import Toast from 'react-native-toast-message';
 const TYPING_TIMEOUT = 1000;
 const READ_UPDATE_DEBOUNCE = 1000; // 1 second debounce for read status updates
 
-const CrewDateChatScreen: React.FC = () => {
-  const { crewId, date, id } = useLocalSearchParams<{
-    crewId: string;
-    date: string;
-    id?: string;
-  }>();
+const CrewChatScreen: React.FC = () => {
+  const { crewId } = useLocalSearchParams<{ crewId: string }>();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const {
-    sendMessage,
-    updateLastRead,
-    messages,
-    listenToMessages,
-    loadEarlierMessages,
-    messagePaginationInfo,
+    sendCrewMessage,
+    updateCrewLastRead,
+    crewMessages,
+    listenToCrewMessages,
+    loadEarlierCrewMessages,
+    crewMessagePaginationInfo,
   } = useCrewDateChat();
   const { crews, fetchUserDetails } = useCrews();
   const isFocused = useIsFocused();
@@ -81,38 +73,32 @@ const CrewDateChatScreen: React.FC = () => {
     [uid: string]: Date;
   }>({});
 
-  const chatId = useMemo(() => {
-    if (id) return id;
-    if (crewId && date) return generateChatId(crewId, date);
-    return null;
-  }, [crewId, date, id]);
-
   // Get pagination info for this chat
-  const paginationInfo = chatId ? messagePaginationInfo[chatId] : undefined;
+  const paginationInfo = crewId ? crewMessagePaginationInfo[crewId] : undefined;
 
   // Handle loading earlier messages with debugging
   const handleLoadEarlier = useCallback(async () => {
-    if (!chatId || isLoadingEarlier) {
+    if (!crewId || isLoadingEarlier) {
       console.log(
-        "[CrewDateChat] Can't load earlier messages:",
-        !chatId ? 'Invalid chatId' : 'Already loading',
+        "[CrewChat] Can't load earlier messages:",
+        !crewId ? 'Invalid crewId' : 'Already loading',
       );
       return;
     }
 
     if (!paginationInfo?.hasMore) {
-      console.log('[CrewDateChat] No more earlier messages available');
+      console.log('[CrewChat] No more earlier messages available');
       return;
     }
 
-    console.log('[CrewDateChat] Loading earlier messages...');
+    console.log('[CrewChat] Loading earlier messages...');
     setIsLoadingEarlier(true);
 
     try {
-      const hasMore = await loadEarlierMessages(chatId);
-      console.log('[CrewDateChat] Loaded earlier messages, has more:', hasMore);
+      const hasMore = await loadEarlierCrewMessages(crewId);
+      console.log('[CrewChat] Loaded earlier messages, has more:', hasMore);
     } catch (error) {
-      console.error('[CrewDateChat] Error loading earlier messages:', error);
+      console.error('[CrewChat] Error loading earlier messages:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',
@@ -122,7 +108,7 @@ const CrewDateChatScreen: React.FC = () => {
     } finally {
       setIsLoadingEarlier(false);
     }
-  }, [chatId, paginationInfo, loadEarlierMessages, isLoadingEarlier]);
+  }, [crewId, paginationInfo, loadEarlierCrewMessages, isLoadingEarlier]);
 
   // Fetch crew details from crews context.
   useEffect(() => {
@@ -159,14 +145,14 @@ const CrewDateChatScreen: React.FC = () => {
 
   // Fetch other members details
   useEffect(() => {
-    if (!chatId || !user?.uid) return;
+    if (!crewId || !user?.uid) return;
     const fetchMembers = async () => {
       try {
-        const chatRef = doc(db, 'crew_date_chats', chatId);
-        const chatSnap = await getDoc(chatRef);
-        if (chatSnap.exists()) {
-          const chatData = chatSnap.data();
-          const memberIds: string[] = chatData.memberIds || [];
+        const crewRef = doc(db, 'crews', crewId);
+        const crewSnap = await getDoc(crewRef);
+        if (crewSnap.exists()) {
+          const crewData = crewSnap.data();
+          const memberIds: string[] = crewData.memberIds || [];
           const otherMemberIds = memberIds.filter((id) => id !== user?.uid);
           // For each member, try to use the cache; if not present, fallback to a one-time fetch.
           const fetchedMembers = await Promise.all(
@@ -179,18 +165,18 @@ const CrewDateChatScreen: React.FC = () => {
           setOtherMembers([]);
         }
       } catch (error) {
-        console.error('Error fetching chat members:', error);
+        console.error('Error fetching crew members:', error);
         setOtherMembers([]);
       }
     };
 
     fetchMembers();
-  }, [chatId, user?.uid, fetchUserDetails]);
+  }, [crewId, user?.uid, fetchUserDetails]);
 
   // Log when pagination info changes
   useEffect(() => {
     if (paginationInfo) {
-      console.log('[CrewDateChat] Pagination info updated:', {
+      console.log('[CrewChat] Pagination info updated:', {
         hasMore: paginationInfo.hasMore,
         loading: paginationInfo.loading,
       });
@@ -200,11 +186,11 @@ const CrewDateChatScreen: React.FC = () => {
   useLayoutEffect(() => {
     if (crew) {
       navigation.setOptions({
-        headerTitle: `${crew.name} (${moment(date).format('MMM Do')})`,
+        headerTitle: crew.name,
         headerStatusBarHeight: insets.top,
       });
     }
-  }, [navigation, crew, date, insets.top]);
+  }, [navigation, crew, insets.top]);
 
   // Typing status for group chat.
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -214,9 +200,9 @@ const CrewDateChatScreen: React.FC = () => {
   // Function to immediately update typing status when typing starts
   const updateTypingStatusImmediately = useCallback(
     async (isTyping: boolean) => {
-      if (!chatId || !user?.uid) return;
+      if (!crewId || !user?.uid) return;
       try {
-        await updateDoc(doc(db, 'crew_date_chats', chatId), {
+        await updateDoc(doc(db, 'crews', crewId), {
           [`typingStatus.${user.uid}`]: isTyping,
           [`typingStatus.${user.uid}LastUpdate`]: serverTimestamp(),
         });
@@ -224,7 +210,7 @@ const CrewDateChatScreen: React.FC = () => {
         if (error.code === 'not-found') {
           try {
             await setDoc(
-              doc(db, 'crew_date_chats', chatId),
+              doc(db, 'crews', crewId),
               {
                 typingStatus: {
                   [user.uid]: isTyping,
@@ -241,7 +227,7 @@ const CrewDateChatScreen: React.FC = () => {
         }
       }
     },
-    [chatId, user?.uid],
+    [crewId, user?.uid],
   );
 
   // Only debounce the "stop typing" signal to reduce Firebase operations
@@ -300,7 +286,7 @@ const CrewDateChatScreen: React.FC = () => {
     };
   }, [debouncedStopTyping]);
 
-  const conversationMessages = messages[chatId || ''] || [];
+  const conversationMessages = crewMessages[crewId || ''] || [];
 
   // Function to check if a message has been read by all participants
   const isMessageReadByAll = useCallback(
@@ -391,18 +377,26 @@ const CrewDateChatScreen: React.FC = () => {
   ]);
 
   useEffect(() => {
-    if (!chatId) return;
-    console.log('[CrewDateChat] Setting up message listener for:', chatId);
-    const unsubscribeMessages = listenToMessages(chatId);
-    return () => unsubscribeMessages();
-  }, [chatId]);
+    if (!crewId) return;
+
+    // Only log once, not on every render
+    const messageListener = listenToCrewMessages(crewId);
+
+    console.log('[CrewChat] Setting up message listener for:', crewId);
+
+    // Clean up function
+    return () => {
+      console.log('[CrewChat] Cleaning up message listener for:', crewId);
+      messageListener();
+    };
+  }, [crewId]); // Remove listenToCrewMessages from dependencies
 
   // Listen for last read timestamps from all members
   useEffect(() => {
-    if (!chatId || !user?.uid) return;
-    const chatRef = doc(db, 'crew_date_chats', chatId);
+    if (!crewId || !user?.uid) return;
+    const crewRef = doc(db, 'crews', crewId);
     const unsubscribe = onSnapshot(
-      chatRef,
+      crewRef,
       (docSnapshot) => {
         if (!user?.uid) return;
         if (docSnapshot.exists()) {
@@ -445,16 +439,16 @@ const CrewDateChatScreen: React.FC = () => {
       (error) => {
         if (!user?.uid) return;
         if (error.code === 'permission-denied') return;
-        console.error('Error listening to chat document:', error);
+        console.error('Error listening to crew document:', error);
       },
     );
     return () => unsubscribe();
-  }, [chatId, user?.uid]);
+  }, [crewId, user?.uid]);
 
   const onSend = useCallback(
     async (msgs: IMessage[] = []) => {
       const text = msgs[0].text;
-      if (text && text.trim() !== '' && chatId) {
+      if (text && text.trim() !== '' && crewId) {
         // Create optimistic message
         const optimisticMsg: IMessage = {
           _id: `temp-${Date.now()}`,
@@ -473,11 +467,11 @@ const CrewDateChatScreen: React.FC = () => {
 
         // Send to server
         try {
-          await sendMessage(chatId, text.trim());
+          await sendCrewMessage(crewId, text.trim());
           // Explicitly set typing status to false when sending a message
           updateTypingStatusImmediately(false);
           prevTypingStateRef.current = false;
-          await updateLastRead(chatId);
+          await updateCrewLastRead(crewId);
         } catch (error) {
           console.error('Failed to send message:', error);
           Toast.show({
@@ -488,22 +482,28 @@ const CrewDateChatScreen: React.FC = () => {
         }
       }
     },
-    [chatId, sendMessage, updateTypingStatusImmediately, updateLastRead, user],
+    [
+      crewId,
+      sendCrewMessage,
+      updateTypingStatusImmediately,
+      updateCrewLastRead,
+      user,
+    ],
   );
 
   // Manage active chat state when screen gains/loses focus.
   useFocusEffect(
     useCallback(() => {
-      if (chatId) {
-        updateLastRead(chatId);
-        addActiveChat(chatId);
+      if (crewId) {
+        updateCrewLastRead(crewId);
+        addActiveChat(`crew_${crewId}`);
       }
       return () => {
-        if (chatId) {
-          removeActiveChat(chatId);
+        if (crewId) {
+          removeActiveChat(`crew_${crewId}`);
         }
       };
-    }, [chatId, updateLastRead, addActiveChat, removeActiveChat]),
+    }, [crewId, updateCrewLastRead, addActiveChat, removeActiveChat]),
   );
 
   // Handle AppState changes.
@@ -514,12 +514,12 @@ const CrewDateChatScreen: React.FC = () => {
         appState.current.match(/active/) &&
         nextAppState.match(/inactive|background/)
       ) {
-        if (chatId) removeActiveChat(chatId);
+        if (crewId) removeActiveChat(crewId);
       } else if (
         appState.current.match(/inactive|background/) &&
         nextAppState === 'active'
       ) {
-        if (isFocused && chatId) addActiveChat(chatId);
+        if (isFocused && crewId) addActiveChat(crewId);
       }
       appState.current = nextAppState;
     };
@@ -528,7 +528,7 @@ const CrewDateChatScreen: React.FC = () => {
       handleAppStateChange,
     );
     return () => subscription.remove();
-  }, [chatId, isFocused, addActiveChat, removeActiveChat]);
+  }, [crewId, isFocused, addActiveChat, removeActiveChat]);
 
   // Create a ref to track the previous message count for comparison
   const previousMessageCountRef = useRef<number>(0);
@@ -536,15 +536,15 @@ const CrewDateChatScreen: React.FC = () => {
   // Debounced function to update last read status
   const debouncedUpdateLastRead = useMemo(
     () =>
-      debounce((chatId: string) => {
-        updateLastRead(chatId);
+      debounce((crewId: string) => {
+        updateCrewLastRead(crewId);
       }, READ_UPDATE_DEBOUNCE),
-    [updateLastRead],
+    [updateCrewLastRead],
   );
 
   // Effect to auto-mark messages as read when receiving new messages while screen is focused
   useEffect(() => {
-    if (!chatId || !isFocused) return;
+    if (!crewId || !isFocused) return;
 
     const currentMessageCount = conversationMessages.length;
 
@@ -554,17 +554,17 @@ const CrewDateChatScreen: React.FC = () => {
       currentMessageCount > previousMessageCountRef.current
     ) {
       // New messages arrived while screen is focused - mark as read
-      debouncedUpdateLastRead(chatId);
+      debouncedUpdateLastRead(crewId);
     }
 
     // Update the ref with current count for next comparison
     previousMessageCountRef.current = currentMessageCount;
-  }, [conversationMessages, chatId, isFocused, debouncedUpdateLastRead]);
+  }, [conversationMessages, crewId, isFocused, debouncedUpdateLastRead]);
 
   // Reset the counter when changing chats
   useEffect(() => {
     previousMessageCountRef.current = 0;
-  }, [chatId]);
+  }, [crewId]);
 
   const typingUserIds = useMemo(
     () => Object.keys(otherUsersTyping).filter((uid) => otherUsersTyping[uid]),
@@ -654,7 +654,7 @@ const CrewDateChatScreen: React.FC = () => {
     return null;
   }, [typingDisplayNames]);
 
-  if (!chatId) return <LoadingOverlay />;
+  if (!crewId) return <LoadingOverlay />;
   return (
     <View style={styles.container}>
       <GiftedChat
@@ -703,7 +703,7 @@ const CrewDateChatScreen: React.FC = () => {
   );
 };
 
-export default CrewDateChatScreen;
+export default CrewChatScreen;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
