@@ -67,7 +67,7 @@ const ChatsListScreen: React.FC = () => {
     crewChats,
     fetchCrewUnreadCount,
   } = useCrewDateChat();
-  const { crews, usersCache, fetchCrew } = useCrews();
+  const { crews, usersCache, fetchCrew, fetchUserDetails } = useCrews();
   const { user } = useUser();
   const globalStyles = useGlobalStyles();
   const navigation = useNavigation();
@@ -88,9 +88,12 @@ const ChatsListScreen: React.FC = () => {
     async (senderId: string): Promise<string> => {
       if (senderNameCache.current[senderId]) {
         return senderNameCache.current[senderId];
-      } else if (usersCache[senderId]) {
-        senderNameCache.current[senderId] = usersCache[senderId].displayName;
-        return usersCache[senderId].displayName;
+      } else {
+        const sender = await fetchUserDetails(senderId);
+        if (sender) {
+          senderNameCache.current[senderId] = sender.displayName;
+          return sender.displayName;
+        }
       }
       try {
         const senderDoc = await getDoc(doc(db, 'users', senderId));
@@ -106,7 +109,7 @@ const ChatsListScreen: React.FC = () => {
         return 'Unknown';
       }
     },
-    [usersCache],
+    [fetchUserDetails],
   );
 
   // Other existing functions...
@@ -431,16 +434,10 @@ const ChatsListScreen: React.FC = () => {
     }
 
     try {
-      // For direct messages, we now resolve participant UIDs using usersCache.
       const directMessagesPromises = dms.map(async (dm) => {
         // dm.participants is now an array of UIDs. Resolve each:
-        const resolvedParticipants = dm.participants.map(
-          (uid) =>
-            usersCache[uid] || {
-              displayName: 'Unknown',
-              photoURL: null,
-              isOnline: false,
-            },
+        const resolvedParticipants = await Promise.all(
+          dm.participants.map(async (uid) => await fetchUserDetails(uid)),
         );
         const title = resolvedParticipants.map((u) => u.displayName).join(', ');
         const iconUrl = resolvedParticipants[0]?.photoURL;
@@ -563,7 +560,7 @@ const ChatsListScreen: React.FC = () => {
     searchQuery,
     isFocused,
     user,
-    usersCache,
+    fetchUserDetails,
   ]);
 
   // Helper function to get typing indicator text - update to handle crew chats

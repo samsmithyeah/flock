@@ -55,7 +55,7 @@ const DMChatScreen: React.FC = () => {
     loadEarlierMessages,
     messagePaginationInfo,
   } = useDirectMessages();
-  const { usersCache, fetchUserDetails } = useCrews();
+  const { fetchUserDetails } = useCrews();
   const isFocused = useIsFocused();
   const tabBarHeight = useBottomTabBarHeight();
   const { user, addActiveChat, removeActiveChat } = useUser();
@@ -167,17 +167,14 @@ const DMChatScreen: React.FC = () => {
     return () => unsubscribe();
   }, [conversationId, otherUserId]);
 
-  // Fetch details for the other user.
   useEffect(() => {
-    if (usersCache[otherUserId]) {
-      setOtherUser(usersCache[otherUserId]);
-    } else {
-      console.log('Fetching user details from DMChatScreen for', otherUserId);
-      fetchUserDetails(otherUserId).then((userData) => {
-        setOtherUser(userData);
-      });
-    }
-  }, [otherUserId, usersCache, fetchUserDetails]);
+    const fetchUser = async () => {
+      const otherUser = await fetchUserDetails(otherUserId);
+      setOtherUser(otherUser);
+    };
+
+    fetchUser();
+  }, [otherUserId, fetchUserDetails]);
 
   // Set navigation options.
   useLayoutEffect(() => {

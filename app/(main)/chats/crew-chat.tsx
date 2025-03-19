@@ -55,7 +55,7 @@ const CrewChatScreen: React.FC = () => {
     loadEarlierCrewMessages,
     crewMessagePaginationInfo,
   } = useCrewDateChat();
-  const { crews, usersCache, setUsersCache } = useCrews();
+  const { crews, fetchUserDetails } = useCrews();
   const isFocused = useIsFocused();
   const tabBarHeight = useBottomTabBarHeight();
   const { user, addActiveChat, removeActiveChat } = useUser();
@@ -73,19 +73,15 @@ const CrewChatScreen: React.FC = () => {
     [uid: string]: Date;
   }>({});
 
-  const chatId = useMemo(() => {
-    return crewId || null;
-  }, [crewId]);
-
   // Get pagination info for this chat
-  const paginationInfo = chatId ? crewMessagePaginationInfo[chatId] : undefined;
+  const paginationInfo = crewId ? crewMessagePaginationInfo[crewId] : undefined;
 
   // Handle loading earlier messages with debugging
   const handleLoadEarlier = useCallback(async () => {
-    if (!chatId || isLoadingEarlier) {
+    if (!crewId || isLoadingEarlier) {
       console.log(
         "[CrewChat] Can't load earlier messages:",
-        !chatId ? 'Invalid chatId' : 'Already loading',
+        !crewId ? 'Invalid crewId' : 'Already loading',
       );
       return;
     }
@@ -99,7 +95,7 @@ const CrewChatScreen: React.FC = () => {
     setIsLoadingEarlier(true);
 
     try {
-      const hasMore = await loadEarlierCrewMessages(chatId);
+      const hasMore = await loadEarlierCrewMessages(crewId);
       console.log('[CrewChat] Loaded earlier messages, has more:', hasMore);
     } catch (error) {
       console.error('[CrewChat] Error loading earlier messages:', error);
@@ -112,7 +108,7 @@ const CrewChatScreen: React.FC = () => {
     } finally {
       setIsLoadingEarlier(false);
     }
-  }, [chatId, paginationInfo, loadEarlierCrewMessages, isLoadingEarlier]);
+  }, [crewId, paginationInfo, loadEarlierCrewMessages, isLoadingEarlier]);
 
   // Fetch crew details from crews context.
   useEffect(() => {
@@ -147,12 +143,12 @@ const CrewChatScreen: React.FC = () => {
     fetchCrew();
   }, [crewId, crews, user?.uid]);
 
-  // Fetch other members details using the global usersCache.
+  // Fetch other members details
   useEffect(() => {
-    if (!chatId || !user?.uid) return;
+    if (!crewId || !user?.uid) return;
     const fetchMembers = async () => {
       try {
-        const crewRef = doc(db, 'crews', chatId);
+        const crewRef = doc(db, 'crews', crewId);
         const crewSnap = await getDoc(crewRef);
         if (crewSnap.exists()) {
           const crewData = crewSnap.data();
@@ -161,30 +157,7 @@ const CrewChatScreen: React.FC = () => {
           // For each member, try to use the cache; if not present, fallback to a one-time fetch.
           const fetchedMembers = await Promise.all(
             otherMemberIds.map(async (uid) => {
-              if (usersCache[uid]) return usersCache[uid];
-              try {
-                const userDoc = await getDoc(doc(db, 'users', uid));
-                if (userDoc.exists()) {
-                  const data = userDoc.data() as User;
-                  setUsersCache((prev) => ({ ...prev, [uid]: data }));
-                  return data;
-                } else {
-                  return {
-                    uid,
-                    displayName: 'Unknown',
-                    email: '',
-                    photoURL: undefined,
-                  } as User;
-                }
-              } catch (error) {
-                console.error(`Error fetching user ${uid}:`, error);
-                return {
-                  uid,
-                  displayName: 'Unknown',
-                  email: '',
-                  photoURL: undefined,
-                } as User;
-              }
+              return await fetchUserDetails(uid);
             }),
           );
           setOtherMembers(fetchedMembers);
@@ -198,7 +171,7 @@ const CrewChatScreen: React.FC = () => {
     };
 
     fetchMembers();
-  }, [chatId, user?.uid, usersCache, setUsersCache]);
+  }, [crewId, user?.uid, fetchUserDetails]);
 
   // Log when pagination info changes
   useEffect(() => {
@@ -227,9 +200,9 @@ const CrewChatScreen: React.FC = () => {
   // Function to immediately update typing status when typing starts
   const updateTypingStatusImmediately = useCallback(
     async (isTyping: boolean) => {
-      if (!chatId || !user?.uid) return;
+      if (!crewId || !user?.uid) return;
       try {
-        await updateDoc(doc(db, 'crews', chatId), {
+        await updateDoc(doc(db, 'crews', crewId), {
           [`typingStatus.${user.uid}`]: isTyping,
           [`typingStatus.${user.uid}LastUpdate`]: serverTimestamp(),
         });
@@ -237,7 +210,7 @@ const CrewChatScreen: React.FC = () => {
         if (error.code === 'not-found') {
           try {
             await setDoc(
-              doc(db, 'crews', chatId),
+              doc(db, 'crews', crewId),
               {
                 typingStatus: {
                   [user.uid]: isTyping,
@@ -254,7 +227,7 @@ const CrewChatScreen: React.FC = () => {
         }
       }
     },
-    [chatId, user?.uid],
+    [crewId, user?.uid],
   );
 
   // Only debounce the "stop typing" signal to reduce Firebase operations
@@ -313,7 +286,7 @@ const CrewChatScreen: React.FC = () => {
     };
   }, [debouncedStopTyping]);
 
-  const conversationMessages = crewMessages[chatId || ''] || [];
+  const conversationMessages = crewMessages[crewId || ''] || [];
 
   // Function to check if a message has been read by all participants
   const isMessageReadByAll = useCallback(
@@ -362,6 +335,11 @@ const CrewChatScreen: React.FC = () => {
                 ? user?.photoURL
                 : otherMembers.find((m) => m.uid === message.senderId)
                     ?.photoURL,
+            isOnline:
+              message.senderId === user?.uid
+                ? true
+                : otherMembers.find((m) => m.uid === message.senderId)
+                    ?.isOnline || false,
           },
           sent: true, // All server messages were successfully sent
           received: isReadByAll || false, // Received when read by all members
@@ -399,24 +377,24 @@ const CrewChatScreen: React.FC = () => {
   ]);
 
   useEffect(() => {
-    if (!chatId) return;
+    if (!crewId) return;
 
     // Only log once, not on every render
-    const messageListener = listenToCrewMessages(chatId);
+    const messageListener = listenToCrewMessages(crewId);
 
-    console.log('[CrewChat] Setting up message listener for:', chatId);
+    console.log('[CrewChat] Setting up message listener for:', crewId);
 
     // Clean up function
     return () => {
-      console.log('[CrewChat] Cleaning up message listener for:', chatId);
+      console.log('[CrewChat] Cleaning up message listener for:', crewId);
       messageListener();
     };
-  }, [chatId]); // Remove listenToCrewMessages from dependencies
+  }, [crewId]); // Remove listenToCrewMessages from dependencies
 
   // Listen for last read timestamps from all members
   useEffect(() => {
-    if (!chatId || !user?.uid) return;
-    const crewRef = doc(db, 'crews', chatId);
+    if (!crewId || !user?.uid) return;
+    const crewRef = doc(db, 'crews', crewId);
     const unsubscribe = onSnapshot(
       crewRef,
       (docSnapshot) => {
@@ -465,12 +443,12 @@ const CrewChatScreen: React.FC = () => {
       },
     );
     return () => unsubscribe();
-  }, [chatId, user?.uid]);
+  }, [crewId, user?.uid]);
 
   const onSend = useCallback(
     async (msgs: IMessage[] = []) => {
       const text = msgs[0].text;
-      if (text && text.trim() !== '' && chatId) {
+      if (text && text.trim() !== '' && crewId) {
         // Create optimistic message
         const optimisticMsg: IMessage = {
           _id: `temp-${Date.now()}`,
@@ -489,11 +467,11 @@ const CrewChatScreen: React.FC = () => {
 
         // Send to server
         try {
-          await sendCrewMessage(chatId, text.trim());
+          await sendCrewMessage(crewId, text.trim());
           // Explicitly set typing status to false when sending a message
           updateTypingStatusImmediately(false);
           prevTypingStateRef.current = false;
-          await updateCrewLastRead(chatId);
+          await updateCrewLastRead(crewId);
         } catch (error) {
           console.error('Failed to send message:', error);
           Toast.show({
@@ -505,7 +483,7 @@ const CrewChatScreen: React.FC = () => {
       }
     },
     [
-      chatId,
+      crewId,
       sendCrewMessage,
       updateTypingStatusImmediately,
       updateCrewLastRead,
@@ -516,16 +494,16 @@ const CrewChatScreen: React.FC = () => {
   // Manage active chat state when screen gains/loses focus.
   useFocusEffect(
     useCallback(() => {
-      if (chatId) {
-        updateCrewLastRead(chatId);
-        addActiveChat(`crew_${chatId}`);
+      if (crewId) {
+        updateCrewLastRead(crewId);
+        addActiveChat(`crew_${crewId}`);
       }
       return () => {
-        if (chatId) {
-          removeActiveChat(`crew_${chatId}`);
+        if (crewId) {
+          removeActiveChat(`crew_${crewId}`);
         }
       };
-    }, [chatId, updateCrewLastRead, addActiveChat, removeActiveChat]),
+    }, [crewId, updateCrewLastRead, addActiveChat, removeActiveChat]),
   );
 
   // Handle AppState changes.
@@ -536,12 +514,12 @@ const CrewChatScreen: React.FC = () => {
         appState.current.match(/active/) &&
         nextAppState.match(/inactive|background/)
       ) {
-        if (chatId) removeActiveChat(`crew_${chatId}`);
+        if (crewId) removeActiveChat(crewId);
       } else if (
         appState.current.match(/inactive|background/) &&
         nextAppState === 'active'
       ) {
-        if (isFocused && chatId) addActiveChat(`crew_${chatId}`);
+        if (isFocused && crewId) addActiveChat(crewId);
       }
       appState.current = nextAppState;
     };
@@ -550,7 +528,7 @@ const CrewChatScreen: React.FC = () => {
       handleAppStateChange,
     );
     return () => subscription.remove();
-  }, [chatId, isFocused, addActiveChat, removeActiveChat]);
+  }, [crewId, isFocused, addActiveChat, removeActiveChat]);
 
   // Create a ref to track the previous message count for comparison
   const previousMessageCountRef = useRef<number>(0);
@@ -558,15 +536,15 @@ const CrewChatScreen: React.FC = () => {
   // Debounced function to update last read status
   const debouncedUpdateLastRead = useMemo(
     () =>
-      debounce((chatId: string) => {
-        updateCrewLastRead(chatId);
+      debounce((crewId: string) => {
+        updateCrewLastRead(crewId);
       }, READ_UPDATE_DEBOUNCE),
     [updateCrewLastRead],
   );
 
   // Effect to auto-mark messages as read when receiving new messages while screen is focused
   useEffect(() => {
-    if (!chatId || !isFocused) return;
+    if (!crewId || !isFocused) return;
 
     const currentMessageCount = conversationMessages.length;
 
@@ -576,17 +554,17 @@ const CrewChatScreen: React.FC = () => {
       currentMessageCount > previousMessageCountRef.current
     ) {
       // New messages arrived while screen is focused - mark as read
-      debouncedUpdateLastRead(chatId);
+      debouncedUpdateLastRead(crewId);
     }
 
     // Update the ref with current count for next comparison
     previousMessageCountRef.current = currentMessageCount;
-  }, [conversationMessages, chatId, isFocused, debouncedUpdateLastRead]);
+  }, [conversationMessages, crewId, isFocused, debouncedUpdateLastRead]);
 
   // Reset the counter when changing chats
   useEffect(() => {
     previousMessageCountRef.current = 0;
-  }, [chatId]);
+  }, [crewId]);
 
   const typingUserIds = useMemo(
     () => Object.keys(otherUsersTyping).filter((uid) => otherUsersTyping[uid]),
@@ -607,6 +585,7 @@ const CrewChatScreen: React.FC = () => {
       return (
         <ProfilePicturePicker
           imageUrl={messageUser?.photoURL || null}
+          isOnline={messageUser?.isOnline || false}
           onImageUpdate={() => {}}
           editable={false}
           size={36}
@@ -675,7 +654,7 @@ const CrewChatScreen: React.FC = () => {
     return null;
   }, [typingDisplayNames]);
 
-  if (!chatId) return <LoadingOverlay />;
+  if (!crewId) return <LoadingOverlay />;
   return (
     <View style={styles.container}>
       <GiftedChat

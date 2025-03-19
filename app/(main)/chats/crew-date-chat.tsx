@@ -63,7 +63,7 @@ const CrewDateChatScreen: React.FC = () => {
     loadEarlierMessages,
     messagePaginationInfo,
   } = useCrewDateChat();
-  const { crews, usersCache, setUsersCache } = useCrews();
+  const { crews, fetchUserDetails } = useCrews();
   const isFocused = useIsFocused();
   const tabBarHeight = useBottomTabBarHeight();
   const { user, addActiveChat, removeActiveChat } = useUser();
@@ -157,7 +157,7 @@ const CrewDateChatScreen: React.FC = () => {
     fetchCrew();
   }, [crewId, crews, user?.uid]);
 
-  // Fetch other members details using the global usersCache.
+  // Fetch other members details
   useEffect(() => {
     if (!chatId || !user?.uid) return;
     const fetchMembers = async () => {
@@ -171,30 +171,7 @@ const CrewDateChatScreen: React.FC = () => {
           // For each member, try to use the cache; if not present, fallback to a one-time fetch.
           const fetchedMembers = await Promise.all(
             otherMemberIds.map(async (uid) => {
-              if (usersCache[uid]) return usersCache[uid];
-              try {
-                const userDoc = await getDoc(doc(db, 'users', uid));
-                if (userDoc.exists()) {
-                  const data = userDoc.data() as User;
-                  setUsersCache((prev) => ({ ...prev, [uid]: data }));
-                  return data;
-                } else {
-                  return {
-                    uid,
-                    displayName: 'Unknown',
-                    email: '',
-                    photoURL: undefined,
-                  } as User;
-                }
-              } catch (error) {
-                console.error(`Error fetching user ${uid}:`, error);
-                return {
-                  uid,
-                  displayName: 'Unknown',
-                  email: '',
-                  photoURL: undefined,
-                } as User;
-              }
+              return await fetchUserDetails(uid);
             }),
           );
           setOtherMembers(fetchedMembers);
@@ -208,7 +185,7 @@ const CrewDateChatScreen: React.FC = () => {
     };
 
     fetchMembers();
-  }, [chatId, user?.uid]);
+  }, [chatId, user?.uid, fetchUserDetails]);
 
   // Log when pagination info changes
   useEffect(() => {
@@ -223,7 +200,7 @@ const CrewDateChatScreen: React.FC = () => {
   useLayoutEffect(() => {
     if (crew) {
       navigation.setOptions({
-        headerTitle: `${crew.name} - ${moment(date).format('MMM Do')}`,
+        headerTitle: `${crew.name} (${moment(date).format('MMM Do')})`,
         headerStatusBarHeight: insets.top,
       });
     }
@@ -372,6 +349,11 @@ const CrewDateChatScreen: React.FC = () => {
                 ? user?.photoURL
                 : otherMembers.find((m) => m.uid === message.senderId)
                     ?.photoURL,
+            isOnline:
+              message.senderId === user?.uid
+                ? true
+                : otherMembers.find((m) => m.uid === message.senderId)
+                    ?.isOnline || false,
           },
           sent: true, // All server messages were successfully sent
           received: isReadByAll || false, // Received when read by all members
@@ -603,6 +585,7 @@ const CrewDateChatScreen: React.FC = () => {
       return (
         <ProfilePicturePicker
           imageUrl={messageUser?.photoURL || null}
+          isOnline={messageUser?.isOnline || false}
           onImageUpdate={() => {}}
           editable={false}
           size={36}
