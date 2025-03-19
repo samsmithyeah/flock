@@ -31,7 +31,6 @@ service cloud.firestore {
       
       // Subcollection: statuses
       match /statuses/{date} {
-
         // Temporary rule to allow all authenticated users to read all statuses
         allow read: if request.auth != null;
 
@@ -59,6 +58,20 @@ service cloud.firestore {
         // Allow delete if the user is the event creator or the crew owner
         allow delete: if request.auth != null
                       && (request.auth.uid == resource.data.createdBy || isCrewOwner(crewId));
+      }
+      
+      // Subcollection: messages for persistent crew chat
+      match /messages/{messageId} {
+        // Allow read if the user is a crew member
+        allow read: if isCrewMember(crewId);
+        
+        // Allow create if the user is a crew member and is sending as themselves
+        allow create: if isCrewMember(crewId) && 
+                      request.resource.data.senderId == request.auth.uid;
+        
+        // Allow update/delete if the user is the message creator or crew owner
+        allow update, delete: if request.auth != null && 
+                             (request.auth.uid == resource.data.senderId || isCrewOwner(crewId));
       }
     }
     
