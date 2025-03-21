@@ -23,7 +23,7 @@ const CreateCrewModal: React.FC<CreateCrewModalProps> = ({
   const { user } = useUser();
   const [newCrewName, setNewCrewName] = useState('');
   const [loading, setLoading] = useState(false);
-  const { setCrews, setCrewIds } = useCrews();
+  const { setCrews, setCrewIds, defaultActivity } = useCrews();
 
   const createCrew = async () => {
     if (!newCrewName.trim()) {
@@ -62,7 +62,7 @@ const CreateCrewModal: React.FC<CreateCrewModalProps> = ({
           name: newCrewName.trim(),
           ownerId: user.uid,
           memberIds: [user.uid],
-          activity: 'meeting up',
+          activity: defaultActivity,
         },
       ]);
       setCrewIds((prevIds) => [...prevIds, crewRef.id]);

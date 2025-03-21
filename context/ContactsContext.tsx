@@ -37,6 +37,7 @@ interface ContactsContextValue {
   loading: boolean;
   error: string | null;
   refreshContacts: () => Promise<void>;
+  refreshCrewContacts: () => Promise<void>; // New function
 }
 
 const ContactsContext = createContext<ContactsContextValue | undefined>(
@@ -350,6 +351,49 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
+  // New function to only refresh crew contacts without touching phone contacts
+  const refreshCrewContacts = async () => {
+    console.log('🔄 Refreshing crew contacts only...');
+    try {
+      if (!user?.uid) return;
+
+      // Fetch matched users from crews
+      const matchedFromCrews = await fetchCrewMembers(user.uid);
+      console.log(`✅ Matched ${matchedFromCrews.length} users from crews.`);
+      setMatchedUsersFromCrews(matchedFromCrews);
+
+      // Update the combined list with crew contacts
+      const combinedMap = new Map<string, User>();
+
+      // Keep existing contacts from phone
+      matchedUsersFromContacts.forEach((contact) => {
+        combinedMap.set(contact.uid, contact);
+      });
+
+      // Add/update crew contacts
+      matchedFromCrews.forEach((crewContact) => {
+        combinedMap.set(crewContact.uid, crewContact);
+      });
+
+      // Exclude current user from combined list
+      const combinedList = Array.from(combinedMap.values()).filter(
+        (u) => u.uid !== user?.uid,
+      );
+
+      // Order the combined list by displayName
+      combinedList.sort((a, b) =>
+        a.displayName.localeCompare(b.displayName, 'en', {
+          sensitivity: 'base',
+        }),
+      );
+
+      console.log(`📋 Updated combined contacts count: ${combinedList.length}`);
+      setAllContacts(combinedList);
+    } catch (err) {
+      console.error('❌ Error refreshing crew contacts:', err);
+    }
+  };
+
   useEffect(() => {
     if (user?.uid) {
       console.log('🔁 useEffect triggered: Calling loadContacts.');
@@ -373,6 +417,7 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
         loading,
         error,
         refreshContacts,
+        refreshCrewContacts,
       }}
     >
       {children}

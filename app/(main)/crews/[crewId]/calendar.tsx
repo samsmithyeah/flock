@@ -67,7 +67,8 @@ const CrewCalendarScreen: React.FC = () => {
   }>();
   const navigation = useNavigation();
   const { user } = useUser();
-  const { setStatusForCrew, usersCache, subscribeToUsers } = useCrews();
+  const { setStatusForCrew, usersCache, subscribeToUsers, defaultActivity } =
+    useCrews();
   const { addMemberToChat, removeMemberFromChat } = useCrewDateChat();
   const globalStyles = useglobalStyles();
   const insets = useSafeAreaInsets();
@@ -335,7 +336,7 @@ const CrewCalendarScreen: React.FC = () => {
   };
 
   const getCrewActivity = () =>
-    crew?.activity ? crew.activity.toLowerCase() : 'meeting up';
+    crew?.activity ? crew.activity.toLowerCase() : defaultActivity;
 
   const toggleDayStatus = async (day: string, newStatus: boolean | null) => {
     if (!user?.uid || !crew) {

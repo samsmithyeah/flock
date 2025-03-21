@@ -226,7 +226,7 @@ export const notifyUsersOnNewGroupMessage = onDocumentCreated(
       // Send the notifications using the sendExpoNotifications utility
       await sendExpoNotifications(notifications);
 
-      console.log(`Sent group message notifications for chat ${chatId}.`);
+      console.log(`Sent group message notifications for chat ${chatId} to ${recipientIds.length} users: ${recipientIds.join(', ')}`);
       return null;
     } catch (error) {
       console.error('Error processing group message notification:', error);

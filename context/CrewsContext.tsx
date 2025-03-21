@@ -61,6 +61,7 @@ interface CrewsContextProps {
   fetchUserDetails: (uid: string) => Promise<User>;
   subscribeToUser: (uid: string) => void;
   subscribeToUsers: (uids: string[]) => void;
+  defaultActivity: string;
 }
 
 const CrewsContext = createContext<CrewsContextProps | undefined>(undefined);
@@ -866,6 +867,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         fetchUserDetails,
         subscribeToUser,
         subscribeToUsers,
+        defaultActivity: 'meeting up',
       }}
     >
       {children}
