@@ -26,7 +26,7 @@ interface MemberListProps {
   emptyMessage?: string;
   adminIds?: string[];
   selectedMemberIds?: string[];
-  onSelectMember?: (memberId: string) => void;
+  onSelectMember?: (member: User) => void;
   scrollEnabled?: boolean;
   refreshing?: boolean;
   onRefresh?: () => void;
@@ -104,7 +104,7 @@ const MemberList: React.FC<MemberListProps> = ({
         </View>
         {onSelectMember && !isDisabled && (
           <TouchableOpacity
-            onPress={() => onSelectMember(item.uid)}
+            onPress={() => onSelectMember(item)}
             activeOpacity={0.7}
           >
             <Ionicons
