@@ -46,6 +46,7 @@ interface Message {
   text: string;
   createdAt: Date; // Ensure it's Date
   senderName?: string;
+  imageUrl?: string; // Add support for image messages
 }
 
 // Add pagination info to track message loading state
@@ -70,7 +71,11 @@ interface CrewDateChatContextProps {
   chats: CrewDateChat[];
   messages: { [chatId: string]: Message[] };
   fetchChats: () => Promise<void>;
-  sendMessage: (chatId: string, text: string) => Promise<void>;
+  sendMessage: (
+    chatId: string,
+    text: string,
+    imageUrl?: string,
+  ) => Promise<void>;
   updateLastRead: (chatId: string) => Promise<void>;
   listenToChats: () => () => void;
   listenToMessages: (chatId: string) => () => void;
@@ -464,9 +469,9 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
     };
   }, []);
 
-  // Send a message in a crew date chat
+  // Send a message in a crew date chat - updated to support images
   const sendMessage = useCallback(
-    async (chatId: string, text: string) => {
+    async (chatId: string, text: string, imageUrl?: string) => {
       if (!user?.uid) return;
 
       try {
@@ -480,6 +485,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
           senderId: user.uid,
           text,
           createdAt: serverTimestamp(),
+          ...(imageUrl ? { imageUrl } : {}), // Add image URL if provided
         };
         await addDoc(messagesRef, newMessage);
 
@@ -679,6 +685,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
                     ? msgData.createdAt.toDate()
                     : new Date(),
                   senderName: sender.displayName,
+                  imageUrl: msgData.imageUrl, // Add imageUrl if present
                 };
               }),
             );
@@ -817,6 +824,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
                 ? msgData.createdAt.toDate()
                 : new Date(),
               senderName: sender.displayName,
+              imageUrl: msgData.imageUrl, // Add imageUrl if present
             };
           }),
         );

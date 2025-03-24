@@ -8,7 +8,15 @@ import React, {
   useCallback,
   useState,
 } from 'react';
-import { View, StyleSheet, Text, AppState, AppStateStatus } from 'react-native';
+import {
+  View,
+  StyleSheet,
+  Text,
+  AppState,
+  AppStateStatus,
+  TouchableOpacity,
+  ActivityIndicator,
+} from 'react-native';
 import {
   GiftedChat,
   IMessage,
@@ -17,6 +25,9 @@ import {
   SendProps,
   AvatarProps,
   InputToolbar,
+  Actions,
+  MessageImage,
+  MessageImageProps,
 } from 'react-native-gifted-chat';
 import { useUser } from '@/context/UserContext';
 import { useCrewDateChat } from '@/context/CrewDateChatContext';
@@ -43,6 +54,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import Toast from 'react-native-toast-message';
+import { pickImage, uploadImage } from '@/utils/imageUpload';
+import ChatImageViewer from '@/components/ChatImageViewer';
 
 const TYPING_TIMEOUT = 1000;
 const READ_UPDATE_DEBOUNCE = 1000; // 1 second debounce for read status updates
@@ -80,6 +93,7 @@ const CrewDateChatScreen: React.FC = () => {
   const [lastReadByUsers, setLastReadByUsers] = useState<{
     [uid: string]: Date;
   }>({});
+  const [isUploading, setIsUploading] = useState(false);
 
   const chatId = useMemo(() => {
     if (id) return id;
@@ -375,6 +389,7 @@ const CrewDateChatScreen: React.FC = () => {
           },
           sent: true, // All server messages were successfully sent
           received: isReadByAll || false, // Received when read by all members
+          image: message.imageUrl, // Add image URL if it exists
         };
       })
       .reverse();
@@ -508,6 +523,44 @@ const CrewDateChatScreen: React.FC = () => {
     },
     [chatId, sendMessage, updateTypingStatusImmediately, updateLastRead, user],
   );
+
+  // Handle image picking and sending
+  const handlePickImage = useCallback(async () => {
+    if (!chatId || !user?.uid) return;
+
+    try {
+      const imageUri = await pickImage();
+      if (!imageUri) return;
+
+      setIsUploading(true);
+
+      // Upload image to Firebase Storage
+      const imageUrl = await uploadImage(imageUri, user.uid, chatId);
+
+      // Send message with image
+      await sendMessage(chatId, '', imageUrl);
+
+      // Explicitly set typing status to false when sending a message
+      updateTypingStatusImmediately(false);
+      prevTypingStateRef.current = false;
+      await updateLastRead(chatId);
+    } catch (error) {
+      console.error('Error sending image:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to send image',
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  }, [
+    chatId,
+    user?.uid,
+    sendMessage,
+    updateTypingStatusImmediately,
+    updateLastRead,
+  ]);
 
   // Manage active chat state when screen gains/loses focus.
   useFocusEffect(
@@ -671,6 +724,36 @@ const CrewDateChatScreen: React.FC = () => {
     return null;
   }, [typingDisplayNames]);
 
+  // Render custom actions (image picker button)
+  const renderActions = useCallback(() => {
+    return (
+      <Actions
+        containerStyle={styles.actionsContainer}
+        icon={() => (
+          <TouchableOpacity
+            onPress={handlePickImage}
+            disabled={isUploading}
+            style={styles.iconButton}
+          >
+            {isUploading ? (
+              <ActivityIndicator size="small" color="#1E90FF" />
+            ) : (
+              <Ionicons name="image-outline" size={24} color="#1E90FF" />
+            )}
+          </TouchableOpacity>
+        )}
+      />
+    );
+  }, [handlePickImage, isUploading]);
+
+  // Custom render for image messages
+  const renderMessageImage = useCallback(
+    (props: MessageImageProps<IMessage>) => {
+      return <ChatImageViewer {...props} imageStyle={styles.messageImage} />;
+    },
+    [],
+  );
+
   if (!chatId) return <LoadingOverlay />;
   return (
     <View style={styles.container}>
@@ -686,6 +769,8 @@ const CrewDateChatScreen: React.FC = () => {
         isTyping={false}
         onInputTextChanged={handleInputTextChanged}
         renderAvatar={renderAvatar}
+        renderActions={renderActions}
+        renderMessageImage={renderMessageImage}
         renderBubble={(props) => (
           <Bubble
             {...props}
@@ -750,5 +835,27 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#92AAB0',
     marginRight: 2,
+  },
+  actionsContainer: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+    marginRight: 4,
+    marginBottom: 0,
+  },
+  iconButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  messageImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 13,
+    margin: 3,
+    resizeMode: 'cover',
   },
 });
