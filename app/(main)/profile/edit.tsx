@@ -124,7 +124,7 @@ const EditUserProfileModal: React.FC = () => {
 
   const handleCancel = () => {
     Alert.alert(
-      'Cancel Editing',
+      'Cancel editing',
       'Are you sure you want to discard your changes?',
       [
         {
