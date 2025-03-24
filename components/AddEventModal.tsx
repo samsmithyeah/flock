@@ -245,6 +245,7 @@ const AddEventModal: React.FC<AddEventModalProps> = ({
             </TouchableOpacity>
             <Calendar
               minDate={moment().format('YYYY-MM-DD')}
+              firstDay={1}
               markedDates={getMarkedDates()}
               onDayPress={handleDayPress}
               markingType="period"
