@@ -223,7 +223,7 @@ const CrewDateChatScreen: React.FC = () => {
   useLayoutEffect(() => {
     if (crew) {
       navigation.setOptions({
-        headerTitle: `${crew.name} - ${moment(date).format('MMM Do')}`,
+        headerTitle: `${crew.name} (${moment(date).format('MMM Do')})`,
         headerStatusBarHeight: insets.top,
       });
     }
