@@ -150,7 +150,7 @@ const CreateEventPollScreen: React.FC = () => {
     navigation.setOptions({
       headerLeft: () => (
         <TouchableOpacity onPress={handleCancel}>
-          <Text style={styles.headerButtonText}>Cancel</Text>
+          <Text style={styles.headerCancelButtonText}>Cancel</Text>
         </TouchableOpacity>
       ),
       headerRight: () => (
@@ -324,9 +324,15 @@ const styles = StyleSheet.create({
   headerButtonText: {
     fontSize: 16,
     color: '#1e90ff',
+    fontWeight: 'bold',
+  },
+  headerCancelButtonText: {
+    fontSize: 16,
+    color: '#1e90ff',
   },
   disabledHeaderButton: {
     opacity: 0.5,
+    color: '#999',
   },
   durationSelector: {
     flexDirection: 'row',

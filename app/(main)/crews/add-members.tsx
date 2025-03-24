@@ -112,7 +112,6 @@ const AddMembersScreen: React.FC = () => {
     fetchCrewSpecificData();
   }, [crewId, user, allContacts]);
 
-  // Set up the navigation header with an "Invite" button
   useEffect(() => {
     navigation.setOptions({
       headerRight: () => (

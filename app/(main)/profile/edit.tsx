@@ -48,6 +48,7 @@ const EditUserProfileModal: React.FC = () => {
             style={{
               color: saving || !displayName.trim() ? '#999' : '#1e90ff',
               fontSize: 16,
+              fontWeight: 'bold',
             }}
           >
             Save

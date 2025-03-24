@@ -254,7 +254,7 @@ const EditEventPollScreen: React.FC = () => {
       title: 'Edit poll',
       headerLeft: () => (
         <TouchableOpacity onPress={handleCancel}>
-          <Text style={styles.headerButtonText}>Cancel</Text>
+          <Text style={styles.cancelButtonText}>Cancel</Text>
         </TouchableOpacity>
       ),
       headerRight: () => (
@@ -435,8 +435,15 @@ const styles = StyleSheet.create({
   headerButtonText: {
     fontSize: 16,
     color: '#1e90ff',
+    fontWeight: 'bold',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    color: '#1e90ff',
   },
   disabledHeaderButton: {
+    fontSize: 16,
+    color: '#999',
     opacity: 0.5,
   },
   warningText: {
