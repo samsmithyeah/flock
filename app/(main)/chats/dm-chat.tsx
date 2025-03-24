@@ -25,7 +25,6 @@ import {
   SendProps,
   InputToolbar,
   Actions,
-  MessageImage,
   MessageImageProps,
 } from 'react-native-gifted-chat';
 import { useUser } from '@/context/UserContext';
@@ -50,8 +49,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import Toast from 'react-native-toast-message';
-import { pickImage, uploadImage } from '@/utils/imageUpload';
+import { pickImage, uploadImage, takePhoto } from '@/utils/imageUpload';
 import ChatImageViewer from '@/components/ChatImageViewer';
+import ImageOptionsMenu from '@/components/ImageOptionsMenu';
 
 const TYPING_TIMEOUT = 1000;
 const READ_UPDATE_DEBOUNCE = 1000; // 1 second debounce for read status updates
@@ -81,6 +81,7 @@ const DMChatScreen: React.FC = () => {
   // Add state for loading earlier messages
   const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isImageMenuVisible, setIsImageMenuVisible] = useState(false);
 
   // Generate conversationId from current and other user IDs.
   const conversationId = useMemo(() => {
@@ -325,6 +326,44 @@ const DMChatScreen: React.FC = () => {
         type: 'error',
         text1: 'Error',
         text2: 'Failed to send image',
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  }, [
+    conversationId,
+    user?.uid,
+    sendMessage,
+    updateTypingStatusImmediately,
+    updateLastRead,
+  ]);
+
+  // New function to handle taking a photo
+  const handleTakePhoto = useCallback(async () => {
+    if (!conversationId || !user?.uid) return;
+
+    try {
+      const photoUri = await takePhoto();
+      if (!photoUri) return;
+
+      setIsUploading(true);
+
+      // Upload image to Firebase Storage
+      const imageUrl = await uploadImage(photoUri, user.uid, conversationId);
+
+      // Send message with image
+      await sendMessage(conversationId, '', imageUrl);
+
+      // Explicitly set typing status to false when sending a message
+      updateTypingStatusImmediately(false);
+      prevTypingStateRef.current = false;
+      await updateLastRead(conversationId);
+    } catch (error) {
+      console.error('Error sending photo:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to send photo',
       });
     } finally {
       setIsUploading(false);
@@ -657,24 +696,39 @@ const DMChatScreen: React.FC = () => {
   // Render custom actions (image picker button)
   const renderActions = useCallback(() => {
     return (
-      <Actions
-        containerStyle={styles.actionsContainer}
-        icon={() => (
-          <TouchableOpacity
-            onPress={handlePickImage}
-            disabled={isUploading}
-            style={styles.iconButton}
-          >
-            {isUploading ? (
-              <ActivityIndicator size="small" color="#1E90FF" />
-            ) : (
-              <Ionicons name="image-outline" size={24} color="#1E90FF" />
-            )}
-          </TouchableOpacity>
-        )}
-      />
+      <>
+        <Actions
+          containerStyle={styles.actionsContainer}
+          icon={() => (
+            <TouchableOpacity
+              onPress={() => setIsImageMenuVisible(true)}
+              disabled={isUploading}
+              style={styles.iconButton}
+            >
+              {isUploading ? (
+                <ActivityIndicator size="small" color="#1E90FF" />
+              ) : (
+                <Ionicons name="image-outline" size={24} color="#1E90FF" />
+              )}
+            </TouchableOpacity>
+          )}
+        />
+
+        <ImageOptionsMenu
+          visible={isImageMenuVisible}
+          onClose={() => setIsImageMenuVisible(false)}
+          onGalleryPress={() => {
+            setIsImageMenuVisible(false);
+            handlePickImage();
+          }}
+          onCameraPress={() => {
+            setIsImageMenuVisible(false);
+            handleTakePhoto();
+          }}
+        />
+      </>
     );
-  }, [handlePickImage, isUploading]);
+  }, [handlePickImage, handleTakePhoto, isUploading, isImageMenuVisible]);
 
   // Custom render for image messages
   const renderMessageImage = useCallback(

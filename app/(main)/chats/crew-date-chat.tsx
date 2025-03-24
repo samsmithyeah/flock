@@ -26,7 +26,6 @@ import {
   AvatarProps,
   InputToolbar,
   Actions,
-  MessageImage,
   MessageImageProps,
 } from 'react-native-gifted-chat';
 import { useUser } from '@/context/UserContext';
@@ -54,8 +53,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import Toast from 'react-native-toast-message';
-import { pickImage, uploadImage } from '@/utils/imageUpload';
+import { pickImage, uploadImage, takePhoto } from '@/utils/imageUpload';
 import ChatImageViewer from '@/components/ChatImageViewer';
+import ImageOptionsMenu from '@/components/ImageOptionsMenu';
 
 const TYPING_TIMEOUT = 1000;
 const READ_UPDATE_DEBOUNCE = 1000; // 1 second debounce for read status updates
@@ -94,6 +94,7 @@ const CrewDateChatScreen: React.FC = () => {
     [uid: string]: Date;
   }>({});
   const [isUploading, setIsUploading] = useState(false);
+  const [isImageMenuVisible, setIsImageMenuVisible] = useState(false);
 
   const chatId = useMemo(() => {
     if (id) return id;
@@ -562,6 +563,81 @@ const CrewDateChatScreen: React.FC = () => {
     updateLastRead,
   ]);
 
+  // New function to handle taking a photo
+  const handleTakePhoto = useCallback(async () => {
+    if (!chatId || !user?.uid) return;
+
+    try {
+      const photoUri = await takePhoto();
+      if (!photoUri) return;
+
+      setIsUploading(true);
+
+      // Upload image to Firebase Storage
+      const imageUrl = await uploadImage(photoUri, user.uid, chatId);
+
+      // Send message with image
+      await sendMessage(chatId, '', imageUrl);
+
+      // Explicitly set typing status to false
+      updateTypingStatusImmediately(false);
+      prevTypingStateRef.current = false;
+      await updateLastRead(chatId);
+    } catch (error) {
+      console.error('Error sending photo:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to send photo',
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  }, [
+    chatId,
+    user?.uid,
+    sendMessage,
+    updateTypingStatusImmediately,
+    updateLastRead,
+  ]);
+
+  // Modified render actions function to show menu
+  const renderActions = useCallback(() => {
+    return (
+      <>
+        <Actions
+          containerStyle={styles.actionsContainer}
+          icon={() => (
+            <TouchableOpacity
+              onPress={() => setIsImageMenuVisible(true)}
+              disabled={isUploading}
+              style={styles.iconButton}
+            >
+              {isUploading ? (
+                <ActivityIndicator size="small" color="#1E90FF" />
+              ) : (
+                <Ionicons name="image-outline" size={24} color="#1E90FF" />
+              )}
+            </TouchableOpacity>
+          )}
+        />
+
+        <ImageOptionsMenu
+          visible={isImageMenuVisible}
+          onClose={() => setIsImageMenuVisible(false)}
+          onGalleryPress={() => {
+            setIsImageMenuVisible(false);
+            handlePickImage();
+          }}
+          onCameraPress={() => {
+            setIsImageMenuVisible(false);
+            handleTakePhoto();
+          }}
+        />
+      </>
+    );
+  }, [handlePickImage, handleTakePhoto, isUploading, isImageMenuVisible]);
+
   // Manage active chat state when screen gains/loses focus.
   useFocusEffect(
     useCallback(() => {
@@ -723,28 +799,6 @@ const CrewDateChatScreen: React.FC = () => {
     }
     return null;
   }, [typingDisplayNames]);
-
-  // Render custom actions (image picker button)
-  const renderActions = useCallback(() => {
-    return (
-      <Actions
-        containerStyle={styles.actionsContainer}
-        icon={() => (
-          <TouchableOpacity
-            onPress={handlePickImage}
-            disabled={isUploading}
-            style={styles.iconButton}
-          >
-            {isUploading ? (
-              <ActivityIndicator size="small" color="#1E90FF" />
-            ) : (
-              <Ionicons name="image-outline" size={24} color="#1E90FF" />
-            )}
-          </TouchableOpacity>
-        )}
-      />
-    );
-  }, [handlePickImage, isUploading]);
 
   // Custom render for image messages
   const renderMessageImage = useCallback(

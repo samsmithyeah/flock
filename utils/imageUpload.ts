@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import Toast from 'react-native-toast-message';
-import uuid from 'react-native-uuid'; // Need to run: npx expo install react-native-uuid
+import uuid from 'react-native-uuid';
 
 // Set maximum image size (2MB)
 const MAX_IMAGE_SIZE = 2 * 1024 * 1024; // 2MB in bytes
@@ -44,6 +44,46 @@ export const pickImage = async (): Promise<string | null> => {
       type: 'error',
       text1: 'Error',
       text2: 'Could not pick image',
+    });
+    return null;
+  }
+};
+
+/**
+ * Take a photo with the camera and return the URI
+ */
+export const takePhoto = async (): Promise<string | null> => {
+  try {
+    // Request camera permission
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Toast.show({
+        type: 'error',
+        text1: 'Permission needed',
+        text2: 'Please allow access to your camera to take photos',
+      });
+      return null;
+    }
+
+    // Launch camera
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (result.canceled || !result.assets || result.assets.length === 0) {
+      return null;
+    }
+
+    return result.assets[0].uri;
+  } catch (error) {
+    console.error('Error taking photo:', error);
+    Toast.show({
+      type: 'error',
+      text1: 'Error',
+      text2: 'Could not take photo',
     });
     return null;
   }
