@@ -1,5 +1,5 @@
 import React from 'react';
-import { TouchableOpacity, StyleSheet } from 'react-native';
+import { TouchableOpacity, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 interface IconButtonProps {
@@ -18,30 +18,45 @@ const IconButton: React.FC<IconButtonProps> = ({
   size = 24,
 }) => {
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={[
-        styles.button,
-        { borderColor: color },
-        selected
-          ? {
-              backgroundColor: color,
-            }
-          : {
-              backgroundColor: `${color}10`, // 10% opacity of the color
-            },
-        styles.pressable,
-      ]}
-      activeOpacity={0.7}
-    >
-      <Ionicons name={iconName} size={size} color={selected ? '#fff' : color} />
-    </TouchableOpacity>
+    <View style={[styles.outerContainer, selected && { borderColor: color }]}>
+      <TouchableOpacity
+        onPress={onPress}
+        style={[
+          styles.button,
+          { borderColor: color },
+          selected
+            ? {
+                backgroundColor: color,
+              }
+            : {
+                backgroundColor: `${color}10`, // 10% opacity of the color
+              },
+          styles.pressable,
+        ]}
+        activeOpacity={0.7}
+      >
+        <Ionicons
+          name={iconName}
+          size={size}
+          color={selected ? '#fff' : color}
+        />
+      </TouchableOpacity>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  button: {
+  outerContainer: {
     width: '33%',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    padding: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  button: {
+    width: '100%',
     height: 35,
     borderRadius: 20,
     borderWidth: 1.5,

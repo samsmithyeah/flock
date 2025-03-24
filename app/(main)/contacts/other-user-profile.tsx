@@ -13,30 +13,29 @@ import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 const OtherUserProfileScreen: React.FC = () => {
   const navigation = useNavigation();
   const { userId } = useLocalSearchParams<{ userId: string }>();
-  const { usersCache, setUsersCache, fetchUserDetails } = useCrews();
+  const { fetchUserDetails } = useCrews();
 
   const [userProfile, setUserProfile] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Use the usersCache from CrewsContext.
-  // If the user is already in the cache, use it;
-  // otherwise, fallback to a one-time fetch.
   useEffect(() => {
-    if (usersCache[userId]) {
-      console.log('User found in cache', usersCache[userId]);
-      setUserProfile(usersCache[userId]);
-      setLoading(false);
-    } else {
-      console.log(
-        `Fetching user with ID: ${userId} from otherUserProfileScreen`,
-      );
-      fetchUserDetails(userId).then((user) => {
-        console.log('User fetched', user);
-        setUserProfile(user);
+    const fetchUserProfile = async () => {
+      if (!userId) {
+        console.log('User ID not provided');
         setLoading(false);
-      });
-    }
-  }, [userId, usersCache, setUsersCache, fetchUserDetails]);
+        return;
+      }
+      try {
+        const user = await fetchUserDetails(userId);
+        setUserProfile(user);
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchUserProfile();
+  }, [userId, fetchUserDetails]);
 
   useEffect(() => {
     navigation.setOptions({
