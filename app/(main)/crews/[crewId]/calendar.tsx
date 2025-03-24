@@ -732,6 +732,16 @@ const CrewCalendarScreen: React.FC = () => {
               current={startDate.format('YYYY-MM-DD')}
               onDayPress={handleCalendarDayPress}
               minDate={moment().format('YYYY-MM-DD')}
+              firstDay={1}
+              theme={{
+                selectedDayBackgroundColor: '#5f9ea0',
+                selectedDayTextColor: '#ffffff',
+                todayTextColor: '#5f9ea0',
+                arrowColor: '#5f9ea0',
+                textDayFontSize: 16,
+                textMonthFontSize: 16,
+                textDayHeaderFontSize: 14,
+              }}
             />
           </View>
         </View>

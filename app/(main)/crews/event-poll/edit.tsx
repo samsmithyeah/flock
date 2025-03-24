@@ -380,6 +380,7 @@ const EditEventPollScreen: React.FC = () => {
       <View style={styles.calendarContainer}>
         <Calendar
           minDate={moment().format('YYYY-MM-DD')}
+          firstDay={1}
           markedDates={getMarkedDates()}
           onDayPress={handleSelectDate}
           theme={{
