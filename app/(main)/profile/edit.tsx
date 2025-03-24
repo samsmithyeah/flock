@@ -48,6 +48,7 @@ const EditUserProfileModal: React.FC = () => {
             style={{
               color: saving || !displayName.trim() ? '#999' : '#1e90ff',
               fontSize: 16,
+              fontWeight: 'bold',
             }}
           >
             Save
@@ -123,7 +124,7 @@ const EditUserProfileModal: React.FC = () => {
 
   const handleCancel = () => {
     Alert.alert(
-      'Cancel Editing',
+      'Cancel editing',
       'Are you sure you want to discard your changes?',
       [
         {

@@ -28,7 +28,13 @@ import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 
 const CrewSettingsScreen: React.FC = () => {
   const { user } = useUser();
-  const { setCrews, setCrewIds, usersCache, subscribeToUsers } = useCrews();
+  const {
+    setCrews,
+    setCrewIds,
+    usersCache,
+    subscribeToUsers,
+    defaultActivity,
+  } = useCrews();
   const globalStyles = useGlobalStyles();
   const { crewId } = useLocalSearchParams<{ crewId: string }>();
   const navigation = useNavigation();
@@ -71,7 +77,7 @@ const CrewSettingsScreen: React.FC = () => {
           };
           setCrew(crewData);
           setNewCrewName(crewData.name);
-          setNewActivity(crewData.activity || 'going out');
+          setNewActivity(crewData.activity || defaultActivity);
         } else {
           if (!isDeleting) {
             console.warn('Crew not found');
@@ -480,7 +486,7 @@ const CrewSettingsScreen: React.FC = () => {
           <Text style={styles.sectionTitle}>Crew activity:</Text>
           <View style={styles.activityDisplayContainer}>
             <Text style={styles.activityText}>
-              {crew.activity || 'going out'}
+              {crew.activity || defaultActivity}
             </Text>
             <TouchableOpacity
               onPress={() => setIsEditActivityModalVisible(true)}
@@ -598,7 +604,7 @@ const CrewSettingsScreen: React.FC = () => {
               label: 'Cancel',
               onPress: () => {
                 setIsEditActivityModalVisible(false);
-                setNewActivity(crew.activity || 'going out');
+                setNewActivity(crew.activity || defaultActivity);
                 setActivityError('');
               },
               variant: 'secondary',

@@ -112,7 +112,6 @@ const AddMembersScreen: React.FC = () => {
     fetchCrewSpecificData();
   }, [crewId, user, allContacts]);
 
-  // Set up the navigation header with an "Invite" button
   useEffect(() => {
     navigation.setOptions({
       headerRight: () => (
@@ -126,6 +125,7 @@ const AddMembersScreen: React.FC = () => {
             style={{
               color: selectedMemberIds.length === 0 ? '#999' : '#1e90ff',
               fontSize: 16,
+              fontWeight: 'bold',
             }}
           >
             Invite
@@ -145,33 +145,13 @@ const AddMembersScreen: React.FC = () => {
   }, [navigation, selectedMemberIds]);
 
   // Handle selection toggling
-  const handleSelectMember = (memberId: string) => {
+  const handleSelectMember = (member: User) => {
     setSelectedMemberIds((prevSelected) => {
-      if (prevSelected.includes(memberId)) {
-        return prevSelected.filter((id) => id !== memberId);
+      if (prevSelected.includes(member.uid)) {
+        return prevSelected.filter((id) => id !== member.uid);
       }
-      return [...prevSelected, memberId];
+      return [...prevSelected, member.uid];
     });
-  };
-
-  const navigateToUserProfile = (selectedUser: User | MemberWithStatus) => {
-    if (selectedUser.uid === user?.uid) {
-      router.push(
-        {
-          pathname: '/profile',
-          params: { userId: user.uid },
-        },
-        { withAnchor: true },
-      );
-      return;
-    }
-    router.push(
-      {
-        pathname: '/contacts/other-user-profile',
-        params: { userId: selectedUser.uid },
-      },
-      { withAnchor: true },
-    );
   };
 
   // Handle adding selected members to the crew
@@ -408,8 +388,8 @@ const AddMembersScreen: React.FC = () => {
                 ? 'No members match your search.'
                 : 'No members available to add.'
             }
-            adminIds={[]} // Adjust if there are admins to highlight
-            onMemberPress={navigateToUserProfile}
+            adminIds={[]}
+            onMemberPress={handleSelectMember}
             scrollEnabled={true}
           />
         </View>

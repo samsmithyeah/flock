@@ -211,7 +211,7 @@ const ResponseScreen: React.FC = () => {
     navigation.setOptions({
       headerLeft: () => (
         <TouchableOpacity onPress={handleCancel}>
-          <Text style={styles.headerButtonText}>Cancel</Text>
+          <Text style={styles.headerCancelButtonText}>Cancel</Text>
         </TouchableOpacity>
       ),
       headerRight: () => (
@@ -471,6 +471,11 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   headerButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1e90ff',
+  },
+  headerCancelButtonText: {
     fontSize: 16,
     color: '#1e90ff',
   },

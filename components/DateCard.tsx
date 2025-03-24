@@ -47,19 +47,25 @@ const DateCard: React.FC<DateCardProps> = ({
 
   const getStatusText = () => {
     if (uniformAvailable) {
-      return `You're up for seeing all ${total} of your crews`;
+      return total === 1
+        ? "You're up for seeing your 1 crew"
+        : `You're up for seeing all ${total} of your crews`;
     }
     if (uniformUnavailable) {
-      return `You're not up for seeing any of your ${total} crews`;
+      return total === 1
+        ? "You're not up for seeing your 1 crew"
+        : `You're not up for seeing any of your ${total} crews`;
     }
     if (uniformNeutral) {
-      return `You haven't responded to any of your ${total} crews`;
+      return total === 1
+        ? "You haven't set your availability for your 1 crew"
+        : `You haven't set your availability for any of your ${total} crews`;
     }
     if (!uniformAvailable && availableCount > 0 && !unavailableCount) {
-      return `You're up for seeing ${availableCount} crew${availableCount !== 1 ? 's' : ''} but haven't responded to the other ${total - availableCount}`;
+      return `You're up for seeing ${availableCount} crew${availableCount !== 1 ? 's' : ''} but haven't set your availability for the others`;
     }
     if (!uniformUnavailable && unavailableCount > 0 && !availableCount) {
-      return `You're not up for seeing ${unavailableCount} crew${unavailableCount !== 1 ? 's' : ''} and haven't responded to the others`;
+      return `You're not up for seeing ${unavailableCount} crew${unavailableCount !== 1 ? 's' : ''} and haven't set your availability for the others`;
     }
     if (
       !uniformAvailable &&
@@ -68,7 +74,7 @@ const DateCard: React.FC<DateCardProps> = ({
       unavailableCount > 0 &&
       availableCount + unavailableCount < total
     ) {
-      return `You're up for seeing ${availableCount} crew${availableCount !== 1 ? 's' : ''}, don't want to see ${unavailableCount} crew${unavailableCount !== 1 ? 's' : ''} and haven't responded to the other ${total - availableCount - unavailableCount}`;
+      return `You're up for seeing ${availableCount} crew${availableCount !== 1 ? 's' : ''}, don't want to see ${unavailableCount} crew${unavailableCount !== 1 ? 's' : ''} and haven't set your availability for the others`;
     }
     if (
       !uniformAvailable &&
@@ -77,7 +83,7 @@ const DateCard: React.FC<DateCardProps> = ({
       unavailableCount > 0 &&
       availableCount + unavailableCount === total
     ) {
-      return `You're up for seeing ${availableCount} crew${availableCount !== 1 ? 's' : ''} but don't want to see the other ${unavailableCount}`;
+      return `You're up for seeing ${availableCount} crew${availableCount !== 1 ? 's' : ''} but don't want to see the others`;
     }
 
     return `You're up for seeing ${availableCount} of ${total} crew${total !== 1 ? 's' : ''}`;
@@ -95,6 +101,16 @@ const DateCard: React.FC<DateCardProps> = ({
         <Text style={[styles.dayText, isDisabled && styles.disabledDayText]}>
           {getFormattedDate(date)}
         </Text>
+        {!isDisabled && (
+          <TouchableOpacity
+            onPress={() => setModalVisible(true)}
+            style={styles.iconButton}
+            accessibilityLabel={`Options for ${getFormattedDate(date)}`}
+            accessibilityHint="Tap to open options for marking availability"
+          >
+            <Ionicons name="ellipsis-vertical" size={24} color="#555" />
+          </TouchableOpacity>
+        )}
       </View>
       <View style={styles.statusRow}>
         <View style={styles.statusInfo}>
@@ -107,16 +123,6 @@ const DateCard: React.FC<DateCardProps> = ({
             {getStatusText()}
           </Text>
         </View>
-        {!isDisabled && (
-          <TouchableOpacity
-            onPress={() => setModalVisible(true)}
-            style={styles.iconButton}
-            accessibilityLabel={`Options for ${getFormattedDate(date)}`}
-            accessibilityHint="Tap to open options for marking availability"
-          >
-            <Ionicons name="create-outline" size={24} color="#333333" />
-          </TouchableOpacity>
-        )}
       </View>
       <View style={styles.actionsRow}>
         {matches > 0 && (
@@ -175,6 +181,8 @@ const styles = StyleSheet.create({
   disabledDayContainer: { backgroundColor: '#E0E0E0' },
   dayHeader: {
     marginBottom: 4,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
   dayText: { fontSize: 16, color: '#333333', fontWeight: '600' },
   disabledDayText: { color: '#A9A9A9' },

@@ -83,35 +83,61 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
 
   // Listen to app state changes to update online status
   useEffect(() => {
+    let isMounted = true;
+
     const handleAppStateChange = async (nextAppState: string) => {
       if (!user?.uid) return;
-      const userDocRef = doc(db, 'users', user.uid);
-      if (nextAppState === 'active') {
-        try {
+      try {
+        const userDocRef = doc(db, 'users', user.uid);
+        const isActive = nextAppState === 'active';
+
+        // Only update if component is still mounted and this is the most recent update
+        if (isMounted) {
           await updateDoc(userDocRef, {
-            isOnline: true,
+            isOnline: isActive,
             lastSeen: serverTimestamp(),
           });
-        } catch (error) {
-          console.error('Error updating user online status:', error);
         }
-      } else {
-        try {
-          await updateDoc(userDocRef, {
-            isOnline: false,
-            lastSeen: serverTimestamp(),
-          });
-        } catch (error) {
-          console.error('Error updating user online status:', error);
-        }
+      } catch (error) {
+        console.error('Error updating user online status:', error);
       }
     };
 
+    // Set initial online status when component mounts
+    const setInitialStatus = async () => {
+      if (!user?.uid) return;
+      try {
+        const userDocRef = doc(db, 'users', user.uid);
+        await updateDoc(userDocRef, {
+          isOnline: true,
+          lastSeen: serverTimestamp(),
+        });
+      } catch (error) {
+        console.error('Error setting initial online status:', error);
+      }
+    };
+
+    setInitialStatus();
     const subscription = AppState.addEventListener(
       'change',
       handleAppStateChange,
     );
-    return () => subscription.remove();
+
+    return () => {
+      isMounted = false;
+      subscription.remove();
+
+      // Ensure user is marked offline when component unmounts
+      if (user?.uid) {
+        const userDocRef = doc(db, 'users', user.uid);
+        updateDoc(userDocRef, {
+          isOnline: false,
+          lastSeen: serverTimestamp(),
+        }).catch((error) => {
+          console.error('Error updating offline status on unmount:', error);
+        });
+      }
+    };
   }, [user?.uid]);
 
   const updateActiveChatsInDB = useCallback(

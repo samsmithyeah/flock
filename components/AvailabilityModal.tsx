@@ -165,7 +165,7 @@ const AvailabilityModal: React.FC<AvailabilityModalProps> = ({
                   <Text
                     style={[styles.modalText, isLoading && styles.disabledText]}
                   >
-                    Clear your status for all crews
+                    Clear your availability for all crews
                   </Text>
                 </TouchableOpacity>
               )}
