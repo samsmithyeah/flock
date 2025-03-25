@@ -52,6 +52,7 @@ interface CombinedChat {
   lastMessageSenderId?: string;
   lastMessageSenderName?: string;
   lastMessageImageUrl?: string; // Add support for image URL
+  lastMessageIsPoll?: boolean; // Add flag for poll messages
   unreadCount: number;
   isOnline?: boolean;
 }
@@ -62,6 +63,7 @@ interface ChatMetadata {
   lastMessageSenderId?: string;
   lastMessageSenderName?: string;
   imageUrl?: string; // Add support for image URL
+  isPoll?: boolean; // Add flag for poll messages
 }
 
 const ChatsListScreen: React.FC = () => {
@@ -157,6 +159,7 @@ const ChatsListScreen: React.FC = () => {
       senderName: string;
       createdAt: Date;
       imageUrl?: string; // Add support for image URL
+      isPoll?: boolean; // Add flag for poll messages
     } | null> => {
       if (!user) return null;
       try {
@@ -185,6 +188,7 @@ const ChatsListScreen: React.FC = () => {
               ? msgData.createdAt.toDate()
               : new Date(),
             imageUrl: msgData.imageUrl, // Get image URL if it exists
+            isPoll: !!msgData.poll, // Check if poll exists in the message data
           };
         } else {
           return null;
@@ -210,6 +214,7 @@ const ChatsListScreen: React.FC = () => {
           senderName: cached.lastMessageSenderName ?? 'Unknown',
           createdAt: new Date(cached.lastMessageTime),
           imageUrl: cached.imageUrl, // Add support for image URL
+          isPoll: cached.isPoll, // Add flag for poll messages
         };
         (async () => {
           const updated = await fetchLastMessageFromFirestore(chatId, chatType);
@@ -220,7 +225,8 @@ const ChatsListScreen: React.FC = () => {
               updated.senderName !== cachedResult.senderName ||
               updated.createdAt.getTime() !==
                 cachedResult.createdAt.getTime() ||
-              updated.imageUrl !== cachedResult.imageUrl)
+              updated.imageUrl !== cachedResult.imageUrl ||
+              updated.isPoll !== cachedResult.isPoll)
           ) {
             saveChatMetadata(chatId, {
               ...cached,
@@ -229,6 +235,7 @@ const ChatsListScreen: React.FC = () => {
               lastMessageSenderId: updated.senderId,
               lastMessageSenderName: updated.senderName,
               imageUrl: updated.imageUrl, // Save image URL in metadata
+              isPoll: updated.isPoll, // Save poll flag in metadata
             });
           }
         })();
@@ -242,6 +249,7 @@ const ChatsListScreen: React.FC = () => {
             lastMessageSenderId: result.senderId,
             lastMessageSenderName: result.senderName,
             imageUrl: result.imageUrl, // Save image URL in metadata
+            isPoll: result.isPoll, // Save poll flag in metadata
           });
         }
         return result;
@@ -418,6 +426,7 @@ const ChatsListScreen: React.FC = () => {
           lastMessageSenderId: lastMsg?.senderId,
           lastMessageSenderName: lastMsg?.senderName,
           lastMessageImageUrl: lastMsg?.imageUrl, // Include image URL in chat list data
+          lastMessageIsPoll: lastMsg?.isPoll, // Add poll flag
           unreadCount,
           isOnline,
         };
@@ -441,6 +450,7 @@ const ChatsListScreen: React.FC = () => {
           lastMessageSenderId: lastMsg?.senderId,
           lastMessageSenderName: lastMsg?.senderName,
           lastMessageImageUrl: lastMsg?.imageUrl, // Include image URL in chat list data
+          lastMessageIsPoll: lastMsg?.isPoll, // Add poll flag
           unreadCount,
         };
       });
@@ -617,7 +627,7 @@ const ChatsListScreen: React.FC = () => {
               {typingIndicator}
             </Text>
           ) : (
-            // Show image indicator or regular last message
+            // Show image indicator, poll indicator, or regular last message
             <View>
               {item.lastMessageImageUrl ? (
                 // If last message was an image
@@ -630,14 +640,44 @@ const ChatsListScreen: React.FC = () => {
                         {item.lastMessageSenderName}:{' '}
                       </Text>
                       <Ionicons name="image-outline" size={14} color="#555" />
-                      <Text style={{ color: '#555' }}>{' Image'}</Text>
+                      <Text style={{ color: '#555' }}> Image</Text>
                     </View>
                   ) : (
                     <View
                       style={{ flexDirection: 'row', alignItems: 'center' }}
                     >
                       <Ionicons name="image-outline" size={14} color="#555" />
-                      <Text style={{ color: '#555' }}>{' Image'}</Text>
+                      <Text style={{ color: '#555' }}> Image</Text>
+                    </View>
+                  )}
+                </Text>
+              ) : item.lastMessageIsPoll ? (
+                // If last message was a poll
+                <Text style={styles.chatLastMessage} numberOfLines={2}>
+                  {item.lastMessageSenderName ? (
+                    <View
+                      style={{ flexDirection: 'row', alignItems: 'center' }}
+                    >
+                      <Text style={styles.senderName}>
+                        {item.lastMessageSenderName}:{' '}
+                      </Text>
+                      <Ionicons
+                        name="bar-chart-outline"
+                        size={14}
+                        color="#555"
+                      />
+                      <Text style={{ color: '#555' }}> Poll</Text>
+                    </View>
+                  ) : (
+                    <View
+                      style={{ flexDirection: 'row', alignItems: 'center' }}
+                    >
+                      <Ionicons
+                        name="chatbubbles-outline"
+                        size={14}
+                        color="#555"
+                      />
+                      <Text style={{ color: '#555' }}> Poll</Text>
                     </View>
                   )}
                 </Text>

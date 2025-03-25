@@ -27,6 +27,8 @@ import {
   InputToolbar,
   Actions,
   MessageImageProps,
+  // Add MessageProps type for properly typing renderCustomView
+  MessageProps,
 } from 'react-native-gifted-chat';
 import { useUser } from '@/context/UserContext';
 import { useCrewDateChat } from '@/context/CrewDateChatContext';
@@ -56,6 +58,21 @@ import Toast from 'react-native-toast-message';
 import { pickImage, uploadImage, takePhoto } from '@/utils/imageUpload';
 import ChatImageViewer from '@/components/ChatImageViewer';
 import ImageOptionsMenu from '@/components/ImageOptionsMenu';
+import PollCreationModal from '@/components/PollCreationModal';
+import PollMessage from '@/components/PollMessage';
+
+// Add Poll interface and extend IMessage
+interface Poll {
+  question: string;
+  options: string[];
+  votes: { [optionIndex: number]: string[] };
+  totalVotes: number;
+}
+
+// Extend IMessage to include our poll property
+interface ExtendedMessage extends IMessage {
+  poll?: Poll;
+}
 
 const TYPING_TIMEOUT = 1000;
 const READ_UPDATE_DEBOUNCE = 1000; // 1 second debounce for read status updates
@@ -75,6 +92,8 @@ const CrewDateChatScreen: React.FC = () => {
     listenToMessages,
     loadEarlierMessages,
     messagePaginationInfo,
+    createPoll,
+    votePoll,
   } = useCrewDateChat();
   const { crews, usersCache, setUsersCache } = useCrews();
   const isFocused = useIsFocused();
@@ -89,12 +108,16 @@ const CrewDateChatScreen: React.FC = () => {
   }>({});
   const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
   // Add states for optimistic messages and reading status
-  const [optimisticMessages, setOptimisticMessages] = useState<IMessage[]>([]);
+  const [optimisticMessages, setOptimisticMessages] = useState<
+    ExtendedMessage[]
+  >([]);
   const [lastReadByUsers, setLastReadByUsers] = useState<{
     [uid: string]: Date;
   }>({});
   const [isUploading, setIsUploading] = useState(false);
   const [isImageMenuVisible, setIsImageMenuVisible] = useState(false);
+  // Add state for poll creation modal
+  const [isPollModalVisible, setIsPollModalVisible] = useState(false);
 
   const chatId = useMemo(() => {
     if (id) return id;
@@ -358,7 +381,7 @@ const CrewDateChatScreen: React.FC = () => {
   );
 
   // Modified to include optimistic messages and read status
-  const giftedChatMessages: IMessage[] = useMemo(() => {
+  const giftedChatMessages: ExtendedMessage[] = useMemo(() => {
     // Get messages from server
     const serverMessages = conversationMessages
       .map((message) => {
@@ -391,6 +414,7 @@ const CrewDateChatScreen: React.FC = () => {
           sent: true, // All server messages were successfully sent
           received: isReadByAll || false, // Received when read by all members
           image: message.imageUrl, // Add image URL if it exists
+          poll: message.poll, // Add poll data if it exists
         };
       })
       .reverse();
@@ -486,11 +510,11 @@ const CrewDateChatScreen: React.FC = () => {
   }, [chatId, user?.uid]);
 
   const onSend = useCallback(
-    async (msgs: IMessage[] = []) => {
+    async (msgs: ExtendedMessage[] = []) => {
       const text = msgs[0].text;
       if (text && text.trim() !== '' && chatId) {
         // Create optimistic message
-        const optimisticMsg: IMessage = {
+        const optimisticMsg: ExtendedMessage = {
           _id: `temp-${Date.now()}`,
           text: text.trim(),
           createdAt: new Date(),
@@ -601,6 +625,42 @@ const CrewDateChatScreen: React.FC = () => {
     updateLastRead,
   ]);
 
+  // Handle poll creation
+  const handleCreatePoll = useCallback(
+    async (question: string, options: string[]) => {
+      if (!chatId) return;
+      try {
+        await createPoll(chatId, question, options);
+      } catch (error) {
+        console.error('Error creating poll:', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Could not create poll',
+        });
+      }
+    },
+    [chatId, createPoll],
+  );
+
+  // Handle voting in a poll
+  const handleVotePoll = useCallback(
+    async (messageId: string, optionIndex: number) => {
+      if (!chatId) return;
+      try {
+        await votePoll(chatId, messageId, optionIndex);
+      } catch (error) {
+        console.error('Error voting in poll:', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Could not submit vote',
+        });
+      }
+    },
+    [chatId, votePoll],
+  );
+
   // Modified render actions function to show menu
   const renderActions = useCallback(() => {
     return (
@@ -622,6 +682,18 @@ const CrewDateChatScreen: React.FC = () => {
           )}
         />
 
+        <Actions
+          containerStyle={styles.pollActionsContainer}
+          icon={() => (
+            <TouchableOpacity
+              onPress={() => setIsPollModalVisible(true)}
+              style={styles.iconButton}
+            >
+              <Ionicons name="bar-chart-outline" size={24} color="#1E90FF" />
+            </TouchableOpacity>
+          )}
+        />
+
         <ImageOptionsMenu
           visible={isImageMenuVisible}
           onClose={() => setIsImageMenuVisible(false)}
@@ -634,9 +706,45 @@ const CrewDateChatScreen: React.FC = () => {
             handleTakePhoto();
           }}
         />
+
+        <PollCreationModal
+          visible={isPollModalVisible}
+          onClose={() => setIsPollModalVisible(false)}
+          onCreatePoll={handleCreatePoll}
+        />
       </>
     );
-  }, [handlePickImage, handleTakePhoto, isUploading, isImageMenuVisible]);
+  }, [
+    handlePickImage,
+    handleTakePhoto,
+    handleCreatePoll,
+    isUploading,
+    isImageMenuVisible,
+    isPollModalVisible,
+  ]);
+
+  // Custom render for poll messages - fixed with proper typing
+  const renderCustomView = useCallback(
+    (props: MessageProps<ExtendedMessage>) => {
+      const { currentMessage } = props;
+      if (currentMessage && currentMessage.poll) {
+        return (
+          <PollMessage
+            question={currentMessage.poll.question}
+            options={currentMessage.poll.options}
+            votes={currentMessage.poll.votes || {}}
+            totalVotes={currentMessage.poll.totalVotes || 0}
+            messageId={String(currentMessage._id)} // Convert to string for consistency
+            onVote={(optionIndex) =>
+              handleVotePoll(String(currentMessage._id), optionIndex)
+            }
+          />
+        );
+      }
+      return null;
+    },
+    [handleVotePoll],
+  );
 
   // Manage active chat state when screen gains/loses focus.
   useFocusEffect(
@@ -726,7 +834,7 @@ const CrewDateChatScreen: React.FC = () => {
   }, [typingUserIds, otherMembers]);
 
   const renderAvatar = useCallback(
-    (props: AvatarProps<IMessage>) => {
+    (props: AvatarProps<ExtendedMessage>) => {
       const messageUserId = props.currentMessage.user._id;
       const messageUser = otherMembers.find((m) => m.uid === messageUserId);
       return (
@@ -748,7 +856,7 @@ const CrewDateChatScreen: React.FC = () => {
 
   // Custom render function for message ticks (WhatsApp style)
   const renderTicks = useCallback(
-    (message: IMessage) => {
+    (message: ExtendedMessage) => {
       // Only show ticks for the current user's messages
       if (message.user._id !== user?.uid) {
         return null;
@@ -802,7 +910,7 @@ const CrewDateChatScreen: React.FC = () => {
 
   // Custom render for image messages
   const renderMessageImage = useCallback(
-    (props: MessageImageProps<IMessage>) => {
+    (props: MessageImageProps<ExtendedMessage>) => {
       return <ChatImageViewer {...props} imageStyle={styles.messageImage} />;
     },
     [],
@@ -825,6 +933,7 @@ const CrewDateChatScreen: React.FC = () => {
         renderAvatar={renderAvatar}
         renderActions={renderActions}
         renderMessageImage={renderMessageImage}
+        renderCustomView={renderCustomView}
         renderBubble={(props) => (
           <Bubble
             {...props}
@@ -836,7 +945,7 @@ const CrewDateChatScreen: React.FC = () => {
           />
         )}
         renderInputToolbar={renderInputToolbar}
-        renderSend={(props: SendProps<IMessage>) => (
+        renderSend={(props: SendProps<ExtendedMessage>) => (
           <Send
             {...props}
             containerStyle={[
@@ -896,7 +1005,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 4,
-    marginRight: 4,
+    marginRight: 0,
+    marginBottom: 0,
+  },
+  pollActionsContainer: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: -8,
+    marginRight: 0,
     marginBottom: 0,
   },
   iconButton: {

@@ -47,6 +47,15 @@ interface Message {
   createdAt: Date; // Ensure it's Date
   senderName?: string;
   imageUrl?: string; // Add support for image messages
+  poll?: Poll; // Add support for polls
+}
+
+// Add Poll interface for messages
+interface Poll {
+  question: string;
+  options: string[];
+  votes: { [optionIndex: number]: string[] }; // Array of user IDs who voted for each option
+  totalVotes: number;
 }
 
 // Add pagination info to track message loading state
@@ -88,6 +97,17 @@ interface CrewDateChatContextProps {
   loadEarlierMessages: (chatId: string) => Promise<boolean>;
   // Add pagination info mapping
   messagePaginationInfo: { [chatId: string]: MessagePaginationInfo };
+  // Add poll functions
+  createPoll: (
+    chatId: string,
+    question: string,
+    options: string[],
+  ) => Promise<void>;
+  votePoll: (
+    chatId: string,
+    messageId: string,
+    optionIndex: number,
+  ) => Promise<void>;
 }
 
 // Default number of messages to load initially and for pagination
@@ -507,6 +527,145 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
     [user?.uid],
   );
 
+  // Create a poll in a crew date chat
+  const createPoll = useCallback(
+    async (chatId: string, question: string, options: string[]) => {
+      if (!user?.uid) return;
+
+      try {
+        const messagesRef = collection(
+          db,
+          'crew_date_chats',
+          chatId,
+          'messages',
+        );
+        const newMessage = {
+          senderId: user.uid,
+          //text: `Poll: ${question}`, // Text for notifications and previews
+          createdAt: serverTimestamp(),
+          poll: {
+            question,
+            options,
+            votes: {}, // Initialize with empty votes
+            totalVotes: 0,
+          },
+        };
+        await addDoc(messagesRef, newMessage);
+
+        // Update hasMessages field
+        const chatRef = doc(db, 'crew_date_chats', chatId);
+        await updateDoc(chatRef, {
+          hasMessages: true,
+        });
+        console.log(`Poll created in chat ${chatId}: "${question}"`);
+      } catch (error) {
+        console.error('Error creating poll:', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Could not create poll.',
+        });
+      }
+    },
+    [user?.uid],
+  );
+
+  // Vote in a poll - add logging and make sure update is atomic
+  const votePoll = useCallback(
+    async (chatId: string, messageId: string, optionIndex: number) => {
+      if (!user?.uid) return;
+      console.log(
+        `[POLL] User ${user.uid} voting on option ${optionIndex} in message ${messageId}`,
+      );
+
+      try {
+        const messageRef = doc(
+          db,
+          'crew_date_chats',
+          chatId,
+          'messages',
+          messageId,
+        );
+
+        // Get current poll data
+        const messageDoc = await getDoc(messageRef);
+        if (!messageDoc.exists()) {
+          throw new Error('Message not found');
+        }
+
+        const messageData = messageDoc.data();
+        const poll = messageData.poll;
+
+        if (!poll) {
+          throw new Error('Message is not a poll');
+        }
+
+        console.log(`[POLL] Current votes:`, poll.votes);
+
+        // Make a copy of the votes object
+        const updatedVotes = { ...poll.votes };
+        let totalVotes = poll.totalVotes || 0;
+        let isToggle = false;
+
+        // Check if user has already voted on any option
+        for (const [idx, voterIds] of Object.entries(updatedVotes)) {
+          const voterArray = Array.isArray(voterIds) ? voterIds : [];
+          const voterIndex = voterArray.indexOf(user.uid);
+
+          if (voterIndex !== -1) {
+            // User has voted on this option before
+            updatedVotes[parseInt(idx)] = voterArray.filter(
+              (id) => id !== user.uid,
+            );
+            totalVotes--;
+
+            if (parseInt(idx) === optionIndex) {
+              // User is toggling (removing vote from) the same option
+              isToggle = true;
+              console.log(
+                `[POLL] User ${user.uid} is toggling off option ${optionIndex}`,
+              );
+            }
+          }
+        }
+
+        // Add the new vote (unless toggling off)
+        if (!isToggle) {
+          // Initialize the array if needed
+          if (!updatedVotes[optionIndex]) {
+            updatedVotes[optionIndex] = [];
+          }
+
+          // Add user's vote
+          updatedVotes[optionIndex].push(user.uid);
+          totalVotes++;
+          console.log(
+            `[POLL] User ${user.uid} voted for option ${optionIndex}`,
+          );
+        }
+
+        console.log(`[POLL] Updated votes:`, updatedVotes);
+
+        // Update the poll - use a transaction to ensure atomicity
+        await updateDoc(messageRef, {
+          'poll.votes': updatedVotes,
+          'poll.totalVotes': totalVotes,
+          'poll.lastUpdated': serverTimestamp(), // Add a timestamp to trigger real-time updates
+        });
+
+        console.log(`[POLL] Vote successfully saved`);
+      } catch (error) {
+        console.error('[POLL] Error voting in poll:', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Could not vote in poll.',
+        });
+      }
+    },
+    [user?.uid],
+  );
+
   // Update lastRead timestamp for a specific chat
   const updateLastRead = useCallback(
     async (chatId: string) => {
@@ -600,7 +759,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
     [],
   );
 
-  // Listen to real-time updates in messages of a crew date chat with sender names - updated with pagination
+  // Listen to real-time updates in messages of a crew date chat
   const listenToMessages = useCallback(
     (chatId: string) => {
       if (!user?.uid) return () => {};
@@ -624,6 +783,73 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
       }
 
       const messagesRef = collection(db, 'crew_date_chats', chatId, 'messages');
+
+      // Create a separate listener for real-time updates to existing messages (for polls)
+      // This ensures that poll vote updates are captured in real-time
+      const pollUpdateListener = onSnapshot(
+        messagesRef,
+        async (querySnapshot) => {
+          if (!user?.uid) return;
+
+          try {
+            // Handle modifications to existing messages (poll votes)
+            const modifiedMessages = querySnapshot
+              .docChanges()
+              .filter((change) => change.type === 'modified')
+              .map((change) => {
+                const msgData = change.doc.data();
+                const msgId = change.doc.id;
+
+                // Only process if this is a poll
+                if (msgData.poll) {
+                  return {
+                    id: msgId,
+                    poll: msgData.poll,
+                  };
+                }
+                return null;
+              })
+              // Use type assertion to tell TypeScript this won't be null
+              .filter(
+                (update): update is { id: string; poll: Poll } =>
+                  update !== null,
+              );
+
+            // If we have modified poll messages, update them in our state
+            if (modifiedMessages.length > 0) {
+              setMessages((prev) => {
+                const existingMessages = [...(prev[chatId] || [])];
+
+                // Update each modified message - now TypeScript knows update isn't null
+                modifiedMessages.forEach((update) => {
+                  const msgIndex = existingMessages.findIndex(
+                    (msg) => msg.id === update.id,
+                  );
+                  if (msgIndex !== -1) {
+                    existingMessages[msgIndex] = {
+                      ...existingMessages[msgIndex],
+                      poll: update.poll,
+                    };
+                  }
+                });
+
+                return {
+                  ...prev,
+                  [chatId]: existingMessages,
+                };
+              });
+            }
+          } catch (error) {
+            console.error('Error handling poll updates:', error);
+          }
+        },
+        (error) => {
+          if (!user?.uid) return;
+          if (error.code === 'permission-denied') return;
+          console.error('Error listening to poll updates:', error);
+        },
+      );
+
       // Modified to use limit and only get recent messages
       const msgQuery = query(
         messagesRef,
@@ -686,6 +912,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
                     : new Date(),
                   senderName: sender.displayName,
                   imageUrl: msgData.imageUrl, // Add imageUrl if present
+                  poll: msgData.poll, // Add poll if present
                 };
               }),
             );
@@ -741,14 +968,15 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         },
       );
 
-      listenersRef.current[chatId] = unsubscribe;
-
-      return () => {
-        if (listenersRef.current[chatId]) {
-          listenersRef.current[chatId]();
-          delete listenersRef.current[chatId];
-        }
+      // Store both unsubscribe functions
+      const combinedUnsubscribe = () => {
+        unsubscribe();
+        pollUpdateListener();
       };
+
+      listenersRef.current[chatId] = combinedUnsubscribe;
+
+      return combinedUnsubscribe;
     },
     [user?.uid, fetchUserDetailsWithRetry, messagePaginationInfo],
   );
@@ -905,6 +1133,8 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         getChatParticipantsCount,
         loadEarlierMessages,
         messagePaginationInfo,
+        createPoll,
+        votePoll,
       }}
     >
       {children}
