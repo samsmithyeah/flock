@@ -24,10 +24,11 @@ export const notifyUsersOnNewGroupMessage = onDocumentCreated(
     const messageData = event.data.data();
 
     // Destructure necessary fields from message data
-    const { senderId, text } = messageData;
+    const { senderId, text, imageUrl } = messageData;
 
-    if (!senderId || !text) {
-      console.log('Missing senderId or text in message data.');
+    // Skip notification if there's no content to notify about
+    if (!senderId || (!text && !imageUrl)) {
+      console.log('Missing senderId or both text and imageUrl in message data.');
       return null;
     }
 
@@ -111,6 +112,14 @@ export const notifyUsersOnNewGroupMessage = onDocumentCreated(
 
       // Prepare an array to hold all notification messages
       const notifications: ExpoPushMessage[] = [];
+
+      // Determine notification body text
+      let notificationBody = '';
+      if (text) {
+        notificationBody = `${senderName}: ${text}`;
+      } else if (imageUrl) {
+        notificationBody = `${senderName} sent an image`;
+      }
 
       // Process each recipient individually
       await Promise.all(
@@ -199,15 +208,19 @@ export const notifyUsersOnNewGroupMessage = onDocumentCreated(
               to: pushToken,
               sound: 'default' as const,
               title: chatName,
-              body: `${senderName}: ${text}`,
+              body: notificationBody,
               data: {
                 screen: 'CrewDateChat',
                 chatId,
                 senderId,
                 senderName: senderName,
-                messageText: text,
+                messageText: text || '',
+                imageUrl: imageUrl || null,
+                hasImage: !!imageUrl,
               },
               badge: newBadgeCount, // Use the incremented badge count here
+              // Enable notification content extension for iOS image display
+              mutableContent: !!imageUrl,
             }));
 
             // Add the messages to the notifications array
