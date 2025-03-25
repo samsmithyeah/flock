@@ -623,16 +623,22 @@ const ChatsListScreen: React.FC = () => {
                 // If last message was an image
                 <Text style={styles.chatLastMessage} numberOfLines={2}>
                   {item.lastMessageSenderName ? (
-                    <Text>
-                      <Text key="sender" style={styles.senderName}>
+                    <View
+                      style={{ flexDirection: 'row', alignItems: 'center' }}
+                    >
+                      <Text style={styles.senderName}>
                         {item.lastMessageSenderName}:{' '}
                       </Text>
-                      <Ionicons name="image-outline" size={14} /> Image
-                    </Text>
+                      <Ionicons name="image-outline" size={14} color="#555" />
+                      <Text style={{ color: '#555' }}>{' Image'}</Text>
+                    </View>
                   ) : (
-                    <>
-                      <Ionicons name="image-outline" size={14} /> Image
-                    </>
+                    <View
+                      style={{ flexDirection: 'row', alignItems: 'center' }}
+                    >
+                      <Ionicons name="image-outline" size={14} color="#555" />
+                      <Text style={{ color: '#555' }}>{' Image'}</Text>
+                    </View>
                   )}
                 </Text>
               ) : (
