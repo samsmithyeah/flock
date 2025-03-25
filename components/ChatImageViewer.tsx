@@ -1,96 +1,141 @@
 import React, { useState } from 'react';
 import {
-  View,
-  Image,
-  StyleSheet,
   TouchableOpacity,
   Modal,
-  Dimensions,
-  StatusBar,
+  View,
+  StyleSheet,
+  Image,
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
+import { MessageImageProps } from 'react-native-gifted-chat';
 import { Ionicons } from '@expo/vector-icons';
-import { MessageImageProps, IMessage } from 'react-native-gifted-chat';
+import ImageViewer from 'react-native-image-zoom-viewer';
+import { saveImageToGallery } from '@/utils/saveImageToGallery';
+import ActionSheet from '@/components/ActionSheet';
 
-// Get screen dimensions for full-screen display
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const ChatImageViewer: React.FC<MessageImageProps<any>> = (props) => {
+  const { currentMessage, containerStyle, imageStyle } = props;
+  const [modalVisible, setModalVisible] = useState(false);
+  const [optionsVisible, setOptionsVisible] = useState(false);
+  const [loading, setSaving] = useState(false);
 
-interface ChatImageViewerProps extends MessageImageProps<IMessage> {
-  // You can add additional props here if needed
-  imageStyle?: any;
-}
+  // Extract image URL from message
+  const imageUrl = currentMessage?.image;
 
-const ChatImageViewer: React.FC<ChatImageViewerProps> = (props) => {
-  const { currentMessage, imageStyle } = props;
-  const [isModalVisible, setIsModalVisible] = useState(false);
+  if (!imageUrl) {
+    return null;
+  }
 
-  // If there's no image URL, don't render anything
-  if (!currentMessage?.image) return null;
+  // Handle long press on image
+  const handleLongPress = () => {
+    setOptionsVisible(true);
+  };
+
+  // Handle modal close
+  const handleModalClose = () => {
+    setModalVisible(false);
+  };
+
+  // Handle image save option
+  const handleSaveImage = async () => {
+    try {
+      setSaving(true);
+      await saveImageToGallery(imageUrl);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const actionSheetOptions = [
+    {
+      icon: <Ionicons name="download-outline" size={22} color="#007AFF" />,
+      label: 'Save to device',
+      onPress: handleSaveImage,
+    },
+  ];
 
   return (
-    <View>
-      {/* Thumbnail image (in chat bubble) */}
+    <View style={containerStyle}>
+      {/* Regular image with long press handler */}
       <TouchableOpacity
-        onPress={() => setIsModalVisible(true)}
         activeOpacity={0.8}
+        style={{ borderRadius: 13, overflow: 'hidden' }}
+        onPress={() => setModalVisible(true)}
+        onLongPress={handleLongPress}
+        delayLongPress={500}
       >
-        <Image
-          source={{ uri: currentMessage.image }}
-          style={[styles.messageImage, imageStyle]}
-          resizeMode="cover"
-        />
+        <Image source={{ uri: imageUrl }} style={[styles.image, imageStyle]} />
       </TouchableOpacity>
 
-      {/* Full-screen modal */}
+      {/* Fullscreen image modal */}
       <Modal
-        visible={isModalVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setIsModalVisible(false)}
+        visible={modalVisible}
+        transparent
+        onRequestClose={handleModalClose}
       >
-        <StatusBar backgroundColor="black" barStyle="light-content" />
-        <View style={styles.modalContainer}>
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={() => setIsModalVisible(false)}
-          >
-            <Ionicons name="close" size={30} color="white" />
-          </TouchableOpacity>
-
-          <Image
-            source={{ uri: currentMessage.image }}
-            style={styles.fullScreenImage}
-            resizeMode="contain"
-          />
-        </View>
+        <ImageViewer
+          imageUrls={[{ url: imageUrl }]}
+          enableSwipeDown
+          onSwipeDown={handleModalClose}
+          loadingRender={() => <ActivityIndicator color="#fff" />}
+          saveToLocalByLongPress={false}
+          renderHeader={() => (
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={handleModalClose}
+            >
+              <Ionicons name="close" size={28} color="#fff" />
+            </TouchableOpacity>
+          )}
+          onClick={handleModalClose}
+          onLongPress={handleLongPress}
+        />
       </Modal>
+
+      {/* Use our new reusable ActionSheet component */}
+      <ActionSheet
+        visible={optionsVisible}
+        onClose={() => setOptionsVisible(false)}
+        title="Image options"
+        options={actionSheetOptions}
+      />
+
+      {/* Loading overlay */}
+      {loading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#fff" />
+        </View>
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  messageImage: {
+  image: {
     width: 200,
     height: 200,
     borderRadius: 13,
     margin: 3,
     resizeMode: 'cover',
   },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fullScreenImage: {
-    width: screenWidth,
-    height: screenHeight * 0.8,
-  },
   closeButton: {
     position: 'absolute',
-    top: 40,
+    top: Platform.OS === 'ios' ? 50 : 20,
     right: 20,
-    zIndex: 10,
-    padding: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 999,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 
