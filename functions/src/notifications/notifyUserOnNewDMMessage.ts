@@ -23,10 +23,11 @@ export const notifyUserOnNewDMMessage = onDocumentCreated(
     const messageData = event.data.data();
 
     // Destructure necessary fields from message data
-    const { senderId, text } = messageData;
+    const { senderId, text, imageUrl } = messageData;
 
-    if (!senderId || !text) {
-      console.log('Missing senderId or text in message data.');
+    // Skip notification if there's no content to notify about
+    if (!senderId || (!text && !imageUrl)) {
+      console.log('Missing senderId or both text and imageUrl in message data.');
       return null;
     }
 
@@ -124,20 +125,32 @@ export const notifyUserOnNewDMMessage = onDocumentCreated(
         return null;
       }
 
+      // Determine notification body text based on content
+      let notificationBody = '';
+      if (text) {
+        notificationBody = text;
+      } else if (imageUrl) {
+        notificationBody = 'Sent you an image';
+      }
+
       // Prepare notification payload with the incremented badge count
       const messages: ExpoPushMessage[] = expoPushTokens.map((pushToken) => ({
         to: pushToken,
         sound: 'default',
         title: senderName,
-        body: text,
+        body: notificationBody,
         data: {
           screen: 'DMChat',
           dmId,
           senderId,
           senderName: senderName,
-          messageText: text,
+          messageText: text || '',
+          imageUrl: imageUrl || null,
+          hasImage: !!imageUrl,
         },
         badge: newBadgeCount ?? 0,
+        // Enable notification content extension for iOS image display
+        mutableContent: !!imageUrl,
       }));
 
       try {

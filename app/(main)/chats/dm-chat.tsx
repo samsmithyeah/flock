@@ -8,7 +8,15 @@ import React, {
   useState,
   useCallback,
 } from 'react';
-import { View, StyleSheet, Text, AppState, AppStateStatus } from 'react-native';
+import {
+  View,
+  StyleSheet,
+  Text,
+  AppState,
+  AppStateStatus,
+  TouchableOpacity,
+  ActivityIndicator,
+} from 'react-native';
 import {
   GiftedChat,
   IMessage,
@@ -16,6 +24,8 @@ import {
   Send,
   SendProps,
   InputToolbar,
+  Actions,
+  MessageImageProps,
 } from 'react-native-gifted-chat';
 import { useUser } from '@/context/UserContext';
 import { useDirectMessages } from '@/context/DirectMessagesContext';
@@ -39,6 +49,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import Toast from 'react-native-toast-message';
+import { pickImage, uploadImage, takePhoto } from '@/utils/imageUpload';
+import ChatImageViewer from '@/components/ChatImageViewer';
+import ImageOptionsMenu from '@/components/ImageOptionsMenu';
 
 const TYPING_TIMEOUT = 1000;
 const READ_UPDATE_DEBOUNCE = 1000; // 1 second debounce for read status updates
@@ -67,6 +80,8 @@ const DMChatScreen: React.FC = () => {
   const [optimisticMessages, setOptimisticMessages] = useState<IMessage[]>([]);
   // Add state for loading earlier messages
   const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isImageMenuVisible, setIsImageMenuVisible] = useState(false);
 
   // Generate conversationId from current and other user IDs.
   const conversationId = useMemo(() => {
@@ -285,6 +300,82 @@ const DMChatScreen: React.FC = () => {
 
   const conversationMessages = messages[conversationId] || [];
 
+  // Handle image picking and sending
+  const handlePickImage = useCallback(async () => {
+    if (!conversationId || !user?.uid) return;
+
+    try {
+      const imageUri = await pickImage();
+      if (!imageUri) return;
+
+      setIsUploading(true);
+
+      // Upload image to Firebase Storage
+      const imageUrl = await uploadImage(imageUri, user.uid, conversationId);
+
+      // Send message with image
+      await sendMessage(conversationId, '', imageUrl);
+
+      // Explicitly set typing status to false when sending a message
+      updateTypingStatusImmediately(false);
+      prevTypingStateRef.current = false;
+      await updateLastRead(conversationId);
+    } catch (error) {
+      console.error('Error sending image:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to send image',
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  }, [
+    conversationId,
+    user?.uid,
+    sendMessage,
+    updateTypingStatusImmediately,
+    updateLastRead,
+  ]);
+
+  // New function to handle taking a photo
+  const handleTakePhoto = useCallback(async () => {
+    if (!conversationId || !user?.uid) return;
+
+    try {
+      const photoUri = await takePhoto();
+      if (!photoUri) return;
+
+      setIsUploading(true);
+
+      // Upload image to Firebase Storage
+      const imageUrl = await uploadImage(photoUri, user.uid, conversationId);
+
+      // Send message with image
+      await sendMessage(conversationId, '', imageUrl);
+
+      // Explicitly set typing status to false when sending a message
+      updateTypingStatusImmediately(false);
+      prevTypingStateRef.current = false;
+      await updateLastRead(conversationId);
+    } catch (error) {
+      console.error('Error sending photo:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to send photo',
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  }, [
+    conversationId,
+    user?.uid,
+    sendMessage,
+    updateTypingStatusImmediately,
+    updateLastRead,
+  ]);
+
   // Modified to include optimistic messages and message status
   const giftedChatMessages: IMessage[] = useMemo(() => {
     // Get messages from server
@@ -318,6 +409,7 @@ const DMChatScreen: React.FC = () => {
           },
           sent: true, // All server messages were successfully sent
           received: isRead || false, // Message is "received" when it has been read
+          image: message.imageUrl, // Add image URL if it exists
         };
       })
       .reverse();
@@ -356,6 +448,7 @@ const DMChatScreen: React.FC = () => {
     return () => unsubscribeMessages();
   }, [conversationId, listenToDMMessages]);
 
+  // Modified onSend function to handle text-only messages
   const onSend = useCallback(
     async (msgs: IMessage[] = []) => {
       const text = msgs[0].text;
@@ -600,6 +693,51 @@ const DMChatScreen: React.FC = () => {
     }
   }, [conversationId, conversationMessages.length]);
 
+  // Render custom actions (image picker button)
+  const renderActions = useCallback(() => {
+    return (
+      <>
+        <Actions
+          containerStyle={styles.actionsContainer}
+          icon={() => (
+            <TouchableOpacity
+              onPress={() => setIsImageMenuVisible(true)}
+              disabled={isUploading}
+              style={styles.iconButton}
+            >
+              {isUploading ? (
+                <ActivityIndicator size="small" color="#1E90FF" />
+              ) : (
+                <Ionicons name="image-outline" size={24} color="#1E90FF" />
+              )}
+            </TouchableOpacity>
+          )}
+        />
+
+        <ImageOptionsMenu
+          visible={isImageMenuVisible}
+          onClose={() => setIsImageMenuVisible(false)}
+          onGalleryPress={() => {
+            setIsImageMenuVisible(false);
+            handlePickImage();
+          }}
+          onCameraPress={() => {
+            setIsImageMenuVisible(false);
+            handleTakePhoto();
+          }}
+        />
+      </>
+    );
+  }, [handlePickImage, handleTakePhoto, isUploading, isImageMenuVisible]);
+
+  // Custom render for image messages
+  const renderMessageImage = useCallback(
+    (props: MessageImageProps<IMessage>) => {
+      return <ChatImageViewer {...props} imageStyle={styles.messageImage} />;
+    },
+    [],
+  );
+
   if (!conversationId) return <LoadingOverlay />;
   return (
     <View style={styles.container}>
@@ -615,6 +753,8 @@ const DMChatScreen: React.FC = () => {
         bottomOffset={tabBarHeight - insets.bottom}
         onInputTextChanged={handleInputTextChanged}
         renderAvatar={renderAvatar}
+        renderActions={renderActions}
+        renderMessageImage={renderMessageImage}
         renderBubble={(props) => (
           <Bubble
             {...props}
@@ -688,5 +828,27 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#92AAB0',
     marginRight: 2,
+  },
+  actionsContainer: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+    marginRight: 4,
+    marginBottom: 0,
+  },
+  iconButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  messageImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 13,
+    margin: 3,
+    resizeMode: 'cover',
   },
 });

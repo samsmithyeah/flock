@@ -34,6 +34,7 @@ import useGlobalStyles from '@/styles/globalStyles';
 import { router, useNavigation } from 'expo-router';
 import { FirebaseError } from 'firebase/app';
 import Toast from 'react-native-toast-message';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 // Define the typing status interface
 interface TypingStatus {
@@ -50,6 +51,7 @@ interface CombinedChat {
   lastMessageTime?: Date;
   lastMessageSenderId?: string;
   lastMessageSenderName?: string;
+  lastMessageImageUrl?: string; // Add support for image URL
   unreadCount: number;
   isOnline?: boolean;
 }
@@ -59,6 +61,7 @@ interface ChatMetadata {
   lastMessageTime?: string;
   lastMessageSenderId?: string;
   lastMessageSenderName?: string;
+  imageUrl?: string; // Add support for image URL
 }
 
 const ChatsListScreen: React.FC = () => {
@@ -153,6 +156,7 @@ const ChatsListScreen: React.FC = () => {
       senderId: string;
       senderName: string;
       createdAt: Date;
+      imageUrl?: string; // Add support for image URL
     } | null> => {
       if (!user) return null;
       try {
@@ -174,12 +178,13 @@ const ChatsListScreen: React.FC = () => {
           const senderName = await getSenderName(senderId);
 
           return {
-            text: msgData.text,
+            text: msgData.text || '',
             senderId,
             senderName,
             createdAt: msgData.createdAt
               ? msgData.createdAt.toDate()
               : new Date(),
+            imageUrl: msgData.imageUrl, // Get image URL if it exists
           };
         } else {
           return null;
@@ -204,6 +209,7 @@ const ChatsListScreen: React.FC = () => {
           senderId: cached.lastMessageSenderId,
           senderName: cached.lastMessageSenderName ?? 'Unknown',
           createdAt: new Date(cached.lastMessageTime),
+          imageUrl: cached.imageUrl, // Add support for image URL
         };
         (async () => {
           const updated = await fetchLastMessageFromFirestore(chatId, chatType);
@@ -212,7 +218,9 @@ const ChatsListScreen: React.FC = () => {
             (updated.text !== cachedResult.text ||
               updated.senderId !== cachedResult.senderId ||
               updated.senderName !== cachedResult.senderName ||
-              updated.createdAt.getTime() !== cachedResult.createdAt.getTime())
+              updated.createdAt.getTime() !==
+                cachedResult.createdAt.getTime() ||
+              updated.imageUrl !== cachedResult.imageUrl)
           ) {
             saveChatMetadata(chatId, {
               ...cached,
@@ -220,6 +228,7 @@ const ChatsListScreen: React.FC = () => {
               lastMessageTime: updated.createdAt.toISOString(),
               lastMessageSenderId: updated.senderId,
               lastMessageSenderName: updated.senderName,
+              imageUrl: updated.imageUrl, // Save image URL in metadata
             });
           }
         })();
@@ -232,6 +241,7 @@ const ChatsListScreen: React.FC = () => {
             lastMessageTime: result.createdAt.toISOString(),
             lastMessageSenderId: result.senderId,
             lastMessageSenderName: result.senderName,
+            imageUrl: result.imageUrl, // Save image URL in metadata
           });
         }
         return result;
@@ -407,6 +417,7 @@ const ChatsListScreen: React.FC = () => {
           lastMessageTime: lastMsg?.createdAt,
           lastMessageSenderId: lastMsg?.senderId,
           lastMessageSenderName: lastMsg?.senderName,
+          lastMessageImageUrl: lastMsg?.imageUrl, // Include image URL in chat list data
           unreadCount,
           isOnline,
         };
@@ -429,6 +440,7 @@ const ChatsListScreen: React.FC = () => {
           lastMessageTime: lastMsg?.createdAt,
           lastMessageSenderId: lastMsg?.senderId,
           lastMessageSenderName: lastMsg?.senderName,
+          lastMessageImageUrl: lastMsg?.imageUrl, // Include image URL in chat list data
           unreadCount,
         };
       });
@@ -605,23 +617,50 @@ const ChatsListScreen: React.FC = () => {
               {typingIndicator}
             </Text>
           ) : (
-            // Show regular last message
-            <Text style={styles.chatLastMessage} numberOfLines={2}>
-              {item.lastMessage ? (
-                item.lastMessageSenderName ? (
-                  <Text>
-                    <Text key="sender" style={styles.senderName}>
-                      {item.lastMessageSenderName}:{' '}
-                    </Text>
-                    <Text key="message">{item.lastMessage}</Text>
-                  </Text>
-                ) : (
-                  item.lastMessage
-                )
+            // Show image indicator or regular last message
+            <View>
+              {item.lastMessageImageUrl ? (
+                // If last message was an image
+                <Text style={styles.chatLastMessage} numberOfLines={2}>
+                  {item.lastMessageSenderName ? (
+                    <View
+                      style={{ flexDirection: 'row', alignItems: 'center' }}
+                    >
+                      <Text style={styles.senderName}>
+                        {item.lastMessageSenderName}:{' '}
+                      </Text>
+                      <Ionicons name="image-outline" size={14} color="#555" />
+                      <Text style={{ color: '#555' }}>{' Image'}</Text>
+                    </View>
+                  ) : (
+                    <View
+                      style={{ flexDirection: 'row', alignItems: 'center' }}
+                    >
+                      <Ionicons name="image-outline" size={14} color="#555" />
+                      <Text style={{ color: '#555' }}>{' Image'}</Text>
+                    </View>
+                  )}
+                </Text>
               ) : (
-                'No messages yet.'
+                // Regular text message
+                <Text style={styles.chatLastMessage} numberOfLines={2}>
+                  {item.lastMessage ? (
+                    item.lastMessageSenderName ? (
+                      <Text>
+                        <Text key="sender" style={styles.senderName}>
+                          {item.lastMessageSenderName}:{' '}
+                        </Text>
+                        <Text key="message">{item.lastMessage}</Text>
+                      </Text>
+                    ) : (
+                      item.lastMessage
+                    )
+                  ) : (
+                    'No messages yet.'
+                  )}
+                </Text>
               )}
-            </Text>
+            </View>
           )}
         </View>
         {item.unreadCount > 0 && (

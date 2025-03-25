@@ -41,6 +41,7 @@ interface Message {
   text: string;
   createdAt: Date;
   senderName?: string;
+  imageUrl?: string; // Add support for image messages
 }
 
 // Add pagination info interface (same as in CrewDateChatContext)
@@ -64,7 +65,7 @@ interface DirectMessagesContextProps {
   dms: DirectMessage[];
   messages: { [dmId: string]: Message[] };
   fetchDirectMessages: () => Promise<void>;
-  sendMessage: (dmId: string, text: string) => Promise<void>;
+  sendMessage: (dmId: string, text: string, imageUrl?: string) => Promise<void>;
   updateLastRead: (dmId: string) => Promise<void>;
   listenToDirectMessages: () => () => void;
   listenToDMMessages: (dmId: string) => () => void;
@@ -181,7 +182,7 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
 
   // Optimize the sendMessage function to prevent lag while typing
   const sendMessage = useCallback(
-    async (dmId: string, text: string) => {
+    async (dmId: string, text: string, imageUrl?: string) => {
       if (!user?.uid) return;
       try {
         // Check if the document exists in a separate variable for better readability
@@ -234,6 +235,7 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
           senderId: user.uid,
           text,
           createdAt: serverTimestamp(),
+          ...(imageUrl ? { imageUrl } : {}), // Add image URL if provided
         };
         await addDoc(messagesRef, newMessage);
 
@@ -379,6 +381,7 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
                     ? msgData.createdAt.toDate()
                     : new Date(),
                   senderName,
+                  imageUrl: msgData.imageUrl || undefined, // Add imageUrl if present
                 };
               }),
             );
@@ -575,6 +578,7 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
                 ? msgData.createdAt.toDate()
                 : new Date(),
               senderName,
+              imageUrl: msgData.imageUrl || undefined, // Add imageUrl if present
             };
           }),
         );
@@ -672,7 +676,7 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
   }, [dms, user?.uid, listenToDMMessages]); // Include user?.uid in dependencies
 
   // Listen for real-time updates in DM list.
-  // Now, we simply store the other participant’s UID in each DM.
+  // Now, we simply store the other participant's UID in each DM.
   const listenToDirectMessages = useCallback(() => {
     if (!user?.uid) return () => {};
     const dmQuery = query(

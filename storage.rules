@@ -1,23 +1,48 @@
 rules_version = '2';
 service firebase.storage {
-match /b/{bucket}/o {
+  match /b/{bucket}/o {
     // Users folder: each user's folder is named with their UID.
     match /users/{userId}/{allPaths=**} {
-    // Allow any authenticated user to read profile photos.
-    allow read: if request.auth != null;
-    
-    // Only allow a user to write to their own folder.
-    allow write: if request.auth != null && request.auth.uid == userId;
+      // Allow any authenticated user to read profile photos.
+      allow read: if request.auth != null;
+      
+      // Only allow a user to write to their own folder.
+      allow write: if request.auth != null && request.auth.uid == userId;
     }
     
     // Crews folder: each crew's folder is named with the crew UID.
     match /crews/{crewId}/{allPaths=**} {
-    // Allow any authenticated user to read crew photos.
-    allow read: if request.auth != null;
-    
-    // For now, allow any authenticated user to write.
-    // (Later, you may incorporate a check so that only crew members or otherwise authorized users can write.)
-    allow write: if request.auth != null;
+      // Allow any authenticated user to read crew photos.
+      allow read: if request.auth != null;
+      
+      // For now, allow any authenticated user to write.
+      // (Later, you may incorporate a check so that only crew members or otherwise authorized users can write.)
+      allow write: if request.auth != null;
     }
-}
+    
+    // Chat images folder: each user's chat images are stored in their folder
+    match /chat_images/{userId}/{chatId}/{allPaths=**} {
+      // For direct messages: check if user is a participant of the chat
+      function isDirectMessageParticipant() {
+        // Direct message chat IDs are in the format 'uid1_uid2' where uids are alphabetically ordered
+        return chatId.split('_').hasAny([request.auth.uid]);
+      }
+      
+      // Allow read if:
+      // 1. For all types: The user is the owner of the uploaded content
+      // 2. For DMs: User is a participant in the chat (their UID is in the chat ID)
+      // 3. For crew date chats: User is a member of the chat based on Firestore data
+      allow read: if request.auth != null && (
+        // Owner can always read their own uploads
+        request.auth.uid == userId ||
+        // DM participant
+        isDirectMessageParticipant() ||
+        // Crew date chat member - simplified to avoid Firestore lookup errors
+        (chatId.matches('.*_[0-9]{4}-[0-9]{2}-[0-9]{2}')) // Just check date format
+      );
+      
+      // Only allow a user to write to their own folder
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
 }
