@@ -120,7 +120,7 @@ export const notifyUsersOnNewGroupMessage = onDocumentCreated(
       } else if (imageUrl) {
         notificationBody = `${senderName} sent an image`;
       } else if (poll) {
-        notificationBody = `${senderName} created a poll`;
+        notificationBody = `${senderName} created a poll: ${poll.question}`;
       }
 
       // Process each recipient individually

@@ -676,7 +676,7 @@ const CrewDateChatScreen: React.FC = () => {
               {isUploading ? (
                 <ActivityIndicator size="small" color="#1E90FF" />
               ) : (
-                <Ionicons name="image-outline" size={24} color="#1E90FF" />
+                <Ionicons name="images-outline" size={24} color="#1E90FF" />
               )}
             </TouchableOpacity>
           )}
@@ -689,7 +689,7 @@ const CrewDateChatScreen: React.FC = () => {
               onPress={() => setIsPollModalVisible(true)}
               style={styles.iconButton}
             >
-              <Ionicons name="bar-chart-outline" size={24} color="#1E90FF" />
+              <Ionicons name="stats-chart-outline" size={24} color="#1E90FF" />
             </TouchableOpacity>
           )}
         />
