@@ -24,11 +24,11 @@ export const notifyUsersOnNewGroupMessage = onDocumentCreated(
     const messageData = event.data.data();
 
     // Destructure necessary fields from message data
-    const { senderId, text, imageUrl } = messageData;
+    const { senderId, text, imageUrl, poll } = messageData;
 
     // Skip notification if there's no content to notify about
-    if (!senderId || (!text && !imageUrl)) {
-      console.log('Missing senderId or both text and imageUrl in message data.');
+    if (!senderId || (!text && !imageUrl && !poll)) {
+      console.log('Missing senderId or content (text, image, or poll) in message data.');
       return null;
     }
 
@@ -119,6 +119,8 @@ export const notifyUsersOnNewGroupMessage = onDocumentCreated(
         notificationBody = `${senderName}: ${text}`;
       } else if (imageUrl) {
         notificationBody = `${senderName} sent an image`;
+      } else if (poll) {
+        notificationBody = `${senderName} created a poll: ${poll.question}`;
       }
 
       // Process each recipient individually
@@ -217,6 +219,8 @@ export const notifyUsersOnNewGroupMessage = onDocumentCreated(
                 messageText: text || '',
                 imageUrl: imageUrl || null,
                 hasImage: !!imageUrl,
+                hasPoll: !!poll,
+                pollQuestion: poll?.question || null,
               },
               badge: newBadgeCount, // Use the incremented badge count here
               // Enable notification content extension for iOS image display
