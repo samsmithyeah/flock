@@ -5,18 +5,15 @@ import { sendExpoNotifications } from '../utils/sendExpoNotifications';
 import moment from 'moment-timezone';
 import { countryToTimezone } from '../utils/timezoneHelper';
 
-// Ensure Firebase Admin is initialized
-// admin.initializeApp();
-
 /**
  * Sends notifications to users about events happening today
  * - If user is marked available (true) or hasn't set (null/undefined), send appropriate message.
  * - If user is marked unavailable (false), DO NOT send a notification.
  *
- * Runs at 10:00 AM in the user's local timezone (based on their country)
+ * Runs at 10:00 AM UK time
  */
 export const notifyUsersAboutTodaysEvents = onSchedule({
-  schedule: '0 10 * * *', // 10:00 AM
+  schedule: '0 10 * * *',
   timeZone: 'Europe/London',
 }, async (event) => {
   const functionStartTime = moment();
@@ -64,12 +61,10 @@ export const notifyUsersAboutTodaysEvents = onSchedule({
             userStatus = userStatusDoc.data()?.upForGoingOutTonight;
           }
 
-          // --- NEW LOGIC: Skip if explicitly set to false ---
           if (userStatus === false) {
             console.log(`User ${memberId} opted out (status is false) for event ${eventId} on ${today}. Skipping notification.`);
             continue; // Skip to the next member
           }
-          // --- END NEW LOGIC ---
 
           // Proceed only if userStatus is true, null, or undefined
           const userDoc = await db.collection('users').doc(memberId).get();
@@ -89,9 +84,7 @@ export const notifyUsersAboutTodaysEvents = onSchedule({
             continue;
           }
 
-          // Collect push tokens
           const expoPushTokens: string[] = [];
-          // ...(token collection logic)...
           if (userData?.expoPushToken && Expo.isExpoPushToken(userData.expoPushToken)) {
             expoPushTokens.push(userData.expoPushToken);
           }
@@ -106,23 +99,21 @@ export const notifyUsersAboutTodaysEvents = onSchedule({
             continue;
           }
 
-          // Determine notification content (only reached if status is not false)
           let notificationBody = '';
           let targetScreen = '';
           let additionalData = {};
 
-          if (userStatus === true) { // User is available
+          if (userStatus === true) {
             notificationBody = `${eventTitle} is happening today! Join the chat to finalise the details.`;
             targetScreen = 'CrewDateChat';
             additionalData = { chatId: `${crewId}_${today}`, crewId, date: today, eventId };
-          } else { // User hasn't set status (null/undefined)
+          } else {
             notificationBody = `${eventTitle} is happening today! Let your crew know if you're joining.`;
             targetScreen = 'Crew';
             additionalData = { crewId, date: today, eventId };
           }
 
-          // Create and send messages
-          const messages = expoPushTokens.map((token) => ({ /* ... message structure ... */
+          const messages = expoPushTokens.map((token) => ({
             to: token, sound: 'default' as const, title: crewName, body: notificationBody, data: { screen: targetScreen, ...additionalData },
           }));
           try {
@@ -131,9 +122,9 @@ export const notifyUsersAboutTodaysEvents = onSchedule({
           } catch (notificationError) {
             console.error(`Error sending notification to user ${memberId} for event ${eventId}:`, notificationError);
           }
-        } // End member loop
-      } // End event loop
-    } // End crew loop
+        }
+      }
+    }
 
     console.log(`Finished notifyUsersAboutTodaysEvents run. Total notifications sent: ${totalNotificationsSent}`);
     return;
