@@ -2,43 +2,41 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import * as admin from 'firebase-admin';
 import { Expo } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
-import moment from 'moment-timezone'; // Changed from moment to moment-timezone
+import moment from 'moment-timezone';
 import { countryToTimezone } from '../utils/timezoneHelper';
+
+// Ensure Firebase Admin is initialized
+// admin.initializeApp();
 
 /**
  * Sends notifications to users about events happening today
- * - If user is marked available, notification links to crew-date-chat
- * - If user hasn't set availability, notification links to crew calendar
+ * - If user is marked available (true) or hasn't set (null/undefined), send appropriate message.
+ * - If user is marked unavailable (false), DO NOT send a notification.
  *
  * Runs at 10:00 AM in the user's local timezone (based on their country)
  */
 export const notifyUsersAboutTodaysEvents = onSchedule({
-  schedule: '0 10 * * *', // Default time: 10:00 AM
-  timeZone: 'Europe/London', // Default timezone (UK)
-}, async () => { // Remove the unused parameter
+  schedule: '0 10 * * *', // 10:00 AM
+  timeZone: 'Europe/London',
+}, async (event) => {
+  const functionStartTime = moment();
+  console.log(`Starting notifyUsersAboutTodaysEvents run. Triggered at: ${event?.scheduleTime || 'N/A'}`);
   const db = admin.firestore();
 
   try {
-    // Get today's date in YYYY-MM-DD format
-    const today = moment().format('YYYY-MM-DD');
-    console.log(`Checking for events on ${today}`);
-
-    // Query all crews to find events for today
+    const today = moment().tz('Europe/London').format('YYYY-MM-DD');
+    console.log(`Checking for events on date: ${today}`);
     const crewsSnapshot = await db.collection('crews').get();
     let totalNotificationsSent = 0;
 
-    // Process each crew
     for (const crewDoc of crewsSnapshot.docs) {
       const crewId = crewDoc.id;
       const crewData = crewDoc.data();
       const crewName = crewData.name || 'Your Crew';
       const memberIds = crewData.memberIds || [];
 
-      if (memberIds.length === 0) {
-        continue;
-      }
+      if (memberIds.length === 0) continue;
 
-      // Find events for today in this crew
       const eventsSnapshot = await db.collection('crews')
         .doc(crewId)
         .collection('events')
@@ -46,135 +44,101 @@ export const notifyUsersAboutTodaysEvents = onSchedule({
         .where('endDate', '>=', today)
         .get();
 
-      if (eventsSnapshot.empty) {
-        continue;
-      }
+      if (eventsSnapshot.empty) continue;
 
-      // Process each event
+      const statusCollectionPath = `crews/${crewId}/statuses/${today}/userStatuses`;
+
       for (const eventDoc of eventsSnapshot.docs) {
+        const eventId = eventDoc.id;
         const eventData = eventDoc.data();
         const eventTitle = eventData.title || 'Untitled Event';
 
-        console.log(`Found event "${eventTitle}" for crew "${crewName}" today`);
-
-        // Get status data for today's date
-        const statusDocRef = db.collection('crews')
-          .doc(crewId)
-          .collection('statuses')
-          .doc(today);
-
-        const statusDoc = await statusDocRef.get();
-        const userStatusesExist = statusDoc.exists;
-
-        // Process notifications for each member
         for (const memberId of memberIds) {
-          let userStatus = null;
+          let userStatus: boolean | null | undefined = null;
 
-          // Check if the user has set availability
-          if (userStatusesExist) {
-            const userStatusRef = statusDocRef.collection('userStatuses').doc(memberId);
-            const userStatusDoc = await userStatusRef.get();
+          const userStatusPath = `${statusCollectionPath}/${memberId}`;
+          const userStatusRef = db.doc(userStatusPath);
+          const userStatusDoc = await userStatusRef.get();
 
-            if (userStatusDoc.exists) {
-              const userStatusData = userStatusDoc.data();
-              userStatus = userStatusData?.upForGoingOutTonight;
-            }
+          if (userStatusDoc.exists) {
+            userStatus = userStatusDoc.data()?.upForGoingOutTonight;
           }
 
-          // Get user data for push tokens and timezone
-          const userDoc = await db.collection('users').doc(memberId).get();
+          // --- NEW LOGIC: Skip if explicitly set to false ---
+          if (userStatus === false) {
+            console.log(`User ${memberId} opted out (status is false) for event ${eventId} on ${today}. Skipping notification.`);
+            continue; // Skip to the next member
+          }
+          // --- END NEW LOGIC ---
 
+          // Proceed only if userStatus is true, null, or undefined
+          const userDoc = await db.collection('users').doc(memberId).get();
           if (!userDoc.exists) {
+            console.warn(`User document not found for memberId: ${memberId}. Skipping.`);
             continue;
           }
-
           const userData = userDoc.data();
 
-          // Get user's timezone from their country
+          // Timezone Check (8am-12pm)
+          // TODO: Convert this whole thing to use cloud tasks
           const countryCode = userData?.country;
           const userTimezone = countryCode ? countryToTimezone(countryCode) : 'Europe/London';
-
-          // Get current time in user's timezone
-          const userLocalTime = moment().tz(userTimezone);
+          const userLocalTime = functionStartTime.clone().tz(userTimezone);
           const userHour = userLocalTime.hour();
-
-          // Only send notification if it's morning in user's timezone (between 8am-12pm)
-          // This prevents sending notifications at inappropriate times
           if (userHour < 8 || userHour > 12) {
-            console.log(`Skipping notification for user ${memberId} as local time (${userHour}:00) is outside 8am-12pm range`);
             continue;
           }
 
-          const expoPushTokens = [];
-
           // Collect push tokens
+          const expoPushTokens: string[] = [];
+          // ...(token collection logic)...
           if (userData?.expoPushToken && Expo.isExpoPushToken(userData.expoPushToken)) {
             expoPushTokens.push(userData.expoPushToken);
           }
-
           if (userData?.expoPushTokens && Array.isArray(userData.expoPushTokens)) {
             for (const token of userData.expoPushTokens) {
-              if (Expo.isExpoPushToken(token)) {
+              if (Expo.isExpoPushToken(token) && !expoPushTokens.includes(token)) {
                 expoPushTokens.push(token);
               }
             }
           }
-
           if (expoPushTokens.length === 0) {
             continue;
           }
 
-          // Determine notification content based on availability status
+          // Determine notification content (only reached if status is not false)
           let notificationBody = '';
           let targetScreen = '';
           let additionalData = {};
 
-          if (userStatus === true) {
-            // User is marked as available
+          if (userStatus === true) { // User is available
             notificationBody = `${eventTitle} is happening today! Join the chat to finalise the details.`;
             targetScreen = 'CrewDateChat';
-            additionalData = {
-              chatId: `${crewId}_${today}`,
-              crewId, // Add crewId separately for consistency
-              date: today, // Add date separately for consistency
-              eventId: eventDoc.id,
-            };
-          } else {
-            // User hasn't set availability or is marked as unavailable
+            additionalData = { chatId: `${crewId}_${today}`, crewId, date: today, eventId };
+          } else { // User hasn't set status (null/undefined)
             notificationBody = `${eventTitle} is happening today! Let your crew know if you're joining.`;
             targetScreen = 'Crew';
-            additionalData = {
-              crewId,
-              date: today,
-              eventId: eventDoc.id,
-            };
+            additionalData = { crewId, date: today, eventId };
           }
 
-          // Create notification messages
-          const messages = expoPushTokens.map((token) => ({
-            to: token,
-            sound: 'default' as const,
-            title: crewName, // Use crew name as title for consistency with other notifications
-            body: notificationBody,
-            data: {
-              screen: targetScreen,
-              ...additionalData,
-            },
+          // Create and send messages
+          const messages = expoPushTokens.map((token) => ({ /* ... message structure ... */
+            to: token, sound: 'default' as const, title: crewName, body: notificationBody, data: { screen: targetScreen, ...additionalData },
           }));
+          try {
+            await sendExpoNotifications(messages);
+            totalNotificationsSent += messages.length;
+          } catch (notificationError) {
+            console.error(`Error sending notification to user ${memberId} for event ${eventId}:`, notificationError);
+          }
+        } // End member loop
+      } // End event loop
+    } // End crew loop
 
-          // Send notifications
-          await sendExpoNotifications(messages);
-          totalNotificationsSent += messages.length;
-
-          console.log(`Sent ${messages.length} notifications to user ${memberId} about today's event (local time: ${userHour}:00)`);
-        }
-      }
-    }
-
-    console.log(`Total notifications sent for today's events: ${totalNotificationsSent}`);
+    console.log(`Finished notifyUsersAboutTodaysEvents run. Total notifications sent: ${totalNotificationsSent}`);
     return;
   } catch (error) {
-    console.error('Error sending today\'s event notifications:', error);
+    console.error('Error running notifyUsersAboutTodaysEvents:', error);
     return;
   }
 });
