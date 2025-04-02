@@ -60,6 +60,22 @@ service cloud.firestore {
         allow delete: if request.auth != null
                       && (request.auth.uid == resource.data.createdBy || isCrewOwner(crewId));
       }
+
+      // Subcollection: messages
+      match /messages/{messageId} {
+        // Temporary rule to allow all authenticated users to read all messages
+        allow read: if request.auth != null;
+        
+        // Allow create if the user is a crew member
+        allow create: if isCrewMember(crewId);
+        
+        // Allow update if the user is a crew member and is modifying their own message
+        allow update: if isCrewMember(crewId) && request.auth.uid == resource.data.senderId;
+        
+        // Allow delete if the user is a crew member and is deleting their own message
+        allow delete: if isCrewMember(crewId) && request.auth.uid == resource.data.senderId;
+      }
+
     }
     
     // Event Polls Collection

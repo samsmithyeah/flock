@@ -144,6 +144,25 @@ const CrewLandingScreen: React.FC = () => {
           title="Event polls"
           description="Create polls to find the best date for your next crew event"
           onPress={() =>
+            router.push(
+              {
+                pathname: '/chats/crew-chat',
+                params: { crewId },
+              },
+              { withAnchor: true },
+            )
+          }
+        >
+          <Ionicons name="chatbubble-outline" size={36} color="#4CAF50" />
+          <Text style={styles.navCardTitle}>Crew chat</Text>
+          <Text style={styles.navCardDescription}>
+            Chat with your crew members, share images, and create polls.
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.navCard}
+          onPress={() =>
             router.push({
               pathname: '/crews/event-poll',
               params: { crewId },

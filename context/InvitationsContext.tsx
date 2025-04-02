@@ -16,6 +16,8 @@ import {
   getDoc,
   updateDoc,
   arrayUnion,
+  setDoc,
+  serverTimestamp,
 } from 'firebase/firestore';
 import { Alert } from 'react-native';
 import { db } from '@/firebase';
@@ -221,6 +223,22 @@ export const InvitationsProvider: React.FC<InvitationsProviderProps> = ({
                 memberIds: arrayUnion(user.uid),
                 invitationId: invitation.id,
               });
+
+              // Initialize last read timestamp for user in crew chat
+              const chatMetadataRef = doc(
+                db,
+                'crews',
+                invitation.crewId,
+                'messages',
+                'metadata',
+              );
+              await setDoc(
+                chatMetadataRef,
+                {
+                  [`lastRead.${user.uid}`]: serverTimestamp(),
+                },
+                { merge: true },
+              );
 
               // Update the invitation status
               const invitationRef = doc(db, 'invitations', invitation.id);
