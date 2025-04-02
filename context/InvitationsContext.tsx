@@ -193,6 +193,22 @@ export const InvitationsProvider: React.FC<InvitationsProviderProps> = ({
       }
 
       try {
+        // First verify the invitation is still valid
+        const invitationRef = doc(db, 'invitations', invitation.id);
+        const invitationSnap = await getDoc(invitationRef);
+
+        if (
+          !invitationSnap.exists() ||
+          invitationSnap.data().status !== 'pending'
+        ) {
+          Toast.show({
+            type: 'error',
+            text1: 'Error',
+            text2: 'Invitation is no longer valid',
+          });
+          return;
+        }
+
         // Reference to the crew document
         const crewRef = doc(db, 'crews', invitation.crewId);
         const crewSnap = await getDoc(crewRef);
@@ -206,32 +222,43 @@ export const InvitationsProvider: React.FC<InvitationsProviderProps> = ({
           return;
         }
 
-        // Update the crew's memberIds
+        // Update the crew's memberIds first
         await updateDoc(crewRef, {
           memberIds: arrayUnion(user.uid),
+          invitationId: invitation.id,
         });
 
-        // Initialize last read timestamp for user in crew chat
-        const chatMetadataRef = doc(
-          db,
-          'crews',
-          invitation.crewId,
-          'messages',
-          'metadata',
-        );
-        await setDoc(
-          chatMetadataRef,
-          {
-            [`lastRead.${user.uid}`]: serverTimestamp(),
-          },
-          { merge: true },
-        );
-
-        // Update the invitation status
-        const invitationRef = doc(db, 'invitations', invitation.id);
+        // Update the invitation status next
         await updateDoc(invitationRef, {
           status: 'accepted',
         });
+
+        // Small delay to ensure Firestore recognizes the user as a crew member
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        try {
+          // Initialize last read timestamp for user in crew chat
+          const chatMetadataRef = doc(
+            db,
+            'crews',
+            invitation.crewId,
+            'messages',
+            'metadata',
+          );
+          await setDoc(
+            chatMetadataRef,
+            {
+              lastRead: {
+                [user.uid]: serverTimestamp(),
+              },
+            },
+            { merge: true },
+          );
+        } catch (metadataError) {
+          // Don't fail the whole process if metadata update fails
+          console.error('Error updating chat metadata:', metadataError);
+          // Continue with the flow despite this error
+        }
 
         // Update local state
         setCrews((prevCrews) => [

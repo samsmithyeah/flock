@@ -86,7 +86,7 @@ export const notifyCrewMembersOnNewMessage = onDocumentCreated(
       }
 
       // Fetch the chat metadata to check lastRead timestamps
-      const chatMetadataRef = db.collection('crews').doc(crewId).collection('chat').doc('metadata');
+      const chatMetadataRef = db.collection('crews').doc(crewId).collection('messages').doc('metadata');
       const chatMetadataSnap = await chatMetadataRef.get();
 
       const lastReadTimestamps = chatMetadataSnap.exists ?

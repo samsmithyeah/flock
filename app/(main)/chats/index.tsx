@@ -174,7 +174,7 @@ const ChatsListScreen: React.FC = () => {
             ? collection(db, 'direct_messages', chatId, 'messages')
             : chatType === 'group'
               ? collection(db, 'crew_date_chats', chatId, 'messages')
-              : collection(db, 'crews', chatId, 'chat', 'messages');
+              : collection(db, 'crews', chatId, 'messages');
         const messagesQuery = query(
           messagesRef,
           orderBy('createdAt', 'desc'),
@@ -394,7 +394,7 @@ const ChatsListScreen: React.FC = () => {
     // Set up listeners for crew chats
     crewChats.forEach((crewChat) => {
       const chatId = crewChat.id;
-      const chatRef = doc(db, 'crews', chatId, 'chat', 'metadata');
+      const chatRef = doc(db, 'crews', chatId, 'messages', 'metadata');
 
       const unsubscribe = onSnapshot(chatRef, (docSnap) => {
         if (!docSnap.exists() || !user?.uid) return;

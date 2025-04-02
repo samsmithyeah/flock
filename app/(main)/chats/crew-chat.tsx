@@ -260,7 +260,7 @@ const CrewChatScreen: React.FC = () => {
     async (isTyping: boolean) => {
       if (!crewId || !user?.uid) return;
       try {
-        await updateDoc(doc(db, 'crews', crewId, 'chat', 'metadata'), {
+        await updateDoc(doc(db, 'crews', crewId, 'messages', 'metadata'), {
           [`typingStatus.${user.uid}`]: isTyping,
           [`typingStatus.${user.uid}LastUpdate`]: serverTimestamp(),
         });
@@ -268,7 +268,7 @@ const CrewChatScreen: React.FC = () => {
         if (error.code === 'not-found') {
           try {
             await setDoc(
-              doc(db, 'crews', crewId, 'chat', 'metadata'),
+              doc(db, 'crews', crewId, 'messages', 'metadata'),
               {
                 typingStatus: {
                   [user.uid]: isTyping,
@@ -440,7 +440,7 @@ const CrewChatScreen: React.FC = () => {
   // Listen for last read timestamps from all members
   useEffect(() => {
     if (!crewId || !user?.uid) return;
-    const chatRef = doc(db, 'crews', crewId, 'chat', 'metadata');
+    const chatRef = doc(db, 'crews', crewId, 'messages', 'metadata');
     const unsubscribe = onSnapshot(
       chatRef,
       (docSnapshot) => {
