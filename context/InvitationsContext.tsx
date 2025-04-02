@@ -6,6 +6,7 @@ import React, {
   useContext,
   ReactNode,
   useEffect,
+  useCallback,
 } from 'react';
 import {
   collection,
@@ -181,8 +182,141 @@ export const InvitationsProvider: React.FC<InvitationsProviderProps> = ({
   }, [user?.uid, crewsCache, usersCache]);
 
   // Function to accept an invitation
-  const acceptInvitation = async (invitation: InvitationWithDetails) => {
-    if (!user) {
+  const acceptInvitation = useCallback(
+    async (invitation: InvitationWithDetails) => {
+      if (!user) {
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'User not authenticated',
+        });
+        return;
+      }
+
+      try {
+        // First verify the invitation is still valid
+        const invitationRef = doc(db, 'invitations', invitation.id);
+        const invitationSnap = await getDoc(invitationRef);
+
+        if (
+          !invitationSnap.exists() ||
+          invitationSnap.data().status !== 'pending'
+        ) {
+          Toast.show({
+            type: 'error',
+            text1: 'Error',
+            text2: 'Invitation is no longer valid',
+          });
+          return;
+        }
+
+        // Reference to the crew document
+        const crewRef = doc(db, 'crews', invitation.crewId);
+        const crewSnap = await getDoc(crewRef);
+
+        if (!crewSnap.exists()) {
+          Toast.show({
+            type: 'error',
+            text1: 'Error',
+            text2: 'Crew not found',
+          });
+          return;
+        }
+
+        // Update the crew's memberIds first
+        await updateDoc(crewRef, {
+          memberIds: arrayUnion(user.uid),
+          invitationId: invitation.id,
+        });
+
+        // Update the invitation status next
+        await updateDoc(invitationRef, {
+          status: 'accepted',
+        });
+
+        // Small delay to ensure Firestore recognizes the user as a crew member
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        try {
+          // Initialize last read timestamp for user in crew chat
+          const chatMetadataRef = doc(
+            db,
+            'crews',
+            invitation.crewId,
+            'messages',
+            'metadata',
+          );
+          await setDoc(
+            chatMetadataRef,
+            {
+              lastRead: {
+                [user.uid]: serverTimestamp(),
+              },
+            },
+            { merge: true },
+          );
+        } catch (metadataError) {
+          // Don't fail the whole process if metadata update fails
+          console.error('Error updating chat metadata:', metadataError);
+          // Continue with the flow despite this error
+        }
+
+        // Update local state
+        setCrews((prevCrews) => [
+          ...prevCrews,
+          {
+            id: crewRef.id,
+            name: crewSnap.data()?.name || 'Unknown Crew',
+            ownerId: crewSnap.data()?.ownerId || '',
+            memberIds: crewSnap.data()?.memberIds || [],
+            activity: crewSnap.data()?.activity || '',
+          },
+        ]);
+        setCrewIds((prevIds: string[]) => [...prevIds, crewRef.id]);
+
+        // Refresh crew contacts to include members from the new crew
+        await refreshCrewContacts();
+
+        Toast.show({
+          type: 'success',
+          text1: 'Invitation accepted',
+          text2: `You have joined ${invitation.crew?.name}`,
+        });
+        router.push(
+          {
+            pathname: '/crews/[crewId]',
+            params: { crewId: invitation.crewId },
+          },
+          { withAnchor: true },
+        );
+      } catch (error) {
+        console.error('Error accepting invitation:', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Could not accept invitation',
+        });
+      }
+    },
+    [user, setCrews, setCrewIds, refreshCrewContacts],
+  );
+
+  // Function to decline an invitation
+  const declineInvitation = async (invitation: InvitationWithDetails) => {
+    try {
+      // Update the invitation status
+      const invitationRef = doc(db, 'invitations', invitation.id);
+      await updateDoc(invitationRef, {
+        status: 'declined',
+      });
+
+      Toast.show({
+        type: 'info',
+        text1: 'Invitation declined',
+        text2: `You have declined the invitation to ${invitation.crew?.name}`,
+      });
+    } catch (error) {
+      console.error('Error declining invitation:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',

@@ -236,7 +236,7 @@ export const CrewChatProvider: React.FC<{ children: ReactNode }> = ({
       if (!user?.uid) return 0;
 
       try {
-        const chatRef = doc(db, 'crews', chatId, 'chat', 'metadata');
+        const chatRef = doc(db, 'crews', chatId, 'messages', 'metadata');
         const chatDoc = await getDoc(chatRef);
 
         if (!chatDoc.exists()) {
@@ -323,7 +323,7 @@ export const CrewChatProvider: React.FC<{ children: ReactNode }> = ({
       // Map each crew to a promise that resolves to a CrewChat object
       const chatPromises = userCrews.map(async (crew) => {
         const chatDoc = await getDoc(
-          doc(db, 'crews', crew.id, 'chat', 'metadata'),
+          doc(db, 'crews', crew.id, 'messages', 'metadata'),
         );
 
         // Get chat data or create default data
@@ -376,7 +376,7 @@ export const CrewChatProvider: React.FC<{ children: ReactNode }> = ({
     const unsubscribers: (() => void)[] = [];
 
     userCrews.forEach((crew) => {
-      const chatRef = doc(db, 'crews', crew.id, 'chat', 'metadata');
+      const chatRef = doc(db, 'crews', crew.id, 'messages', 'metadata');
 
       const unsubscribe = onSnapshot(
         chatRef,
@@ -483,7 +483,7 @@ export const CrewChatProvider: React.FC<{ children: ReactNode }> = ({
         await addDoc(messagesRef, newMessage);
 
         // Update hasMessages field if not already true
-        const chatRef = doc(db, 'crews', chatId, 'chat', 'metadata');
+        const chatRef = doc(db, 'crews', chatId, 'messages', 'metadata');
         await updateDoc(chatRef, {
           hasMessages: true,
         });
@@ -520,7 +520,7 @@ export const CrewChatProvider: React.FC<{ children: ReactNode }> = ({
         await addDoc(messagesRef, newMessage);
 
         // Update hasMessages field
-        const chatRef = doc(db, 'crews', chatId, 'chat', 'metadata');
+        const chatRef = doc(db, 'crews', chatId, 'messages', 'metadata');
         await updateDoc(chatRef, {
           hasMessages: true,
         });
@@ -633,7 +633,7 @@ export const CrewChatProvider: React.FC<{ children: ReactNode }> = ({
       if (!user?.uid) return;
 
       try {
-        const chatRef = doc(db, 'crews', chatId, 'chat', 'metadata');
+        const chatRef = doc(db, 'crews', chatId, 'messages', 'metadata');
         await setDoc(
           chatRef,
           {
