@@ -14,6 +14,7 @@ import { UserProvider } from '@/context/UserContext';
 import { ContactsProvider } from '@/context/ContactsContext';
 import { CrewsProvider } from '@/context/CrewsContext';
 import { InvitationsProvider } from '@/context/InvitationsContext';
+import { CrewChatProvider } from '@/context/CrewChatContext';
 import { CrewDateChatProvider } from '@/context/CrewDateChatContext';
 import { DirectMessagesProvider } from '@/context/DirectMessagesContext';
 import { BadgeCountProvider } from '@/context/BadgeCountContext';
@@ -68,11 +69,13 @@ function Providers({ children }: { children: ReactNode }) {
       <ContactsProvider>
         <CrewsProvider>
           <InvitationsProvider>
-            <CrewDateChatProvider>
-              <DirectMessagesProvider>
-                <BadgeCountProvider>{children}</BadgeCountProvider>
-              </DirectMessagesProvider>
-            </CrewDateChatProvider>
+            <CrewChatProvider>
+              <CrewDateChatProvider>
+                <DirectMessagesProvider>
+                  <BadgeCountProvider>{children}</BadgeCountProvider>
+                </DirectMessagesProvider>
+              </CrewDateChatProvider>
+            </CrewChatProvider>
           </InvitationsProvider>
         </CrewsProvider>
       </ContactsProvider>

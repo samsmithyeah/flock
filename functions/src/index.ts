@@ -29,6 +29,7 @@ import { notifyCrewMembersOnPollEdit } from './notifications/notifyCrewMembersOn
 import { notifyNonRespondingPollMembers } from './notifications/notifyNonRespondingPollMembers';
 import { notifyUsersAboutTodaysEvents } from './notifications/notifyUsersAboutTodaysEvents';
 import { notifyUsersAboutTomorrowsEvents } from './notifications/notifyUsersAboutTomorrowsEvents';
+import { notifyCrewMembersOnNewMessage } from './notifications/notifyCrewMembersOnNewMessage';
 
 export {
   notifyCrewMembersOnEventWrite,
@@ -62,6 +63,7 @@ export {
   notifyNonRespondingPollMembers,
   notifyUsersAboutTodaysEvents,
   notifyUsersAboutTomorrowsEvents,
+  notifyCrewMembersOnNewMessage,
 };
 
 // Initialize Firebase Admin SDK

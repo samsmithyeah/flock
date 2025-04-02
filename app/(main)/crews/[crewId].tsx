@@ -124,21 +124,6 @@ const CrewLandingScreen: React.FC = () => {
 
   return (
     <View style={globalStyles.containerWithHeader}>
-      <View style={styles.crewInfo}>
-        {crew.iconUrl ? (
-          <Image source={{ uri: crew.iconUrl }} style={styles.crewImage} />
-        ) : (
-          <View style={styles.crewImagePlaceholder}>
-            <Ionicons name="people-outline" size={40} color="#888" />
-          </View>
-        )}
-        <Text style={styles.crewName}>{crew.name}</Text>
-        <Text style={styles.memberCount}>
-          {crew.memberIds.length}{' '}
-          {crew.memberIds.length === 1 ? 'member' : 'members'}
-        </Text>
-      </View>
-
       <View style={styles.navigationCards}>
         <TouchableOpacity
           style={styles.navCard}
@@ -154,6 +139,25 @@ const CrewLandingScreen: React.FC = () => {
           <Text style={styles.navCardDescription}>
             Update your availability, see upcoming events, and meet up with your
             crew.
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.navCard}
+          onPress={() =>
+            router.push(
+              {
+                pathname: '/chats/crew-chat',
+                params: { crewId },
+              },
+              { withAnchor: true },
+            )
+          }
+        >
+          <Ionicons name="chatbubble-outline" size={36} color="#4CAF50" />
+          <Text style={styles.navCardTitle}>Crew chat</Text>
+          <Text style={styles.navCardDescription}>
+            Chat with your crew members, share images, and create polls.
           </Text>
         </TouchableOpacity>
 
@@ -180,35 +184,6 @@ const CrewLandingScreen: React.FC = () => {
 export default CrewLandingScreen;
 
 const styles = StyleSheet.create({
-  crewInfo: {
-    alignItems: 'center',
-    marginVertical: vs(24),
-  },
-  crewImage: {
-    width: vs(100),
-    height: vs(100),
-    borderRadius: 50,
-    marginBottom: vs(16),
-  },
-  crewImagePlaceholder: {
-    width: vs(100),
-    height: vs(100),
-    borderRadius: 50,
-    backgroundColor: '#f0f0f0',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: vs(16),
-  },
-  crewName: {
-    fontSize: vs(24),
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: vs(4),
-  },
-  memberCount: {
-    fontSize: 16,
-    color: '#666',
-  },
   navigationCards: {
     marginTop: vs(16),
   },

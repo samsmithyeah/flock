@@ -107,6 +107,17 @@ export default function GlobalSetup() {
           );
         }
         break;
+      case 'CrewChat':
+        if (crewId) {
+          router.push(
+            {
+              pathname: '/(main)/chats/crew-chat',
+              params: { crewId },
+            },
+            { withAnchor: true },
+          );
+        }
+        break;
       case 'DMChat':
         if (senderId) {
           router.push(

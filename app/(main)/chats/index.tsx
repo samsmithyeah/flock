@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useDirectMessages } from '@/context/DirectMessagesContext';
 import { useCrewDateChat } from '@/context/CrewDateChatContext';
+import { useCrewChat } from '@/context/CrewChatContext';
 import { useCrews } from '@/context/CrewsContext';
 import {
   getDoc,
@@ -44,7 +45,7 @@ interface TypingStatus {
 // Rest of the existing interfaces...
 interface CombinedChat {
   id: string;
-  type: 'direct' | 'group';
+  type: 'direct' | 'group' | 'crew';
   title: string;
   iconUrl?: string;
   lastMessage?: string;
@@ -72,6 +73,8 @@ const ChatsListScreen: React.FC = () => {
   const { dms, fetchUnreadCount: fetchDMUnreadCount } = useDirectMessages();
   const { chats: groupChats, fetchUnreadCount: fetchGroupUnreadCount } =
     useCrewDateChat();
+  const { chats: crewChats, fetchUnreadCount: fetchCrewUnreadCount } =
+    useCrewChat();
   const { crews, usersCache, fetchCrew } = useCrews();
   const { user } = useUser();
   const globalStyles = useGlobalStyles();
@@ -154,7 +157,7 @@ const ChatsListScreen: React.FC = () => {
   const fetchLastMessageFromFirestore = useCallback(
     async (
       chatId: string,
-      chatType: 'direct' | 'group',
+      chatType: 'direct' | 'group' | 'crew',
     ): Promise<{
       text: string;
       senderId: string;
@@ -169,7 +172,9 @@ const ChatsListScreen: React.FC = () => {
         const messagesRef =
           chatType === 'direct'
             ? collection(db, 'direct_messages', chatId, 'messages')
-            : collection(db, 'crew_date_chats', chatId, 'messages');
+            : chatType === 'group'
+              ? collection(db, 'crew_date_chats', chatId, 'messages')
+              : collection(db, 'crews', chatId, 'chat', 'messages');
         const messagesQuery = query(
           messagesRef,
           orderBy('createdAt', 'desc'),
@@ -205,7 +210,7 @@ const ChatsListScreen: React.FC = () => {
   );
 
   const fetchLastMessage = useCallback(
-    async (chatId: string, chatType: 'direct' | 'group') => {
+    async (chatId: string, chatType: 'direct' | 'group' | 'crew') => {
       const cached = getChatMetadata(chatId);
       if (
         cached?.lastMessage &&
@@ -267,14 +272,19 @@ const ChatsListScreen: React.FC = () => {
   );
 
   const fetchUnreadFromFirestore = useCallback(
-    async (chatId: string, chatType: 'direct' | 'group'): Promise<number> => {
+    async (
+      chatId: string,
+      chatType: 'direct' | 'group' | 'crew',
+    ): Promise<number> => {
       if (chatType === 'direct') {
         return await fetchDMUnreadCount(chatId);
-      } else {
+      } else if (chatType === 'group') {
         return await fetchGroupUnreadCount(chatId);
+      } else {
+        return await fetchCrewUnreadCount(chatId);
       }
     },
-    [fetchDMUnreadCount, fetchGroupUnreadCount],
+    [fetchDMUnreadCount, fetchGroupUnreadCount, fetchCrewUnreadCount],
   );
 
   const getCrewName = useCallback(
@@ -380,9 +390,42 @@ const ChatsListScreen: React.FC = () => {
 
       typingListenersRef.current[`group_${chatId}`] = unsubscribe;
     });
-  }, [user?.uid, dms, groupChats]);
 
-  // Call setupTypingListeners when dms or groupChats change
+    // Set up listeners for crew chats
+    crewChats.forEach((crewChat) => {
+      const chatId = crewChat.id;
+      const chatRef = doc(db, 'crews', chatId, 'chat', 'metadata');
+
+      const unsubscribe = onSnapshot(chatRef, (docSnap) => {
+        if (!docSnap.exists() || !user?.uid) return;
+
+        const data = docSnap.data();
+        if (data.typingStatus) {
+          // Find typing users other than current user
+          const typingUsers = Object.keys(data.typingStatus)
+            .filter((key) => !key.includes('LastUpdate') && key !== user.uid)
+            .filter((uid) => {
+              // Check if typing is recent
+              const lastUpdate = data.typingStatus[`${uid}LastUpdate`];
+              if (!lastUpdate) return false;
+
+              const now = Date.now();
+              const lastUpdateTime = (lastUpdate as Timestamp).toMillis();
+              return data.typingStatus[uid] && now - lastUpdateTime < 10000; // 10s timeout
+            });
+
+          setTypingStatus((prev) => ({
+            ...prev,
+            [chatId]: typingUsers.length > 0 ? typingUsers : [],
+          }));
+        }
+      });
+
+      typingListenersRef.current[`crew_${chatId}`] = unsubscribe;
+    });
+  }, [user?.uid, dms, groupChats, crewChats]);
+
+  // Call setupTypingListeners when dms, groupChats, or crewChats change
   useEffect(() => {
     if (isFocused) {
       setupTypingListeners();
@@ -395,7 +438,13 @@ const ChatsListScreen: React.FC = () => {
       );
       typingListenersRef.current = {};
     };
-  }, [setupTypingListeners, isFocused, dms.length, groupChats.length]);
+  }, [
+    setupTypingListeners,
+    isFocused,
+    dms.length,
+    groupChats.length,
+    crewChats.length,
+  ]);
 
   const combineChats = useCallback(async () => {
     if (!user) return;
@@ -465,12 +514,38 @@ const ChatsListScreen: React.FC = () => {
         };
       });
 
-      const [directMessages, groupChatsData] = await Promise.all([
-        Promise.all(directMessagesPromises),
-        Promise.all(groupChatsPromises),
-      ]);
+      // Add crew chats to the combined list
+      const crewChatsPromises = crewChats.map(async (cc) => {
+        const title = cc.crewName;
+        const iconUrl = cc.avatarUrl;
+        const lastMsg = await fetchLastMessage(cc.id, 'crew');
+        const unreadCount = await fetchUnreadFromFirestore(cc.id, 'crew');
 
-      const combined = [...directMessages, ...groupChatsData];
+        return {
+          id: cc.id,
+          type: 'crew' as const,
+          title,
+          iconUrl,
+          lastMessage: lastMsg?.text,
+          lastMessageTime: lastMsg?.createdAt,
+          lastMessageSenderId: lastMsg?.senderId,
+          lastMessageSenderName: lastMsg?.senderName,
+          lastMessageImageUrl: lastMsg?.imageUrl,
+          lastMessageIsPoll: lastMsg?.isPoll,
+          lastMessagePollQuestion: lastMsg?.pollQuestion,
+          unreadCount,
+        };
+      });
+
+      const [directMessages, groupChatsData, crewChatsData] = await Promise.all(
+        [
+          Promise.all(directMessagesPromises),
+          Promise.all(groupChatsPromises),
+          Promise.all(crewChatsPromises),
+        ],
+      );
+
+      const combined = [...directMessages, ...groupChatsData, ...crewChatsData];
       combined.sort((a, b) => {
         if (a.lastMessageTime && b.lastMessageTime) {
           return b.lastMessageTime.getTime() - a.lastMessageTime.getTime();
@@ -511,6 +586,7 @@ const ChatsListScreen: React.FC = () => {
   }, [
     dms,
     groupChats,
+    crewChats,
     getCrewName,
     getFormattedChatDate,
     getIconUrlForCrew,
@@ -526,7 +602,7 @@ const ChatsListScreen: React.FC = () => {
 
   // Helper function to get typing indicator text
   const getTypingIndicatorText = useCallback(
-    (chatId: string, chatType: 'direct' | 'group') => {
+    (chatId: string, chatType: 'direct' | 'group' | 'crew') => {
       const typingUserIds = typingStatus[chatId] || [];
 
       if (typingUserIds.length === 0) return null;
@@ -535,7 +611,7 @@ const ChatsListScreen: React.FC = () => {
         // For direct messages, just show "typing..."
         return 'typing...';
       } else {
-        // For group chats, try to show name(s)
+        // For group or crew chats, try to show name(s)
         const typingNames = typingUserIds
           .map((uid) => usersCache[uid]?.displayName || 'Someone')
           .slice(0, 2); // Limit to 2 names
@@ -565,7 +641,7 @@ const ChatsListScreen: React.FC = () => {
   }, [searchQuery, combinedChats]);
 
   const handleNavigation = useCallback(
-    (chatId: string, chatType: 'direct' | 'group') => {
+    (chatId: string, chatType: 'direct' | 'group' | 'crew') => {
       if (chatType === 'direct') {
         const otherUserId = chatId.split('_').find((uid) => uid !== user?.uid);
         if (otherUserId) {
@@ -574,12 +650,17 @@ const ChatsListScreen: React.FC = () => {
             params: { otherUserId },
           });
         }
-      } else {
+      } else if (chatType === 'group') {
         const crewId = chatId.split('_')[0];
         const date = chatId.split('_')[1];
         router.push({
           pathname: '/chats/crew-date-chat',
           params: { crewId, date, id: chatId },
+        });
+      } else {
+        router.push({
+          pathname: '/chats/crew-chat',
+          params: { crewId: chatId },
         });
       }
     },
@@ -588,7 +669,7 @@ const ChatsListScreen: React.FC = () => {
 
   useEffect(() => {
     combineChats();
-  }, [isFocused, dms, groupChats, combineChats]);
+  }, [isFocused, dms, groupChats, crewChats, combineChats]);
 
   if (loading) {
     return (
@@ -612,7 +693,11 @@ const ChatsListScreen: React.FC = () => {
             size={55}
             imageUrl={item.iconUrl ?? null}
             iconName={
-              item.type === 'direct' ? 'person-outline' : 'people-outline'
+              item.type === 'direct'
+                ? 'person-outline'
+                : item.type === 'group'
+                  ? 'people-outline'
+                  : 'chatbubble-outline'
             }
             editable={false}
             onImageUpdate={() => {}}
