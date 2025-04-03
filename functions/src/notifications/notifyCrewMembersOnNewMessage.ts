@@ -127,21 +127,20 @@ export const notifyCrewMembersOnNewMessage = onDocumentCreated(
         }
 
         // Create notification content
-        const notificationTitle = `${senderName} in ${crewName}`;
         let notificationBody;
 
         if (imageUrl) {
-          notificationBody = '📷 Sent a photo';
+          notificationBody = `${senderName} sent an image`;
         } else if (poll) {
-          notificationBody = `📊 ${poll.question}`;
+          notificationBody = `${senderName} created a poll: ${poll.question}`;
         } else {
-          notificationBody = text.length > 100 ? `${text.substring(0, 100)}...` : text;
+          notificationBody = `${senderName}: ${text}`;
         }
 
         notifications.push({
           to: userData.pushToken,
           sound: 'default',
-          title: notificationTitle,
+          title: crewName,
           body: notificationBody,
           data: {
             screen: 'CrewChat',
