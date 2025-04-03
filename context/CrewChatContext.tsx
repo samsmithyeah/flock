@@ -293,9 +293,6 @@ export const CrewChatProvider: React.FC<{ children: ReactNode }> = ({
         .map((chat) => fetchUnreadCount(chat.id));
       const unreadCounts = await Promise.all(unreadPromises);
       const total = unreadCounts.reduce((acc, count) => acc + count, 0);
-      console.log(
-        `Total unread crew chat messages for user ${user.uid}: ${total}`,
-      );
       setTotalUnread(total);
     } catch (error) {
       console.error('Error computing total unread messages:', error);
