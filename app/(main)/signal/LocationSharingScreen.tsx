@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, Button, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, router, useNavigation } from 'expo-router';
-import { doc, onSnapshot, Timestamp, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot, Timestamp, getDoc, updateDoc, FieldValue as FirebaseFieldValue } from 'firebase/firestore'; // Renamed FieldValue
 import { firebase } from '../../../firebase'; // Assuming path
 import { User } from '../../../types/User';
 import { GeoPoint } from 'firebase/firestore';
@@ -31,89 +31,102 @@ export default function LocationSharingScreen() {
   const [otherUserName, setOtherUserName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [initialRegionSet, setInitialRegionSet] = useState(false);
+  const [initialRegionSet, setInitialRegionSet] = useState(false); // To control initial map animation
 
-  let locationSubscription: Location.LocationSubscription | null = null;
-  let otherUserLocationUnsubscribe: (() => void) | null = null;
-  let expiryTimeoutId: NodeJS.Timeout | null = null;
+  // Store refs to unsubscribe/clear functions to call them in handleStopSharing and cleanup
+  const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
+  const otherUserLocationUnsubscribeRef = useRef<(() => void) | null>(null);
+  const acceptanceDocUnsubscribeRef = useRef<(() => void) | null>(null); // For the new listener
+  const expiryTimeoutIdRef = useRef<NodeJS.Timeout | null>(null);
+  
   const [acceptanceDocId, setAcceptanceDocId] = useState<string | null>(null);
+  const [isSessionTerminated, setIsSessionTerminated] = useState(false); // To prevent multiple navigations
 
   useEffect(() => {
     navigation.setOptions({ title: 'Live Location' });
 
     const { signalId, currentUserUid, otherUserUid, sharingExpiresAt: expiresAtParam } = params;
+    let isMounted = true; // Flag to prevent state updates if component unmounts during async ops
 
-    // Determine BatSignalAcceptance document ID
-    if (signalId) {
-      const signalRef = doc(firebase.firestore, 'batSignals', signalId);
-      getDoc(signalRef).then(signalSnap => {
-        if (signalSnap.exists()) {
-          const signalData = signalSnap.data();
-          if (signalData?.senderId === currentUserUid) { // Current user is the sender of the signal
-            setAcceptanceDocId(`${signalId}_${otherUserUid}`);
-          } else { // Current user is the recipient of the signal
-            setAcceptanceDocId(`${signalId}_${currentUserUid}`);
-          }
-        } else {
-          console.error("Signal document not found to determine acceptance ID");
-          setError("Signal details missing, cannot manage session.");
+    if (!signalId || !currentUserUid || !otherUserUid || !expiresAtParam) {
+        if (isMounted) {
+            setError("Critical session information is missing. Cannot start sharing.");
+            setIsLoading(false);
+            Toast.show({type: 'error', text1: "Error", text2: "Missing session details."});
+            if(router.canGoBack()) router.goBack(); else router.replace('/(main)/dashboard');
         }
-      }).catch(e => {
-        console.error("Error fetching signal for acceptance ID:", e);
-        setError("Error verifying session details.");
-      });
+        return;
     }
-
-    // Fetch other user's name
-    if (otherUserUid) {
-      const userRef = doc(firebase.firestore, 'users', otherUserUid);
-      getDoc(userRef).then(docSnap => {
-        if (docSnap.exists()) {
-          setOtherUserName(docSnap.data()?.displayName || 'User');
-        } else {
-          setOtherUserName('Unknown User');
+    
+    const determineAndSetAcceptanceId = async () => {
+        try {
+            const signalRef = doc(firebase.firestore, 'batSignals', signalId);
+            const signalSnap = await getDoc(signalRef);
+            if (isMounted && signalSnap.exists()) {
+                const signalData = signalSnap.data();
+                let determinedId = '';
+                if (signalData?.senderId === currentUserUid) { 
+                    determinedId = `${signalId}_${otherUserUid}`;
+                } else { 
+                    determinedId = `${signalId}_${currentUserUid}`;
+                }
+                setAcceptanceDocId(determinedId);
+            } else if (isMounted) {
+                console.error("Signal document not found to determine acceptance ID");
+                setError("Signal details missing, cannot manage session.");
+                setIsLoading(false); 
+            }
+        } catch (e) {
+            if (isMounted) {
+                console.error("Error fetching signal for acceptance ID:", e);
+                setError("Error verifying session details.");
+                setIsLoading(false);
+            }
         }
-      }).catch(err => {
-        console.error("Error fetching other user's name:", err);
-        setOtherUserName('User');
-      });
-    }
+    };
 
-    // Handle expiry
-    if (expiresAtParam) {
-      const expiryTimestamp = parseInt(expiresAtParam, 10);
-      if (isNaN(expiryTimestamp)) {
-        setError('Invalid expiry time provided.');
-        setIsLoading(false);
-        Toast.show({ type: 'error', text1: 'Error', text2: 'Invalid session duration.' });
-        if (router.canGoBack()) router.goBack(); else router.replace('/(main)/dashboard');
-        return;
+    determineAndSetAcceptanceId();
+    
+    const userRef = doc(firebase.firestore, 'users', otherUserUid);
+    getDoc(userRef).then(docSnap => {
+      if (docSnap.exists()) {
+        setOtherUserName(docSnap.data()?.displayName || 'User');
+      } else {
+        setOtherUserName('Unknown User');
       }
-      const expiryDate = new Date(expiryTimestamp);
-      if (expiryDate <= new Date()) {
-        Toast.show({ type: 'error', text1: 'Sharing Expired', text2: 'This session has already expired.' });
-        setError('This session has already expired.');
-        setIsLoading(false);
-        if (router.canGoBack()) router.goBack(); else router.replace('/(main)/dashboard');
-        return;
-      }
-      setSharingActuallyExpiresAt(expiryDate);
-      
-      expiryTimeoutId = setTimeout(() => {
-        Toast.show({ type: 'info', text1: 'Session Ended', text2: 'Location sharing time has expired.' });
-        if (router.canGoBack()) router.goBack(); else router.replace('/(main)/dashboard');
-      }, expiryDate.getTime() - Date.now());
-    } else {
-      setError('Expiry time not provided.');
+    }).catch(err => {
+      console.error("Error fetching other user's name:", err);
+      setOtherUserName('User'); 
+    });
+
+    const expiryTimestamp = parseInt(expiresAtParam, 10);
+    if (isNaN(expiryTimestamp)) {
+      setError('Invalid expiry time provided.');
       setIsLoading(false);
-      Toast.show({ type: 'error', text1: 'Error', text2: 'Session duration not specified.' });
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Invalid session duration.' });
       if (router.canGoBack()) router.goBack(); else router.replace('/(main)/dashboard');
       return;
     }
+    const expiryDate = new Date(expiryTimestamp);
+    if (expiryDate <= new Date()) {
+      Toast.show({ type: 'error', text1: 'Sharing Expired', text2: 'This session has already expired.' });
+      setError('This session has already expired.');
+      setIsLoading(false);
+      if (router.canGoBack()) router.goBack(); else router.replace('/(main)/dashboard');
+      return;
+    }
+    setSharingActuallyExpiresAt(expiryDate);
+    
+    expiryTimeoutIdRef.current = setTimeout(() => {
+      Toast.show({ type: 'info', text1: 'Session Ended', text2: 'Location sharing time has expired.' });
+      if (router.canGoBack()) router.goBack(); else router.replace('/(main)/dashboard');
+    }, expiryDate.getTime() - Date.now());
 
-    // Start self location updates
+    let isMounted = true; // Flag to prevent state updates if component unmounts during async ops
+
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
+      if (!isMounted) return;
       if (status !== 'granted') {
         setError('Location permission denied for self.');
         Toast.show({ type: 'error', text1: 'Permission Denied', text2: 'Location permission is required.' });
@@ -121,13 +134,14 @@ export default function LocationSharingScreen() {
         return;
       }
 
-      locationSubscription = await Location.watchPositionAsync(
+      locationSubscriptionRef.current = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.High,
           timeInterval: LOCATION_UPDATE_INTERVAL,
           distanceInterval: LOCATION_UPDATE_DISTANCE_INTERVAL,
         },
         async (location) => {
+          if (!isMounted) return;
           const newMapLocation = {
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
@@ -138,7 +152,7 @@ export default function LocationSharingScreen() {
             const userDocRef = doc(firebase.firestore, 'users', currentUserUid);
             await updateDoc(userDocRef, {
               liveLocation: new GeoPoint(location.coords.latitude, location.coords.longitude),
-              lastKnownLocationTimestamp: Timestamp.now(), // Also update this for recency checks
+              lastKnownLocationTimestamp: Timestamp.now(),
             });
           } catch (e) {
             console.error("Error updating self location to Firestore:", e);
@@ -147,9 +161,9 @@ export default function LocationSharingScreen() {
       );
     })();
 
-    // Listen for other user's location
     const otherUserDocRef = doc(firebase.firestore, 'users', otherUserUid);
-    otherUserLocationUnsubscribe = onSnapshot(otherUserDocRef, (docSnap) => {
+    otherUserLocationUnsubscribeRef.current = onSnapshot(otherUserDocRef, (docSnap) => {
+      if (!isMounted) return;
       if (docSnap.exists()) {
         const userData = docSnap.data() as User;
         if (userData.liveLocation) {
@@ -157,77 +171,133 @@ export default function LocationSharingScreen() {
             latitude: userData.liveLocation.latitude,
             longitude: userData.liveLocation.longitude,
           });
+        } else {
+          setOtherUserMapLocation(null);
+          if (!isSessionTerminated) { // Avoid duplicate toasts if session already ended
+            Toast.show({type: 'info', text1: "Info", text2: `${otherUserName || 'The other user'} stopped sharing or location is unavailable.`});
+          }
         }
       }
     }, (e) => {
+      if (!isMounted) return;
       console.error("Error listening to other user's location:", e);
-      Toast.show({type: 'error', text1: "Connection Issue", text2: `Could not get ${otherUserName || 'their'} location.`})
+      if (!isSessionTerminated) {
+          Toast.show({type: 'error', text1: "Connection Issue", text2: `Could not get ${otherUserName || 'their'} location.`})
+      }
     });
     
-    setIsLoading(false); // Initial loading done
+    if (isMounted) setIsLoading(false); 
 
     return () => {
-      if (locationSubscription) locationSubscription.remove();
-      if (otherUserLocationUnsubscribe) otherUserLocationUnsubscribe();
-      if (expiryTimeoutId) clearTimeout(expiryTimeoutId);
+      isMounted = false;
+      if (locationSubscriptionRef.current) locationSubscriptionRef.current.remove();
+      if (otherUserLocationUnsubscribeRef.current) otherUserLocationUnsubscribeRef.current();
+      if (acceptanceDocUnsubscribeRef.current) acceptanceDocUnsubscribeRef.current(); // Cleanup new listener
+      if (expiryTimeoutIdRef.current) clearTimeout(expiryTimeoutIdRef.current);
     };
-  }, [params.currentUserUid, params.otherUserUid, params.sharingExpiresAt, navigation, router]);
+  }, [params.currentUserUid, params.otherUserUid, params.sharingExpiresAt, params.signalId, navigation, router]); // acceptanceDocId is not needed here as it's derived from these
+
+
+  // New useEffect to listen to BatSignalAcceptance document changes
+  useEffect(() => {
+    if (!acceptanceDocId || isSessionTerminated) return;
+    let isMounted = true;
+
+    const acceptanceRef = doc(firebase.firestore, 'batSignalAcceptances', acceptanceDocId);
+    acceptanceDocUnsubscribeRef.current = onSnapshot(acceptanceRef, (docSnap) => {
+      if (!isMounted || !docSnap.exists() || isSessionTerminated) return;
+
+      const acceptanceData = docSnap.data() as BatSignalAcceptance; // Type assertion
+      const sessionExpiredByTime = acceptanceData.sharingExpiresAt && acceptanceData.sharingExpiresAt.toDate() < new Date();
+      const stoppedManually = acceptanceData.sharingStoppedManually === true;
+
+      if (sessionExpiredByTime || stoppedManually) {
+        setIsSessionTerminated(true); // Prevent further actions/toasts
+        Toast.show({
+          type: 'info',
+          text1: 'Session Ended',
+          text2: stoppedManually ? `${otherUserName || 'The other user'} stopped sharing.` : 'Location sharing time has expired.',
+        });
+        
+        // Perform cleanup similar to handleStopSharing
+        if (locationSubscriptionRef.current) locationSubscriptionRef.current.remove();
+        if (otherUserLocationUnsubscribeRef.current) otherUserLocationUnsubscribeRef.current();
+        if (expiryTimeoutIdRef.current) clearTimeout(expiryTimeoutIdRef.current);
+        
+        // Clear current user's liveLocation in Firestore
+        const userDocRef = doc(firebase.firestore, 'users', params.currentUserUid);
+        updateDoc(userDocRef, { liveLocation: firebase.firestore.FieldValue.delete() })
+            .catch(e => console.error("Error clearing liveLocation on session end:", e));
+
+        if (router.canGoBack()) router.goBack(); else router.replace('/(main)/dashboard');
+      }
+    });
+
+    return () => { 
+        isMounted = false;
+        if (acceptanceDocUnsubscribeRef.current) acceptanceDocUnsubscribeRef.current();
+    };
+  }, [acceptanceDocId, otherUserName, params.currentUserUid, router, isSessionTerminated]);
 
 
   useEffect(() => {
-    if (currentUserMapLocation && otherUserMapLocation && mapRef.current && !initialRegionSet) {
-        const coordinates = [currentUserMapLocation, otherUserMapLocation];
-        mapRef.current.fitToCoordinates(coordinates, {
-            edgePadding: { top: 100, right: 50, bottom: 50, left: 50 },
-            animated: true,
-        });
-        setInitialRegionSet(true); // Ensure this runs only once initially or when explicitly needed
-    } else if (currentUserMapLocation && mapRef.current && !initialRegionSet) {
-        mapRef.current.animateToRegion({
-            ...currentUserMapLocation,
-            latitudeDelta: 0.02,
-            longitudeDelta: 0.02,
-        }, 1000);
-        setInitialRegionSet(true);
+    if (mapRef.current && currentUserMapLocation) {
+        if (otherUserMapLocation) {
+            if (!initialRegionSet) { // Only fit to coordinates once or if explicitly reset
+                 mapRef.current.fitToCoordinates([currentUserMapLocation, otherUserMapLocation], {
+                    edgePadding: { top: 100, right: 50, bottom: 50, left: 50 },
+                    animated: true,
+                });
+                setInitialRegionSet(true);
+            }
+        } else if (!initialRegionSet) { 
+            mapRef.current.animateToRegion({
+                ...currentUserMapLocation,
+                latitudeDelta: 0.02,
+                longitudeDelta: 0.02,
+            }, 1000);
+            setInitialRegionSet(true);
+        }
     }
-  }, [currentUserMapLocation, otherUserMapLocation, initialRegionSet]);
+}, [currentUserMapLocation, otherUserMapLocation, initialRegionSet]);
 
 
   const handleStopSharing = async () => {
-    if (locationSubscription) locationSubscription.remove();
-    locationSubscription = null; // prevent further updates
+    if (locationSubscriptionRef.current) {
+        locationSubscriptionRef.current.remove();
+        locationSubscriptionRef.current = null;
+    }
+    if (otherUserLocationUnsubscribeRef.current) {
+        otherUserLocationUnsubscribeRef.current();
+        otherUserLocationUnsubscribeRef.current = null;
+    }
+    if (expiryTimeoutIdRef.current) {
+        clearTimeout(expiryTimeoutIdRef.current);
+        expiryTimeoutIdRef.current = null;
+    }
     
-    // Clear liveLocation for current user in Firestore
     try {
         const userDocRef = doc(firebase.firestore, 'users', params.currentUserUid);
         await updateDoc(userDocRef, {
-            liveLocation: firebase.firestore.FieldValue.delete(), // Use FieldValue.delete() for Firestore
+            liveLocation: firebase.firestore.FieldValue.delete(), // Use FieldValue from firebase.firestore
         });
     } catch (e) {
-        console.error("Error clearing liveLocation:", e);
+        console.error("Error clearing current user's liveLocation:", e);
     }
 
-    // Update BatSignalAcceptance to reflect sharing stopped (e.g., by setting sharingExpiresAt to now)
-    // This implicitly stops sharing for both.
     try {
-        const acceptanceDocId = `${params.signalId}_${params.otherUserUid}`; // If recipient is otherUser
-        // Or, if current user is recipient: `${params.signalId}_${params.currentUserUid}`;
-        // For now, let's assume the acceptance doc ID is based on the signal and the recipient.
-        // The one who initiated the BatSignal is params.otherUserUid if current user is recipient, and vice-versa.
-    if (acceptanceDocId) {
+      if (acceptanceDocId) { 
         const acceptanceRef = doc(firebase.firestore, 'batSignalAcceptances', acceptanceDocId);
         await updateDoc(acceptanceRef, {
-            sharingExpiresAt: Timestamp.now(), // Set expiry to now to stop session
-            // Optionally: sharingStoppedManually: true 
+            sharingExpiresAt: Timestamp.now(), 
         });
         Toast.show({type: 'info', text1: 'Sharing Stopped', text2: 'You have stopped sharing your location.'});
-    } else {
+      } else {
         Toast.show({type: 'error', text1: 'Error', text2: 'Could not stop session, acceptance details unclear.'});
         console.warn("acceptanceDocId is not set, cannot update Firestore to stop sharing.");
-    }
-
+      }
     } catch (e) {
-        console.error("Error during stop sharing process:", e);
+        console.error("Error updating BatSignalAcceptance to stop sharing:", e);
         Toast.show({type: 'error', text1: 'Error Stopping', text2: 'Could not update session status.'});
     }
 
@@ -238,7 +308,7 @@ export default function LocationSharingScreen() {
     }
   };
   
-  if (isLoading && !currentUserMapLocation) { // Show loading only if truly loading initial data
+  if (isLoading) { 
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" />
@@ -259,15 +329,21 @@ export default function LocationSharingScreen() {
   const initialMapRegion: Region | undefined = currentUserMapLocation ? {
     latitude: currentUserMapLocation.latitude,
     longitude: currentUserMapLocation.longitude,
+    latitudeDelta: 0.0922, 
+    longitudeDelta: 0.0421, 
+  } : ( otherUserMapLocation ? { 
+    latitude: otherUserMapLocation.latitude,
+    longitude: otherUserMapLocation.longitude,
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
-  } : undefined;
+  } : undefined );
+
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Live Location Sharing</Text>
       <Text style={styles.infoText}>
-        Sharing with: {otherUserName || params.otherUserUid.substring(0,6)}
+        Sharing with: {otherUserName || params.otherUserUid?.substring(0,6) || 'User'}
       </Text>
       <Text style={styles.infoText}>
         Session expires: {sharingActuallyExpiresAt ? sharingActuallyExpiresAt.toLocaleTimeString() : 'N/A'}
@@ -276,8 +352,8 @@ export default function LocationSharingScreen() {
       <MapView
         ref={mapRef}
         style={styles.map}
-        initialRegion={initialMapRegion}
-        showsUserLocation={false} // We use custom markers
+        initialRegion={initialMapRegion} 
+        showsUserLocation={false} 
       >
         {currentUserMapLocation && (
           <Marker
@@ -296,8 +372,7 @@ export default function LocationSharingScreen() {
         {currentUserMapLocation && otherUserMapLocation && (
             <Polyline
                 coordinates={[currentUserMapLocation, otherUserMapLocation]}
-                strokeColor="#000" // fallback for when `strokeColors` is not supported
-                strokeColors={['#7F0000']}
+                strokeColor="#FF0000" 
                 strokeWidth={3}
             />
         )}
@@ -323,7 +398,6 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    // padding: 16, // Map should take full width/height available in its view part
     alignItems: 'center',
     backgroundColor: '#f4f4f8',
   },
@@ -341,11 +415,11 @@ const styles = StyleSheet.create({
   },
   map: {
     width: '100%',
-    height: '70%', // Adjust as needed
+    height: '70%', 
     marginBottom: 15,
   },
   stopButton: {
-    backgroundColor: '#f44336', // Red
+    backgroundColor: '#f44336', 
     paddingVertical: 12,
     paddingHorizontal: 30,
     borderRadius: 25,

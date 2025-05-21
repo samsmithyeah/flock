@@ -49,12 +49,11 @@ export default function BatSignalResponseScreen() {
 
         if (!signalSnap.exists()) {
           Toast.show({ type: 'error', text1: 'Signal Not Found', text2: 'This Bat Signal may have been cancelled or expired.' });
-          setSignalDetails(null);
+          setSignalDetails(null); // Set to null explicitly
         } else {
           const signalData = signalSnap.data() as BatSignal;
           setSignalDetails(signalData);
 
-          // Fetch Sender Profile
           const senderIdToFetch = signalData.senderId || querySenderId;
           if (senderIdToFetch) {
             const senderRef = doc(firebase.firestore, 'users', senderIdToFetch);
@@ -63,42 +62,42 @@ export default function BatSignalResponseScreen() {
               setSenderProfile(senderSnap.data() as User);
             } else {
               console.warn("Sender profile not found for ID:", senderIdToFetch);
-              // Use denormalized data if available
               setSenderProfile({ 
                 uid: senderIdToFetch, 
                 displayName: signalData.senderName || 'Unknown Sender', 
-                photoURL: signalData.senderProfilePictureUrl,
-                email: '' // Required by User type, but not available here
+                photoURL: signalData.senderProfilePictureUrl, // This could be undefined if not on signalData
+                email: '' // Required by User type
               });
             }
           } else {
              console.warn("No sender ID available to fetch profile.");
              setSenderProfile({ 
                 uid: 'unknown', 
-                displayName: signalData.senderName || 'Unknown Sender', 
-                photoURL: signalData.senderProfilePictureUrl,
+                displayName: signalData.senderName || 'Unknown Sender', // Fallback to signalData if possible
+                photoURL: signalData.senderProfilePictureUrl, // Fallback to signalData if possible
                 email: ''
               });
           }
         }
-
-        // Fetch BatSignalAcceptance document
-        const acceptanceRef = doc(firebase.firestore, 'batSignalAcceptances', `${querySignalId}_${currentUser.uid}`);
-        const acceptanceSnap = await getDoc(acceptanceRef);
-        if (acceptanceSnap.exists()) {
-          setAcceptanceStatus(acceptanceSnap.data().status as BatSignalAcceptance['status']);
-        }
+        // Initial fetch of acceptance status is good, listener will keep it updated.
+        // const acceptanceRef = doc(firebase.firestore, 'batSignalAcceptances', `${querySignalId}_${currentUser.uid}`);
+        // const acceptanceSnap = await getDoc(acceptanceRef);
+        // if (acceptanceSnap.exists()) {
+        //   setAcceptanceStatus(acceptanceSnap.data().status as BatSignalAcceptance['status']);
+        // }
 
       } catch (error: any) {
         console.error("Error fetching Bat Signal data:", error);
         Toast.show({ type: 'error', text1: 'Error', text2: error.message || 'Could not load signal details.' });
+        setSignalDetails(null); // Ensure state is null on error
+        setSenderProfile(null);
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchSignalData();
-  }, [querySignalId, currentUser?.uid, querySenderId]);
+  }, [querySignalId, currentUser?.uid, querySenderId]); 
 
   const handleAccept = async () => {
     if (!currentUser || !signalDetails || !querySignalId) {
@@ -108,20 +107,14 @@ export default function BatSignalResponseScreen() {
     setIsProcessingAccept(true);
 
     try {
-      if (!querySignalId) throw new Error("Signal ID is missing");
-      if (signalDetails?.expiresAt && signalDetails.expiresAt.toDate() < new Date()) {
+      if (signalDetails.expiresAt && signalDetails.expiresAt.toDate() < new Date()) {
         Toast.show({ type: 'info', text1: 'Signal Expired', text2: 'This Bat Signal has already expired.' });
         setAcceptanceStatus('ignored');
-        setIsProcessingAccept(false);
-        return;
+        return; 
       }
 
-      // Call the Cloud Function first
-      await respondToBatSignal(querySignalId, 'accepted');
-
-      // If Cloud Function is successful, then proceed with local state updates
-      // The BatSignalAcceptance document is now created/updated by the Cloud Function
-      setAcceptanceStatus('accepted');
+      await respondToBatSignal(querySignalId, 'accepted'); 
+      // No need to setAcceptanceStatus here, listener will update it.
       Toast.show({ type: 'success', text1: 'Accepted!', text2: 'Please grant consent to share location.' });
       setConsentModalVisible(true);
 
@@ -135,23 +128,20 @@ export default function BatSignalResponseScreen() {
   };
 
   const handleDecline = async () => {
-    if (!currentUser || !querySignalId) {
+    if (!currentUser || !querySignalId) { 
       Toast.show({ type: 'error', text1: 'Error', text2: 'Missing user or signal information.' });
       return;
     }
     setIsProcessingDecline(true);
 
     try {
-      // Call the Cloud Function
-      await respondToBatSignal(querySignalId, 'declined');
-      
-      // If Cloud Function is successful
-      setAcceptanceStatus('declined');
+      await respondToBatSignal(querySignalId, 'declined'); 
+      // No need to setAcceptanceStatus here, listener will update it.
       Toast.show({ type: 'info', text1: 'Signal Declined' });
-      setTimeout(() => {
-        if(router.canGoBack()) router.goBack(); else router.replace('/(main)/dashboard');
-      }, 1500);
-
+      // Navigation will be handled by the listener if status changes, or user can dismiss
+      // setTimeout(() => {
+      //   if(router.canGoBack()) router.goBack(); else router.replace('/(main)/dashboard');
+      // }, 1500); // Keep timeout for now, but listener is better
     } catch (error: any) {
       console.error("Error declining signal:", error);
       const errorMessage = error.message || 'Failed to decline signal. Please try again.';
@@ -175,7 +165,7 @@ export default function BatSignalResponseScreen() {
       <View style={styles.centered}>
         <Ionicons name="sad-outline" size={60} color="gray" />
         <Text style={styles.infoText}>Signal not found or no longer available.</Text>
-        <CustomButton title="Dismiss" onPress={() => router.goBack()} style={styles.buttonSpacing} />
+        <CustomButton title="Dismiss" onPress={() => {if(router.canGoBack()) router.goBack(); else router.replace('/(main)/dashboard')}} style={styles.buttonSpacing} />
       </View>
     );
   }
@@ -184,7 +174,10 @@ export default function BatSignalResponseScreen() {
   const profilePicUrl = senderProfile?.photoURL || signalDetails.senderProfilePictureUrl;
 
   const handleGrantConsent = async () => {
-    if (!currentUser || !querySignalId) return;
+    if (!currentUser || !querySignalId || !signalDetails?.senderId) { 
+        Toast.show({ type: 'error', text1: 'Error', text2: 'Cannot grant consent, critical info missing.' });
+        return;
+    }
     setIsProcessingConsent(true);
     try {
       const acceptanceRef = doc(firebase.firestore, 'batSignalAcceptances', `${querySignalId}_${currentUser.uid}`);
@@ -192,14 +185,16 @@ export default function BatSignalResponseScreen() {
       const sharingExpiresAt = Timestamp.fromDate(new Date(Date.now() + X_DURATION_SECONDS * 1000));
       
       await setDoc(acceptanceRef, {
-        recipientConsentedShare: serverTimestamp(), // Recipient grants consent now
-        sharingExpiresAt: sharingExpiresAt, // Set definitive expiry time
+        recipientConsentedShare: serverTimestamp(), 
+        sharingExpiresAt: sharingExpiresAt, 
+        senderId: signalDetails.senderId, // Ensure senderId is in acceptance doc
+        recipientId: currentUser.uid, // Ensure recipientId is in acceptance doc
+        signalId: querySignalId, // Ensure signalId is in acceptance doc
+        // status: 'accepted' should already be set by respondToBatSignal, but merge ensures it.
       }, { merge: true });
 
-      setConsentModalVisible(false); // Close modal on success
+      setConsentModalVisible(false); 
       Toast.show({ type: 'info', text1: 'Consent Granted', text2: `Waiting for ${displayName} to also consent.` });
-      // Firestore listener will be set up by the useEffect hook to watch for sender's consent
-      // and navigate if mutual consent is achieved.
     } catch (error: any) {
       console.error("Error granting consent:", error);
       Toast.show({ type: 'error', text1: 'Consent Failed', text2: error.message });
@@ -211,57 +206,87 @@ export default function BatSignalResponseScreen() {
   const handleDenyConsent = async () => {
     setConsentModalVisible(false);
     Toast.show({ type: 'info', text1: 'Consent Denied', text2: 'Location sharing not initiated. You can decline the signal if you wish.' });
-    // To fully cancel, the user would need to decline the signal explicitly
-    // This is because they already accepted the signal. Denying consent only stops location sharing part.
-    // No longer calling respondToBatSignal here as the initial acceptance stands.
-    // If we wanted "Deny Consent" to also mean "Decline Signal", we'd call:
-    // await handleDecline(); 
+    // If denying consent should also mean declining the signal, call handleDecline.
+    // Current setup: Signal remains 'accepted', but no location sharing from this user.
+    // To make "Deny & Cancel" also decline the signal if it was accepted:
+    // if (acceptanceStatus === 'accepted') {
+    //   await handleDecline();
+    // }
   };
 
-  // Firestore Listener for Mutual Consent AND for initial acceptance status
+  // Firestore Listener for BatSignalAcceptance document changes
   useEffect(() => {
     if (!querySignalId || !currentUser?.uid) return;
 
     const acceptanceDocId = `${querySignalId}_${currentUser.uid}`;
     const acceptanceDocRef = doc(firebase.firestore, 'batSignalAcceptances', acceptanceDocId);
+    let hasNavigated = false; 
 
     const unsubscribe = onSnapshot(acceptanceDocRef, (docSnap) => {
+      if (hasNavigated) return;
+
       if (docSnap.exists()) {
         const acceptanceData = docSnap.data() as BatSignalAcceptance;
-        setAcceptanceStatus(acceptanceData.status); // Update local status from Firestore
+        
+        // Update local acceptanceStatus if it differs from Firestore
+        // This ensures UI reflects the true state, e.g., if declined via Cloud Function elsewhere
+        if (acceptanceStatus !== acceptanceData.status) {
+            setAcceptanceStatus(acceptanceData.status);
+        }
 
-        if (acceptanceData.status === 'accepted' && acceptanceData.recipientConsentedShare && acceptanceData.senderConsentedShare && acceptanceData.sharingExpiresAt) {
+        // Check for navigation conditions
+        if (acceptanceData.status === 'accepted' && 
+            acceptanceData.recipientConsentedShare && 
+            acceptanceData.senderConsentedShare && 
+            acceptanceData.sharingExpiresAt) {
           if (acceptanceData.sharingExpiresAt.toDate() > new Date()) {
+            hasNavigated = true; 
             Toast.show({ type: 'success', text1: 'Mutual consent!', text2: 'Navigating to map...' });
-            const otherUserId = acceptanceData.senderId; // This is the BatSignal sender
+            
+            const otherUserId = acceptanceData.senderId; 
             router.replace({
               pathname: '/(main)/signal/LocationSharingScreen',
               params: {
                 signalId: acceptanceData.signalId,
-                currentUserUid: currentUser.uid, // This is the recipient
-                otherUserUid: otherUserId,       // This is the sender
+                currentUserUid: currentUser.uid, 
+                otherUserUid: otherUserId,       
                 sharingExpiresAt: acceptanceData.sharingExpiresAt.toMillis().toString(),
               },
             });
-            unsubscribe(); // Stop listening after navigation
-          } else {
-            Toast.show({ type: 'error', text1: 'Sharing Expired', text2: 'Location sharing period has ended.' });
-            if (router.canGoBack()) router.goBack(); else router.replace('/(main)/dashboard');
-            unsubscribe(); // Stop listening
+          } else { // Sharing expired case
+            if (!hasNavigated) { 
+                Toast.show({ type: 'error', text1: 'Sharing Expired', text2: 'Location sharing period has ended.' });
+                // Don't navigate here if already on a different screen or if modal is up.
+                // Let user dismiss naturally if they are on this screen.
+            }
           }
+        } else if (acceptanceData.status === 'declined' && !consentModalVisible) {
+            // If the status becomes 'declined' (e.g. by sender cancelling or admin action)
+            // and the consent modal isn't up (meaning user isn't in active flow of accepting)
+            // then it might be appropriate to inform the user and potentially navigate back.
+            // For now, the UI will just show "You have already responded: declined".
         }
-      } else {
-        // If the acceptance document doesn't exist, reset status (e.g., sender cancelled signal before recipient responded)
-        // setAcceptanceStatus(null); // Or handle as appropriate
+
+      } else { // Acceptance document doesn't exist
+        // This could mean it was declined and then deleted, or never created.
+        // If current local status was 'accepted' or 'pending', this is a change.
+        if (acceptanceStatus && acceptanceStatus !== 'declined') { 
+            // setAcceptanceStatus(null); // Or 'ignored' or some other status
+            // Toast.show({ type: 'info', text1: 'Signal Response Cleared', text2: 'Your previous response is no longer active.' });
+        }
       }
     });
 
-    return () => unsubscribe();
-  }, [querySignalId, currentUser?.uid, router]); // Removed signalDetails from dependency array as it might not be stable
+    return () => {
+        unsubscribe();
+        hasNavigated = false; 
+    };
+  }, [querySignalId, currentUser?.uid, router, acceptanceStatus]); // Add acceptanceStatus to re-evaluate if it changes locally
 
 
-  // If already responded (and not currently in consent modal because that implies recent 'accepted' state)
-  if ((acceptanceStatus === 'accepted' || acceptanceStatus === 'declined') && !consentModalVisible) {
+  // Main return logic
+  if ((acceptanceStatus === 'accepted' && !consentModalVisible) || acceptanceStatus === 'declined') {
+    // If accepted (and not in consent flow) OR declined, show final status.
     return (
       <View style={styles.centered}>
         <Ionicons
@@ -269,12 +294,15 @@ export default function BatSignalResponseScreen() {
             size={60}
             color={acceptanceStatus === 'accepted' ? "green" : "red"}
         />
-        <Text style={styles.infoText}>You have already responded: {acceptanceStatus}.</Text>
-        <CustomButton title="Dismiss" onPress={() => router.goBack()} style={styles.buttonSpacing} />
+        <Text style={styles.infoText}>
+            {acceptanceStatus === 'accepted' ? 'You have accepted. Waiting for sender if location not shared.' : 'You have declined this signal.'}
+        </Text>
+        <CustomButton title="Dismiss" onPress={() => {if(router.canGoBack()) router.goBack(); else router.replace('/(main)/dashboard')}} style={styles.buttonSpacing} />
       </View>
     );
   }
-
+  
+  // If still pending, or if 'accepted' AND consent modal is now visible:
   return (
     <View style={styles.container}>
       <Modal
@@ -282,8 +310,8 @@ export default function BatSignalResponseScreen() {
         transparent={true}
         visible={consentModalVisible}
         onRequestClose={() => {
-          // Alert.alert("Modal has been closed.");
           setConsentModalVisible(!consentModalVisible);
+          // If user closes modal without choice, and status was 'accepted', it remains 'accepted' but without consent.
         }}
       >
         <View style={styles.centeredView}>
@@ -301,7 +329,7 @@ export default function BatSignalResponseScreen() {
               textStyle={styles.buttonText}
             />
             <CustomButton
-              title="Deny & Cancel"
+              title="Deny Consent" // Changed from "Deny & Cancel"
               onPress={handleDenyConsent}
               disabled={isProcessingConsent}
               style={[styles.button, styles.denyButton]}
@@ -322,26 +350,29 @@ export default function BatSignalResponseScreen() {
         {signalDetails.message && <Text style={styles.messageText}>"{signalDetails.message}"</Text>}
       </View>
 
-      <View style={styles.actionsContainer}>
-        <CustomButton
-          title="Accept & Share Location"
-          onPress={handleAccept}
-          disabled={isProcessingAccept || isProcessingDecline || acceptanceStatus === 'accepted'}
-          isLoading={isProcessingAccept}
-          icon={<Ionicons name="checkmark-outline" size={20} color="white" />}
-          style={[styles.button, styles.acceptButton]}
-          textStyle={styles.buttonText}
-        />
-        <CustomButton
-          title="Decline Signal"
-          onPress={handleDecline}
-          disabled={isProcessingAccept || isProcessingDecline || acceptanceStatus === 'accepted'}
-          isLoading={isProcessingDecline}
-          icon={<Ionicons name="close-outline" size={20} color="white" />}
-          style={[styles.button, styles.declineButton]}
-          textStyle={styles.buttonText}
-        />
-      </View>
+      {/* Show accept/decline buttons only if status is null (pending) and modal is not visible */}
+      { !acceptanceStatus && !consentModalVisible && (
+          <View style={styles.actionsContainer}>
+            <CustomButton
+              title="Accept & Share Location"
+              onPress={handleAccept}
+              disabled={isProcessingAccept || isProcessingDecline}
+              isLoading={isProcessingAccept}
+              icon={<Ionicons name="checkmark-outline" size={20} color="white" />}
+              style={[styles.button, styles.acceptButton]}
+              textStyle={styles.buttonText}
+            />
+            <CustomButton
+              title="Decline Signal"
+              onPress={handleDecline}
+              disabled={isProcessingAccept || isProcessingDecline}
+              isLoading={isProcessingDecline}
+              icon={<Ionicons name="close-outline" size={20} color="white" />}
+              style={[styles.button, styles.declineButton]}
+              textStyle={styles.buttonText}
+            />
+          </View>
+      )}
       <Toast />
     </View>
   );
@@ -357,15 +388,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
-    justifyContent: 'space-around', // Distribute space
+    justifyContent: 'space-around', 
     backgroundColor: '#f4f4f8',
   },
-  // Modal Styles
   centeredView: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.5)", // Dimmed background
+    backgroundColor: "rgba(0,0,0,0.5)", 
   },
   modalView: {
     margin: 20,
@@ -396,15 +426,14 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   grantButton: {
-    backgroundColor: '#28a745', // Green
+    backgroundColor: '#28a745', 
     width: '100%',
   },
   denyButton: {
-    backgroundColor: '#dc3545', // Red
+    backgroundColor: '#dc3545', 
     marginTop: 10,
     width: '100%',
   },
-  // End Modal Styles
   headerContainer: {
     alignItems: 'center',
     marginBottom: 30,
@@ -441,21 +470,20 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   actionsContainer: {
-    // No specific styles needed if buttons handle their own margins
   },
   button: {
     paddingVertical: 15,
     borderRadius: 10,
-    marginBottom: 15, // Space between buttons
+    marginBottom: 15, 
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },
   acceptButton: {
-    backgroundColor: '#4CAF50', // Green
+    backgroundColor: '#4CAF50', 
   },
   declineButton: {
-    backgroundColor: '#f44336', // Red
+    backgroundColor: '#f44336', 
   },
   buttonText: {
     color: 'white',

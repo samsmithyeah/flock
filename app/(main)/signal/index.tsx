@@ -5,8 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import SegmentedControl from '@react-native-segmented-control/segmented-control';
 import * as Location from 'expo-location';
 import { useUser } from '../../../context/UserContext'; // Assuming path
-import { firebase, sendBatSignal, cancelBatSignal } from '../../../firebase'; // Actual function
-import { GeoPoint, Timestamp, collection, query, where, onSnapshot, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { firebase, sendBatSignal } from '../../../firebase'; // cancelBatSignal removed as it's not defined
+import { GeoPoint, collection, query, where, onSnapshot, doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore'; // getDoc imported
 import CustomButton from '../../../components/CustomButton'; // Assuming path
 import LoadingOverlay from '../../../components/LoadingOverlay'; // Assuming path
 import Toast from 'react-native-toast-message';
@@ -15,7 +15,7 @@ import { router } from 'expo-router';
 
 
 export default function SignalScreen() {
-  const { user: currentUser } = useUser(); // Get current user, renamed to currentUser for clarity
+  const { user: currentUser } = useUser(); 
 
   const [radiusMetres, setRadiusMetres] = useState<number>(1000);
   const [audienceType, setAudienceType] = useState<'all' | 'crews' | 'contacts'>('all');
@@ -27,7 +27,6 @@ export default function SignalScreen() {
   const [locationPermissionStatus, setLocationPermissionStatus] = useState<Location.PermissionStatus | null>(null);
   const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
   
-  // New states for sender consent flow
   const [showSenderConsentModal, setShowSenderConsentModal] = useState<boolean>(false);
   const [consentingRecipient, setConsentingRecipient] = useState<{ id: string, name?: string } | null>(null);
   const [activeAcceptances, setActiveAcceptances] = useState<BatSignalAcceptance[]>([]);
@@ -62,15 +61,19 @@ export default function SignalScreen() {
       Toast.show({ type: 'error', text1: 'Invalid Radius', text2: 'Radius must be a positive number.' });
       return;
     }
+    if (!currentUser) {
+        Toast.show({ type: 'error', text1: 'Error', text2: 'User not authenticated.' });
+        return;
+    }
 
     setIsSending(true);
     try {
-      const result: any = await sendBatSignal({ // Using actual function
+      const result: any = await sendBatSignal({ 
         senderLocation: new GeoPoint(userLocation.coords.latitude, userLocation.coords.longitude),
         radiusMetres: radiusMetres,
         targetAudienceType: audienceType,
         targetIds: audienceType === 'all' ? [] : selectedTargetIds,
-        message: message, // message is now sent
+        message: message, 
       });
 
       if (result.data.success && result.data.signalId) {
@@ -91,16 +94,18 @@ export default function SignalScreen() {
 
   const handleCancelSignal = async () => {
     if (!activeSignalId) return;
-    setIsSending(true);
+    setIsSending(true); // Re-use isSending for loading state
     try {
-      // const result: any = await cancelBatSignal(activeSignalId); // Assuming cancelBatSignal exists
-      // For now, simulate cancellation as the function is not defined in this subtask
+      // TODO: Implement actual cancelBatSignal Cloud Function if needed.
+      // For now, this is a local/simulated cancellation.
+      // If a real backend cancel is implemented:
+      // await cancelBatSignal(activeSignalId); 
       console.log("Simulating cancellation for signal:", activeSignalId);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // If using a real backend call, the following state resets might depend on success of that call.
       
       setActiveSignalId(null);
       setSignalSent(false);
-      setActiveAcceptances([]); // Clear acceptances
+      setActiveAcceptances([]); 
       setConsentingRecipient(null);
       setShowSenderConsentModal(false);
       Toast.show({ type: 'info', text1: 'Signal Cancelled' });
@@ -114,8 +119,8 @@ export default function SignalScreen() {
 
   // Listen for acceptances
   useEffect(() => {
-    if (!activeSignalId) {
-      setActiveAcceptances([]); // Clear acceptances if signal is cancelled or not active
+    if (!activeSignalId || !currentUser?.uid) { // Added null check for currentUser
+      setActiveAcceptances([]); 
       return;
     }
 
@@ -125,50 +130,58 @@ export default function SignalScreen() {
       where('status', '==', 'accepted')
     );
 
+    let hasNavigated = false; // Flag to prevent multiple navigations
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (hasNavigated) return; // Stop processing if already navigated
+
       const newAcceptances: BatSignalAcceptance[] = [];
       let foundRecipientRequiringConsent = false;
 
-      snapshot.forEach(doc => {
-        const acceptance = doc.data() as BatSignalAcceptance;
-        acceptance.id = doc.id; // Store doc ID
+      snapshot.forEach(acceptDoc => { // Renamed 'doc' to 'acceptDoc' to avoid conflict with 'doc' from firestore
+        if (hasNavigated) return; // Check flag inside loop as well
+
+        const acceptance = acceptDoc.data() as BatSignalAcceptance;
+        acceptance.id = acceptDoc.id; 
         newAcceptances.push(acceptance);
 
-        // Check for mutual consent leading to navigation
         if (acceptance.recipientConsentedShare && acceptance.senderConsentedShare && acceptance.sharingExpiresAt && acceptance.sharingExpiresAt.toDate() > new Date()) {
           console.log(`Mutual consent with ${acceptance.recipientId}. Navigating...`);
           Toast.show({ type: 'success', text1: 'Mutual Consent!', text2: `Connecting with ${acceptance.recipientName || 'user'}...` });
+          
+          hasNavigated = true; // Set flag
           router.replace({
             pathname: '/(main)/signal/LocationSharingScreen',
             params: {
               signalId: activeSignalId,
-              currentUserUid: currentUser!.uid, // Sender is current user
+              currentUserUid: currentUser.uid, 
               otherUserUid: acceptance.recipientId,
               sharingExpiresAt: acceptance.sharingExpiresAt.toMillis().toString(),
             },
           });
-          // Potentially reset state after navigation or handle multiple navigations carefully
-          // For now, first one to get mutual consent wins for the sender.
-          // Consider unsubscribing or managing state to prevent multiple navigation attempts.
-          return; // Exit after initiating navigation for one.
+          return; // Exit forEach effectively, further processing in this snapshot is moot
         }
         
-        // If we are not already showing a consent modal and this recipient needs sender consent
         if (!showSenderConsentModal && !foundRecipientRequiringConsent && acceptance.recipientConsentedShare && !acceptance.senderConsentedShare) {
             if (acceptance.sharingExpiresAt && acceptance.sharingExpiresAt.toDate() > new Date()) {
                 setConsentingRecipient({ id: acceptance.recipientId, name: acceptance.recipientName || 'A User' });
                 setShowSenderConsentModal(true);
-                foundRecipientRequiringConsent = true; // Prioritize one modal at a time
+                foundRecipientRequiringConsent = true; 
             } else {
                  console.log("Recipient consent found but sharing already expired for", acceptance.recipientId);
             }
         }
       });
-      setActiveAcceptances(newAcceptances);
+      if (!hasNavigated) { // Only update acceptances if we haven't navigated away
+          setActiveAcceptances(newAcceptances);
+      }
     });
 
-    return () => unsubscribe();
-  }, [activeSignalId, showSenderConsentModal, currentUser]); // Added showSenderConsentModal to dependencies
+    return () => {
+        unsubscribe();
+        hasNavigated = false; // Reset flag on cleanup
+    };
+  }, [activeSignalId, currentUser?.uid, showSenderConsentModal]); // currentUser.uid ensures effect reruns if user changes
 
 
   const handleSenderGrantConsent = async () => {
@@ -176,14 +189,14 @@ export default function SignalScreen() {
     setIsProcessingSenderConsent(true);
     try {
       const acceptanceDocRef = doc(firebase.firestore, 'batSignalAcceptances', `${activeSignalId}_${consentingRecipient.id}`);
-      const acceptanceDocSnap = await firebase.firestore.getDoc(acceptanceDocRef); // Use getDoc from firebase.firestore namespace
+      // Corrected: Use imported getDoc
+      const acceptanceDocSnap = await getDoc(acceptanceDocRef); 
       
       if (!acceptanceDocSnap.exists()) {
           throw new Error("Acceptance document not found.");
       }
       const acceptanceData = acceptanceDocSnap.data() as BatSignalAcceptance;
 
-      // Ensure recipient has consented and sharing is not expired
       if (!acceptanceData.recipientConsentedShare) {
           throw new Error("Recipient has not consented yet.");
       }
@@ -193,11 +206,9 @@ export default function SignalScreen() {
 
       await setDoc(acceptanceDocRef, {
         senderConsentedShare: serverTimestamp(),
-        // sharingExpiresAt is already set by recipient, no need to update unless logic changes
       }, { merge: true });
 
       Toast.show({ type: 'success', text1: 'Consent Granted!', text2: `Location sharing with ${consentingRecipient.name} can now begin.`});
-      // The useEffect listener for acceptances should pick this up and navigate.
     } catch (error: any) {
       console.error("Error granting sender consent:", error);
       Toast.show({ type: 'error', text1: 'Consent Failed', text2: error.message });
@@ -209,8 +220,6 @@ export default function SignalScreen() {
   };
 
   const handleSenderDenyConsent = () => {
-    // Optionally, update Firestore if needed, e.g. to mark senderDeniedConsent: true
-    // For now, just closing the modal.
     Toast.show({ type: 'info', text1: 'Consent Denied', text2: `You have not shared your location with ${consentingRecipient?.name}.` });
     setShowSenderConsentModal(false);
     setConsentingRecipient(null);
@@ -253,7 +262,6 @@ export default function SignalScreen() {
       <LoadingOverlay visible={isSending || isProcessingSenderConsent} />
       <Text style={styles.title}>Bat Signal</Text>
 
-      {/* Sender Consent Modal */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -288,7 +296,6 @@ export default function SignalScreen() {
 
       {!signalSent ? (
         <>
-          {/* ... (rest of the form for sending signal - no changes from previous) ... */}
           <View style={styles.settingRow}>
             <Text style={styles.label}>Radius (meters):</Text>
             <TextInput
@@ -311,7 +318,6 @@ export default function SignalScreen() {
                 />
             ))}
           </View>
-
 
           <Text style={styles.label}>Audience:</Text>
           <SegmentedControl
@@ -339,7 +345,7 @@ export default function SignalScreen() {
           <CustomButton
             title="Send Signal"
             onPress={handleSendSignal}
-            disabled={isSending || locationPermissionStatus !== 'granted' || !userLocation}
+            disabled={isSending || locationPermissionStatus !== 'granted' || !userLocation || !currentUser}
             icon={<Ionicons name="pulse-outline" size={20} color="white" />}
             style={styles.sendButton}
           />
@@ -350,13 +356,12 @@ export default function SignalScreen() {
           <Text style={styles.signalActiveText}>Signal active!</Text>
           <Text style={styles.signalActiveSubText}>ID: {activeSignalId}</Text>
           <Text style={styles.signalActiveSubText}>Waiting for responses...</Text>
-          {/* Display list of active acceptances - optional */}
           {activeAcceptances.length > 0 && (
             <View style={styles.acceptancesList}>
               <Text style={styles.acceptancesTitle}>Accepted By:</Text>
               {activeAcceptances.map(acc => (
                 <Text key={acc.id} style={styles.acceptanceItem}>
-                  {acc.recipientName || acc.recipientId}{' '}
+                  {acc.recipientName || acc.id.split('_')[1]}{' '} {/* Fallback to part of ID if name missing */}
                   {acc.recipientConsentedShare ? '(Consented)' : '(Awaiting their consent)'}
                   {acc.senderConsentedShare && acc.recipientConsentedShare && ' (Sharing!)'}
                 </Text>
@@ -386,7 +391,6 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
-  // Modal Styles (copied from BatSignalResponseScreen, adjust if needed)
   centeredView: {
     flex: 1,
     justifyContent: "center",
@@ -418,7 +422,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24,
   },
-  button: { // General button style for modal
+  button: { 
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 8,
@@ -426,14 +430,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center'
   },
-  grantButton: { // Specific for grant consent
-    backgroundColor: '#28a745', // Green
+  grantButton: { 
+    backgroundColor: '#28a745', 
     marginBottom:10,
   },
-  denyButton: { // Specific for deny consent
-    backgroundColor: '#dc3545', // Red
+  denyButton: { 
+    backgroundColor: '#dc3545', 
   },
-  // End Modal Styles
   title: {
     fontSize: 28,
     fontWeight: 'bold',
@@ -491,7 +494,7 @@ const styles = StyleSheet.create({
   },
   segmentedControl: {
     marginBottom: 20,
-    height: Platform.OS === 'ios' ? 40 : 50, // Adjust height for better touch target
+    height: Platform.OS === 'ios' ? 40 : 50, 
   },
   selectButton: {
     backgroundColor: '#007AFF',
@@ -511,16 +514,16 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 8,
     marginBottom: 20,
-    minHeight: Platform.OS === 'ios' ? 80 : 60, // Adjust height for multiline
+    minHeight: Platform.OS === 'ios' ? 80 : 60, 
     fontSize: 16,
     textAlignVertical: 'top',
   },
   sendButton: {
-    backgroundColor: '#4CAF50', // Green
+    backgroundColor: '#4CAF50', 
     padding: 15,
   },
   cancelButton: {
-    backgroundColor: '#f44336', // Red
+    backgroundColor: '#f44336', 
     marginTop: 20,
     padding: 15,
   },

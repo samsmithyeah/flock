@@ -4,13 +4,11 @@ export interface BatSignal {
   id: string; // Document ID
   senderId: string;
   senderName?: string; // Denormalized for quick display on recipient side
-  senderProfilePictureUrl?: string; // Denormalized
+  senderProfilePictureUrl?: string; // Denormalized (should align with User.photoURL)
   location: GeoPoint; // Sender's location when signal was sent
   radiusMetres: number;
-  // targetAudienceType: 'all' | 'crews' | 'contacts'; // Not needed if we store targetIds directly or rely on notifiedRecipientIds
-  // targetIds?: string[]; // Specific crew or user UIDs, if applicable
-  message?: string; // Optional message from sender (Phase 2)
-  status: 'active' | 'expired' | 'cancelled';
+  message?: string; // Optional message from sender
+  status: 'active' | 'expired' | 'cancelled'; // 'pending_sender_consent' could be another status
   createdAt: Timestamp;
   expiresAt: Timestamp;
   notifiedRecipientIds: string[]; // List of UIDs who were actually notified
@@ -21,12 +19,14 @@ export interface BatSignalAcceptance {
   signalId: string;
   recipientId: string;
   senderId: string; // For easier querying/filtering on sender's side
-  status: 'pending' | 'accepted' | 'declined' | 'ignored'; // 'ignored' could be implicit if no record exists
+  recipientName?: string; // Denormalized from User profile
+  recipientProfilePictureUrl?: string; // Denormalized from User profile (should align with User.photoURL)
+  status: 'pending' | 'accepted' | 'declined' | 'ignored'; // 'ignored' could be implicit or set if signal expires before action
   acceptedAt?: Timestamp;
   declinedAt?: Timestamp;
   senderConsentedShare?: Timestamp; // Timestamp of when sender consented to share location for this signal
   recipientConsentedShare?: Timestamp; // Timestamp of when recipient consented
-  sharingStartedAt?: Timestamp; // When both consented and sharing begins
+  sharingStartedAt?: Timestamp; // Optional: When both consented and sharing begins (could be set by a trigger or client)
   sharingExpiresAt?: Timestamp; // Calculated time when live sharing should stop
-  sharingStoppedManually?: boolean; // If either user explicitly stopped sharing
+  sharingStoppedManually?: boolean; // Optional: If either user explicitly stopped sharing via UI
 }

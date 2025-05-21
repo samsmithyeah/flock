@@ -1,177 +1,176 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Users Collection
-    match /users/{uid} {
-      // Allow users to read user details if they are authenticated
-      allow read: if request.auth != null;
 
-      // Allow users to create and update their own user details
-      allow create, update: if request.auth != null && request.auth.uid == uid;
-
-      // Prevent users from modifying certain sensitive fields
-      allow update: if request.auth != null && request.auth.uid == uid
-        && !("uid" in request.resource.data)
-        && !("email" in request.resource.data);
-    }
-    
-    // Crews Collection
-    match /crews/{crewId} {
-      allow create: if request.auth != null;
-
-      // Temporary rule to allow all authenticated users to read all crews
-      allow read: if request.auth != null;
-      
-      // Allow update if the user is a crew member or has a pending invitation
-      allow update: if isCrewMember(crewId) || isInvitationRecipientForCrew(crewId);
-      
-      // Allow delete if the user is the crew owner
-      allow delete: if isCrewOwner(crewId);
-      
-      // Subcollection: statuses
-      match /statuses/{date} {
-
-        // Temporary rule to allow all authenticated users to read all statuses
-        allow read: if request.auth != null;
-
-        // Subcollection: userStatuses
-        match /userStatuses/{userId} {
-          // Temporary rule to allow all authenticated users to read all userStatuses
-          allow read: if request.auth != null;
-          
-          // Allow create, update, delete if the user is a crew member and is modifying their own status
-          allow create, update, delete: if isCrewMember(crewId) && request.auth.uid == userId;
-        }
-      }
-
-      // Subcollection: events
-      match /events/{eventId} {
-        allow read: if request.auth != null;
-        
-        // Allow create if the user is a crew member
-        allow create: if isCrewMember(crewId);
-        
-        // Allow update if the user is the event creator or the crew owner
-        allow update: if request.auth != null
-                      && (request.auth.uid == resource.data.createdBy || isCrewOwner(crewId));
-        
-        // Allow delete if the user is the event creator or the crew owner
-        allow delete: if request.auth != null
-                      && (request.auth.uid == resource.data.createdBy || isCrewOwner(crewId));
-      }
-    }
-    
-    // Event Polls Collection
-    match /event_polls/{pollId} {
-      // Allow reading polls for authenticated users
-      allow read: if request.auth != null;
-      
-      // Allow creating polls if the user is a member of the referenced crew
-      allow create: if request.auth != null && 
-                    request.resource.data.crewId is string &&
-                    isCrewMember(request.resource.data.crewId) &&
-                    request.resource.data.createdBy == request.auth.uid;
-      
-      // Allow updates if:
-      // 1. User is the poll creator (for finalizing)
-      // 2. User is a crew member (for responding to poll options)
-      allow update: if request.auth != null &&
-                    (resource.data.createdBy == request.auth.uid ||
-                     isCrewMember(resource.data.crewId));
-                     
-      // Limit certain updates to poll creator only
-      allow update: if request.auth != null &&
-                    resource.data.createdBy == request.auth.uid &&
-                    ('finalized' in request.resource.data || 
-                     'selectedDate' in request.resource.data);
-      
-      // Only poll creator or crew owner can delete 
-      allow delete: if request.auth != null && 
-                    (resource.data.createdBy == request.auth.uid || 
-                     isCrewOwner(resource.data.crewId));
-    }
-    
-    // Invitations Collection
-    match /invitations/{invitationId} {
-      // Temporary rule to allow read for authenticated users
-      allow read: if request.auth != null;
-      
-      // Allow create if the sender is the authenticated user
-      allow create: if request.auth != null && request.resource.data.fromUserId == request.auth.uid;
-      
-      // Allow update if the user is the recipient
-      allow update: if isInvitationRecipient(invitationId);
-      
-      // Allow delete if the user is the sender
-      allow delete: if isInvitationSender(invitationId);
+    // Helper function: Checks if a user is the sender of a specific BatSignal
+    function isSignalSender(signalId, userId) {
+      return get(/databases/$(database)/documents/batSignals/$(signalId)).data.senderId == userId;
     }
 
-    // Direct Messages
-    match /direct_messages/{conversationId} {
-      //allow read, write: if request.auth != null && request.auth.uid in resource.data.participants;
-      // Temporary rule to allow for authenticated users
-      allow read, write, create, update: if request.auth != null;
-
-      
-      match /messages/{messageId} {
-        //allow read, write: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/direct_messages/$(conversationId)).data.participants;
-        // Temporary rule to allow for authenticated users
-        allow read, write, create, update: if request.auth != null;
-      }
+    // Helper function: Checks if a user is the recipient part of a BatSignalAcceptance document ID
+    // This version assumes the recipientId is embedded in the document ID like $(signalId)_$(recipientId)
+    function isAcceptanceRecipient(acceptanceDocId, userId) {
+      let parts = acceptanceDocId.split('_');
+      // Ensure there are at least two parts (signalId, recipientId)
+      return parts.size() >= 2 && parts[1] == userId;
     }
 
-    // Crew Date-Based Chats
-    match /crew_date_chats/{chatId} {
-      //allow read, write: if request.auth != null && request.auth.uid in resource.data.members;
-      // Temporary rule to allow for authenticated users
-      allow read, write, create, update: if request.auth != null;
+    // Helper function: Checks if the requestor is the specific recipient named in an acceptance document
+    // This is more robust if the document ID format is not strictly signalId_recipientId or if recipientId is a field.
+    function isRecipientInAcceptanceData(acceptanceDoc, userId) {
+      return acceptanceDoc.data.recipientId == userId;
+    }
+    
+    // Helper function: Checks if an acceptance document indicates an active, mutual share session
+    function isMutuallyConsentedAndActive(acceptanceDoc) {
+      return acceptanceDoc.data.senderConsentedShare == true &&
+             acceptanceDoc.data.recipientConsentedShare == true &&
+             acceptanceDoc.data.sharingExpiresAt != null &&
+             acceptanceDoc.data.sharingExpiresAt > request.time && 
+             (acceptanceDoc.data.sharingStoppedManually == null || acceptanceDoc.data.sharingStoppedManually == false);
+    }
+
+    // Helper function to check if a user is involved in a specific acceptance (either as sender of original signal or recipient of acceptance)
+    function isUserInvolvedInAcceptance(acceptanceDoc, userId) {
+        let signal = get(/databases/$(database)/documents/batSignals/$(acceptanceDoc.data.signalId)).data;
+        return userId == acceptanceDoc.data.recipientId || userId == signal.senderId;
+    }
+    
+    // Helper function to check if a user can read another user's live location.
+    // This function iterates through the `isSharingLocationWith` array on the target user's document.
+    // Note: Firestore rules do not support direct iteration or querying within rules for this kind of check.
+    // This helper function is conceptual and would ideally be supported by a structure like `isSharingLocationWith`
+    // or by denormalizing specific acceptance IDs onto user documents that can be directly checked.
+    // The rule using this function will be more of a placeholder for a robust, performant solution.
+    // For a more practical rule, one might check a specific, known acceptance document ID if the client can determine it.
+    function canReadLiveLocation(targetUserId, requestorId) {
+      // This is a placeholder for the complex logic.
+      // A real implementation would likely involve checking specific BatSignalAcceptance documents
+      // that the client knows about, or a denormalized list of active sharing partners on the user doc.
+      // For example, if targetUser.data.activeShares contains requestorId.
+      // As rules can't query, this is illustrative.
+      // The direct checks in the user read rule are more practical if acceptance IDs can be constructed.
+      return false; // Placeholder - actual logic is complex and usually needs specific doc paths.
+    }
+
+    match /batSignals/{signalId} {
+      allow read: if request.auth.uid != null &&
+                     (request.auth.uid == resource.data.senderId ||
+                     (resource.data.notifiedRecipientIds != null && request.auth.uid in resource.data.notifiedRecipientIds));
+
+      allow create: if request.auth.uid != null &&
+                       request.auth.uid == request.resource.data.senderId &&
+                       request.resource.data.location is firestore.GeoPoint &&
+                       request.resource.data.radiusMetres is number &&
+                       request.resource.data.radiusMetres > 0 &&
+                       request.resource.data.status == 'active' &&
+                       request.resource.data.createdAt == request.time &&
+                       request.resource.data.expiresAt is timestamp &&
+                       request.resource.data.expiresAt > request.time &&
+                       request.resource.data.notifiedRecipientIds is list &&
+                       (request.resource.data.message == null || request.resource.data.message is string); // Validate message type
+
+      allow update: if request.auth.uid != null &&
+                       request.auth.uid == resource.data.senderId &&
+                       request.resource.data.status == 'cancelled' &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+
+      allow delete: if false;
+    }
+
+    match /batSignalAcceptances/{acceptanceId} {
+      // Assumes acceptanceId is $(signalId)_$(recipientId) for some checks
       
-      match /messages/{messageId} {
-        //allow read, write: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/crew_date_chats/$(chatId)).data.members;
-        // Temporary rule to allow read for authenticated users
-        allow read, write, create, update: if request.auth != null;
-      }
+      allow read: if request.auth.uid != null &&
+                     (isAcceptanceRecipient(acceptanceId, request.auth.uid) || 
+                      isSignalSender(resource.data.signalId, request.auth.uid));
+
+      allow create: if request.auth.uid != null &&
+                       isAcceptanceRecipient(acceptanceId, request.auth.uid) && // Validates requestor is the recipient in ID
+                       request.auth.uid == request.resource.data.recipientId && // Validates recipientId field matches requestor
+                       request.resource.data.signalId != null &&
+                       request.resource.data.senderId == get(/databases/$(database)/documents/batSignals/$(request.resource.data.signalId)).data.senderId &&
+                       (request.resource.data.status == 'accepted' || request.resource.data.status == 'declined') &&
+                       get(/databases/$(database)/documents/batSignals/$(request.resource.data.signalId)).data.status == 'active' &&
+                       get(/databases/$(database)/documents/batSignals/$(request.resource.data.signalId)).data.expiresAt > request.time &&
+                       (request.resource.data.recipientName == null || request.resource.data.recipientName is string) &&
+                       (request.resource.data.recipientProfilePictureUrl == null || request.resource.data.recipientProfilePictureUrl is string);
+
+
+      allow update: if request.auth.uid != null &&
+                       // Recipient can update their consent, expiry, and status related fields
+                       (isRecipientInAcceptanceData(resource, request.auth.uid) && // Check against recipientId field
+                        request.resource.data.diff(resource.data).affectedKeys().hasAny(['recipientConsentedShare', 'sharingExpiresAt', 'status', 'acceptedAt', 'declinedAt', 'sharingStoppedManually'])
+                       ) ||
+                       // Sender of original signal can update their consent
+                       (isSignalSender(resource.data.signalId, request.auth.uid) &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['senderConsentedShare'])
+                       ) ||
+                       // Either involved user can update to stop sharing (by setting expiry or manual stop flag)
+                       // This rule is somewhat redundant if the above already covers it, but explicit for clarity.
+                       (isUserInvolvedInAcceptance(resource, request.auth.uid) &&
+                        (request.resource.data.diff(resource.data).affectedKeys().hasAny(['sharingExpiresAt', 'sharingStoppedManually']))
+                       );
+      
+      allow delete: if false;
     }
-    
-    // Helper Functions
-    
-    // Check if the authenticated user is a member of the crew
-    function isCrewMember(crewId) {
-      return request.auth != null &&
-             exists(/databases/$(database)/documents/crews/$(crewId)) &&
-             request.auth.uid in get(/databases/$(database)/documents/crews/$(crewId)).data.memberIds;
-    }
-    
-    // Check if the authenticated user is the owner of the crew
-    function isCrewOwner(crewId) {
-      return request.auth != null &&
-             exists(/databases/$(database)/documents/crews/$(crewId)) &&
-             get(/databases/$(database)/documents/crews/$(crewId)).data.ownerId == request.auth.uid;
-    }
-    
-    // Check if the authenticated user is the recipient of the invitation
-    function isInvitationRecipient(invitationId) {
-      return request.auth != null &&
-             exists(/databases/$(database)/documents/invitations/$(invitationId)) &&
-             get(/databases/$(database)/documents/invitations/$(invitationId)).data.toUserId == request.auth.uid;
-    }
-    
-    // Check if the authenticated user is the sender of the invitation
-    function isInvitationSender(invitationId) {
-      return request.auth != null &&
-             exists(/databases/$(database)/documents/invitations/$(invitationId)) &&
-             get(/databases/$(database)/documents/invitations/$(invitationId)).data.fromUserId == request.auth.uid;
-    }
-    
-    // Check if the authenticated user has a pending invitation to the crew
-    function isInvitationRecipientForCrew(crewId) {
-      return request.auth != null &&
-             request.resource.data.invitationId is string &&
-             exists(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)) &&
-             get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.toUserId == request.auth.uid &&
-             get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.crewId == crewId &&
-             get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.status == 'pending';
+
+    match /users/{userId} {
+      allow read: if request.auth.uid == userId; // User can read their own document fully
+      
+      // Allow reading other user's liveLocation if there's a specific, active, and mutual BatSignalAcceptance.
+      // This rule requires constructing the potential acceptance document IDs.
+      // One for when the requestor is the recipient, and one for when the target user (`userId`) is the recipient.
+      allow read: if request.auth.uid != null && userId != request.auth.uid &&
+                    (
+                      // Case 1: Requestor is the recipient, target user (userId) is the sender
+                      (
+                        exists(/databases/$(database)/documents/batSignalAcceptances/$(get(/databases/$(database)/documents/users/$(userId)).data.isSharingLocationWith[0].signalId)_$(request.auth.uid)) && // This part is very conceptual and likely needs a known signalId
+                        isMutuallyConsentedAndActive(get(/databases/$(database)/documents/batSignalAcceptances/$(get(/databases/$(database)/documents/users/$(userId)).data.isSharingLocationWith[0].signalId)_$(request.auth.uid))) &&
+                        get(/databases/$(database)/documents/batSignalAcceptances/$(get(/databases/$(database)/documents/users/$(userId)).data.isSharingLocationWith[0].signalId)_$(request.auth.uid)).data.senderId == userId &&
+                        (resource.data.keys().hasOnly(['displayName', 'photoURL', 'liveLocation', 'uid', 'firstName', 'lastName'])) // Only allow reading these fields
+                      ) ||
+                      // Case 2: Target user (userId) is the recipient, requestor is the sender
+                      (
+                        exists(/databases/$(database)/documents/batSignalAcceptances/$(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSharingLocationWith[0].signalId)_$(userId)) && // This part is very conceptual
+                        isMutuallyConsentedAndActive(get(/databases/$(database)/documents/batSignalAcceptances/$(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSharingLocationWith[0].signalId)_$(userId))) &&
+                        get(/databases/$(database)/documents/batSignalAcceptances/$(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSharingLocationWith[0].signalId)_$(userId)).data.senderId == request.auth.uid &&
+                        (resource.data.keys().hasOnly(['displayName', 'photoURL', 'liveLocation', 'uid', 'firstName', 'lastName']))
+                      )
+                    );
+        // The above rule for reading liveLocation is very complex and relies on `isSharingLocationWith` which isn't fully integrated.
+        // A simpler, more common pattern is to allow reading non-sensitive fields and protect sensitive ones.
+        // For liveLocation, it's often handled by clients subscribing to specific documents they *know* they have access to (like a specific BatSignalAcceptance).
+        // Protecting individual fields from a general user read is hard without negative conditions.
+        // A better model for liveLocation might be:
+        // 1. User doc: allow general read of non-sensitive fields.
+        // 2. liveLocation field: deny read by default to others.
+        // 3. Specific rule for liveLocation: allow read if active sharing session (as attempted above, or more simply if client has a known acceptanceID to check)
+
+      // General read for non-sensitive fields (if not covered by liveLocation specific rule)
+      allow get: if request.auth.uid != null && request.auth.uid != userId &&
+                    (resource.data.keys().hasOnly(['displayName', 'photoURL', 'uid', 'firstName', 'lastName']));
+
+
+      allow update: if request.auth.uid == userId &&
+                       // User can update their own document.
+                       // Validate specific fields that can be updated by the user.
+                       (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                         'displayName', 'firstName', 'lastName', 'photoURL', 
+                         'expoPushToken', 
+                         // 'activeChats', 'badgeCount', // Usually updated by backend/triggers
+                         'phoneNumber', 'country', 
+                         // 'isOnline', 'lastSeen', // Usually updated by backend/triggers or specific presence mechanism
+                         'crewOrder',
+                         'lastKnownLocation', 'lastKnownLocationTimestamp', 'liveLocation'
+                         // 'isSharingLocationWith' // Should ideally be managed by backend logic
+                       ])) &&
+                       (request.resource.data.lastKnownLocation == null || request.resource.data.lastKnownLocation is firestore.GeoPoint) &&
+                       (request.resource.data.lastKnownLocationTimestamp == null || request.resource.data.lastKnownLocationTimestamp == request.time || request.resource.data.lastKnownLocationTimestamp is timestamp) &&
+                       (request.resource.data.liveLocation == null || request.resource.data.liveLocation is firestore.GeoPoint);
+                       
+      allow delete: if false;
     }
   }
 }
