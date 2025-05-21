@@ -38,7 +38,7 @@ try {
   }
 }
 const db = getFirestore(app);
-const functions = getFunctions(app);
+const functions = getFunctions(app, 'europe-west1'); // Ensure region is correct
 const storage = getStorage(app);
 
 // const isAndroid = Platform.OS === 'android';
@@ -86,6 +86,22 @@ const deleteAccount = (targetUserId?: string) => {
   return deleteAccountCallable({ targetUserId });
 };
 
+const respondToBatSignal = (signalId: string, recipientStatus: 'accepted' | 'declined') => {
+  if (!auth.currentUser) {
+    throw new Error('User is not authenticated for respondToBatSignal');
+  }
+  const respondToBatSignalCallable = httpsCallable(functions, 'respondToBatSignal');
+  return respondToBatSignalCallable({ signalId, recipientStatus });
+};
+
+const sendBatSignal = (data: { senderLocation: any; radiusMetres: number; targetAudienceType: string; targetIds: string[]; message?: string; }) => {
+  if (!auth.currentUser) {
+    throw new Error('User is not authenticated for sendBatSignal');
+  }
+  const sendBatSignalCallable = httpsCallable(functions, 'sendBatSignal');
+  return sendBatSignalCallable(data);
+};
+
 export {
   auth,
   db,
@@ -94,5 +110,7 @@ export {
   deleteCrew,
   pokeCrew,
   deleteAccount,
+  respondToBatSignal,
+  sendBatSignal, // Added here
   firebaseConfig,
 };

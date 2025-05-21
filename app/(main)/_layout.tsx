@@ -80,6 +80,15 @@ export default function MainLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="signal"
+        options={{
+          title: 'Signal',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="pulse-outline" size={size} color={color} />
+          ),
+        }}
+      />
     </Tabs>
   );
 }

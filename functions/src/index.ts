@@ -29,6 +29,7 @@ import { notifyCrewMembersOnPollEdit } from './notifications/notifyCrewMembersOn
 import { notifyNonRespondingPollMembers } from './notifications/notifyNonRespondingPollMembers';
 import { notifyUsersAboutTodaysEvents } from './notifications/notifyUsersAboutTodaysEvents';
 import { notifyUsersAboutTomorrowsEvents } from './notifications/notifyUsersAboutTomorrowsEvents';
+import { sendBatSignal as _sendBatSignal, respondToBatSignal as _respondToBatSignal } from './batSignal';
 
 export {
   notifyCrewMembersOnEventWrite,
@@ -62,6 +63,9 @@ export {
   notifyNonRespondingPollMembers,
   notifyUsersAboutTodaysEvents,
   notifyUsersAboutTomorrowsEvents,
+  // Bat Signal
+  _sendBatSignal as sendBatSignal,
+  _respondToBatSignal as respondToBatSignal,
 };
 
 // Initialize Firebase Admin SDK

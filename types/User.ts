@@ -1,4 +1,4 @@
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp, GeoPoint } from 'firebase/firestore';
 
 export interface User {
   uid: string;
@@ -15,4 +15,8 @@ export interface User {
   isOnline?: boolean;
   lastSeen?: Timestamp;
   crewOrder?: string[];
+  lastKnownLocation?: GeoPoint;
+  lastKnownLocationTimestamp?: Timestamp;
+  liveLocation?: GeoPoint; // Actively updated during a sharing session
+  isSharingLocationWith?: Array<{ signalId: string, userId: string, expiresAt: Timestamp }>; // Info about current sharing sessions
 }
