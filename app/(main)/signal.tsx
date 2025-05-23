@@ -15,16 +15,14 @@ import { useUser } from '@/context/UserContext';
 import { useCrews } from '@/context/CrewsContext';
 import { useSignal } from '@/context/SignalContext';
 import LoadingOverlay from '@/components/LoadingOverlay';
-
+import Toast from 'react-native-toast-message';
 import ScreenTitle from '@/components/ScreenTitle';
-import useglobalStyles from '@/styles/globalStyles';
 import LocationSharingModal from '@/components/LocationSharingModal';
 
 
 const SignalScreen: React.FC = () => {
   const { user } = useUser();
   const { crews } = useCrews();
-  const globalStyles = useglobalStyles();
   const {
     currentLocation,
     activeSignals,
@@ -93,16 +91,41 @@ const SignalScreen: React.FC = () => {
       // Reset form
       setMessage('');
       setSelectedCrews([]);
+      
+      // Show success feedback
+      Toast.show({
+        type: 'success',
+        text1: 'Signal Sent! 📍',
+        text2: `Notified friends within ${formatDistance(radius)}`,
+      });
     } catch (error) {
       console.error('Error sending signal:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Signal Failed',
+        text2: 'Please try again or check your connection',
+      });
     }
   };
 
   const handleRespondToSignal = async (signalId: string, response: 'accept' | 'ignore') => {
     try {
       await respondToSignalContext(signalId, response);
+      
+      if (response === 'accept') {
+        Toast.show({
+          type: 'success',
+          text1: 'Signal Accepted! 🎉',
+          text2: 'Your location has been shared',
+        });
+      }
     } catch (error) {
       console.error('Error responding to signal:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Response Failed',
+        text2: 'Please try again',
+      });
     }
   };
 
@@ -124,8 +147,9 @@ const SignalScreen: React.FC = () => {
   return (
     <>
       {isLoading && <LoadingOverlay />}
-      <ScrollView style={[globalStyles.container, styles.container]}>
-        <ScreenTitle title="Signal" />
+      <View style={styles.container}>
+        <ScrollView style={styles.scrollView}>
+          <ScreenTitle title="Signal" />
         
         {/* Send Signal Section */}
         <View style={styles.section}>
@@ -137,7 +161,7 @@ const SignalScreen: React.FC = () => {
           {!currentLocation && (
             <>
               <TouchableOpacity 
-                style={[styles.locationButton, locationLoading && styles.locationButtonDisabled]} 
+                style={locationLoading ? [styles.locationButton, styles.locationButtonDisabled] : styles.locationButton} 
                 onPress={handleLocationRequest}
                 disabled={locationLoading}
               >
@@ -186,19 +210,19 @@ const SignalScreen: React.FC = () => {
                 <Text style={styles.label}>Who to notify:</Text>
                 
                 <TouchableOpacity 
-                  style={[styles.optionButton, targetType === 'all' && styles.optionButtonActive]}
+                  style={targetType === 'all' ? [styles.optionButton, styles.optionButtonActive] : styles.optionButton}
                   onPress={() => setTargetType('all')}
                 >
-                  <Text style={[styles.optionText, targetType === 'all' && styles.optionTextActive]}>
+                  <Text style={targetType === 'all' ? [styles.optionText, styles.optionTextActive] : styles.optionText}>
                     All Contacts
                   </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity 
-                  style={[styles.optionButton, targetType === 'crews' && styles.optionButtonActive]}
+                  style={targetType === 'crews' ? [styles.optionButton, styles.optionButtonActive] : styles.optionButton}
                   onPress={() => setTargetType('crews')}
                 >
-                  <Text style={[styles.optionText, targetType === 'crews' && styles.optionTextActive]}>
+                  <Text style={targetType === 'crews' ? [styles.optionText, styles.optionTextActive] : styles.optionText}>
                     Specific Crews
                   </Text>
                 </TouchableOpacity>
@@ -247,33 +271,45 @@ const SignalScreen: React.FC = () => {
         </View>
 
         {/* Active Signals */}
-        {activeSignals.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Your Active Signals</Text>
-            {activeSignals.map((signal) => (
-              <View key={signal.id} style={styles.signalCard}>
+      {activeSignals.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Your Active Signals</Text>
+          {activeSignals.map((signal) => (
+            <View key={signal.id} style={styles.signalCard}>
+              <View style={styles.signalHeader}>
                 <Text style={styles.signalInfo}>
-                  Sent {formatDistance(signal.radius)} radius • {signal.responses.length} responses
+                  Sent {formatDistance(signal.radius)} radius
                 </Text>
-                {signal.responses.map((response, index) => (
-                  <View key={index} style={styles.responseRow}>
-                    <Text style={styles.responseText}>
-                      {response.response === 'accept' ? '✅' : '❌'} Response {index + 1}
-                    </Text>
-                    {response.response === 'accept' && (
-                      <TouchableOpacity
-                        style={styles.viewLocationButton}
-                        onPress={() => setSelectedSignalForSharing(signal.id)}
-                      >
-                        <Text style={styles.viewLocationText}>View Location</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                ))}
+                <View style={styles.signalStatus}>
+                  <Icon name="radio-button-on" size={16} color="#4CAF50" />
+                  <Text style={styles.statusText}>Active</Text>
+                </View>
               </View>
-            ))}
-          </View>
-        )}
+              <Text style={styles.responseCount}>
+                {signal.responses.length} response{signal.responses.length !== 1 ? 's' : ''}
+              </Text>
+              {signal.responses.map((response, index) => (
+                <View key={index} style={styles.responseRow}>
+                  <Text style={styles.responseText}>
+                    {response.response === 'accept' ? '✅' : '❌'} {response.responderName || `Response ${index + 1}`}
+                  </Text>
+                  {response.response === 'accept' && (
+                    <TouchableOpacity
+                      style={styles.viewLocationButton}
+                      onPress={() => setSelectedSignalForSharing(signal.id)}
+                    >
+                      <Text style={styles.viewLocationText}>View Location</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+              {signal.responses.length === 0 && (
+                <Text style={styles.noResponsesText}>No responses yet...</Text>
+              )}
+            </View>
+          ))}
+        </View>
+      )}
 
         {/* Received Signals */}
         {receivedSignals.length > 0 && (
@@ -281,42 +317,59 @@ const SignalScreen: React.FC = () => {
             <Text style={styles.sectionTitle}>Signals Near You</Text>
             {receivedSignals.map((signal) => (
               <View key={signal.id} style={styles.signalCard}>
-                <Text style={styles.signalSender}>Signal from nearby friend</Text>
+                <View style={styles.signalHeader}>
+                  <Text style={styles.signalSender}>📍 Nearby friend wants to meet!</Text>
+                  <View style={styles.signalPulse}>
+                    <Icon name="fiber-manual-record" size={8} color="#ff6b6b" />
+                  </View>
+                </View>
                 {signal.message && (
-                  <Text style={styles.signalMessage}>{signal.message}</Text>
+                  <Text style={styles.signalMessage}>"{signal.message}"</Text>
                 )}
+                <Text style={styles.signalTime}>
+                  Just now • Tap to respond
+                </Text>
                 <View style={styles.responseButtons}>
                   <TouchableOpacity
-                    style={[styles.responseButton, styles.acceptButton]}
+                    style={StyleSheet.compose(styles.responseButton, styles.acceptButton)}
                     onPress={() => handleRespondToSignal(signal.id, 'accept')}
+                    disabled={isLoading}
                   >
-                    <Text style={styles.responseButtonText}>Accept</Text>
+                    <Icon name="check" size={18} color="#fff" />
+                    <Text style={styles.responseButtonText}>Meet Up</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.responseButton, styles.ignoreButton]}
+                    style={StyleSheet.compose(styles.responseButton, styles.ignoreButton)}
                     onPress={() => handleRespondToSignal(signal.id, 'ignore')}
+                    disabled={isLoading}
                   >
-                    <Text style={styles.responseButtonText}>Ignore</Text>
+                    <Icon name="close" size={18} color="#fff" />
+                    <Text style={styles.responseButtonText}>Not Now</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             ))}
           </View>
         )}
-      </ScrollView>
+        </ScrollView>
 
-    <LocationSharingModal
-      visible={selectedSignalForSharing !== null}
-      onClose={() => setSelectedSignalForSharing(null)}
-      signalId={selectedSignalForSharing || ''}
-      currentUserLocation={currentLocation || undefined}
-    />
-  </>
-);
+        <LocationSharingModal
+          visible={selectedSignalForSharing !== null}
+          onClose={() => setSelectedSignalForSharing(null)}
+          signalId={selectedSignalForSharing || ''}
+          currentUserLocation={currentLocation || undefined}
+        />
+      </View>
+    </>
+  );
 };
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  scrollView: {
     flex: 1,
   },
   section: {
@@ -463,14 +516,52 @@ const styles = StyleSheet.create({
   },
   signalCard: {
     backgroundColor: '#f9f9f9',
-    padding: 12,
-    borderRadius: 8,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#1e90ff',
+  },
+  signalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 8,
   },
   signalInfo: {
     fontSize: 14,
     color: '#666',
+    flex: 1,
+  },
+  signalStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusText: {
+    fontSize: 12,
+    color: '#4CAF50',
+    marginLeft: 4,
+    fontWeight: '600',
+  },
+  responseCount: {
+    fontSize: 13,
+    color: '#888',
     marginBottom: 8,
+  },
+  noResponsesText: {
+    fontSize: 12,
+    color: '#999',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 8,
+  },
+  signalPulse: {
+    opacity: 0.8,
+  },
+  signalTime: {
+    fontSize: 12,
+    color: '#888',
+    marginBottom: 12,
   },
   signalSender: {
     fontSize: 16,
@@ -512,9 +603,11 @@ const styles = StyleSheet.create({
   },
   responseButton: {
     flex: 1,
-    padding: 10,
-    borderRadius: 6,
+    flexDirection: 'row',
+    padding: 12,
+    borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
     marginHorizontal: 4,
   },
   acceptButton: {
@@ -527,6 +620,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+    marginLeft: 6,
   },
 });
 

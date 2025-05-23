@@ -96,7 +96,6 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
       try {
         location = await getCurrentPositionAsync({
           accuracy: Accuracy.High,
-          timeout: 10000,
         });
       } catch (highAccuracyError) {
         console.log('High accuracy failed, trying balanced accuracy...', highAccuracyError);
@@ -105,7 +104,6 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
         try {
           location = await getCurrentPositionAsync({
             accuracy: Accuracy.Balanced,
-            timeout: 15000,
           });
         } catch (balancedError) {
           console.log('Balanced accuracy failed, trying low accuracy...', balancedError);
@@ -113,7 +111,6 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
           // Final fallback to low accuracy
           location = await getCurrentPositionAsync({
             accuracy: Accuracy.Low,
-            timeout: 20000,
           });
         }
       }
@@ -279,17 +276,18 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
       let location: LocationType | undefined;
       
       if (response === 'accept') {
-        const location = await getCurrentLocation();
-        if (!location) {
+        const userLocation = await getCurrentLocation();
+        if (!userLocation) {
           throw new Error('Location required to accept signal');
         }
+        location = userLocation;
       }
 
       const respondToSignalCallable = httpsCallable(functions, 'respondToSignal');
       await respondToSignalCallable({
         signalId,
         response,
-        location: location || undefined,
+        location,
       });
 
       Toast.show({
