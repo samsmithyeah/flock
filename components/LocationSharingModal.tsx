@@ -1,0 +1,342 @@
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Modal,
+  TouchableOpacity,
+  Alert,
+  Linking,
+} from 'react-native';
+import Icon from '@expo/vector-icons/MaterialIcons';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '@/firebase';
+import { Location } from '@/types/Signal';
+
+interface LocationSharingModalProps {
+  visible: boolean;
+  onClose: () => void;
+  signalId: string;
+  currentUserLocation?: Location;
+}
+
+interface LocationSharingData {
+  otherUserLocation: Location;
+  otherUserId: string;
+  otherUserName: string;
+  expiresAt: Date;
+}
+
+const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
+  visible,
+  onClose,
+  signalId,
+  currentUserLocation,
+}) => {
+  const [locationData, setLocationData] = useState<LocationSharingData | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [timeRemaining, setTimeRemaining] = useState<string>('');
+
+  useEffect(() => {
+    if (visible && signalId) {
+      fetchLocationData();
+    }
+  }, [visible, signalId]);
+
+  useEffect(() => {
+    if (locationData?.expiresAt) {
+      const interval = setInterval(updateTimeRemaining, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [locationData]);
+
+  const fetchLocationData = async () => {
+    setIsLoading(true);
+    try {
+      const getLocationSharingCallable = httpsCallable(functions, 'getLocationSharing');
+      const result = await getLocationSharingCallable({ signalId });
+      
+      const data = result.data as any;
+      if (data.success) {
+        setLocationData({
+          ...data.data,
+          expiresAt: new Date(data.data.expiresAt.seconds * 1000),
+        });
+      } else {
+        Alert.alert('Error', data.message);
+        onClose();
+      }
+    } catch (error) {
+      console.error('Error fetching location data:', error);
+      Alert.alert('Error', 'Failed to load location sharing data');
+      onClose();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const updateTimeRemaining = () => {
+    if (!locationData?.expiresAt) return;
+    
+    const now = new Date();
+    const remaining = locationData.expiresAt.getTime() - now.getTime();
+    
+    if (remaining <= 0) {
+      setTimeRemaining('Expired');
+      return;
+    }
+    
+    const minutes = Math.floor(remaining / (1000 * 60));
+    const seconds = Math.floor((remaining % (1000 * 60)) / 1000);
+    setTimeRemaining(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+  };
+
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371e3; // Earth's radius in meters
+    const φ1 = (lat1 * Math.PI) / 180;
+    const φ2 = (lat2 * Math.PI) / 180;
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c; // Distance in meters
+  };
+
+  const formatDistance = (meters: number): string => {
+    if (meters < 1000) {
+      return `${Math.round(meters)}m`;
+    }
+    return `${(meters / 1000).toFixed(1)}km`;
+  };
+
+  const openDirections = () => {
+    if (!locationData?.otherUserLocation) return;
+    
+    const { latitude, longitude } = locationData.otherUserLocation;
+    const url = `https://maps.google.com/maps?daddr=${latitude},${longitude}`;
+    
+    Linking.canOpenURL(url).then((supported) => {
+      if (supported) {
+        Linking.openURL(url);
+      } else {
+        Alert.alert('Error', 'Unable to open maps');
+      }
+    });
+  };
+
+  const distance = currentUserLocation && locationData?.otherUserLocation
+    ? calculateDistance(
+        currentUserLocation.latitude,
+        currentUserLocation.longitude,
+        locationData.otherUserLocation.latitude,
+        locationData.otherUserLocation.longitude
+      )
+    : null;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={styles.overlay}>
+        <View style={styles.modal}>
+          <View style={styles.header}>
+            <Text style={styles.title}>Location Shared</Text>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <Icon name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          {isLoading ? (
+            <View style={styles.loadingContainer}>
+              <Text style={styles.loadingText}>Loading location data...</Text>
+            </View>
+          ) : locationData ? (
+            <View style={styles.content}>
+              <View style={styles.userInfo}>
+                <Icon name="person-pin" size={32} color="#1e90ff" />
+                <Text style={styles.userName}>{locationData.otherUserName}</Text>
+                <Text style={styles.statusText}>wants to meet up!</Text>
+              </View>
+
+              <View style={styles.locationDetails}>
+                <View style={styles.detailRow}>
+                  <Icon name="location-on" size={20} color="#ff6b6b" />
+                  <Text style={styles.detailText}>
+                    {locationData.otherUserLocation.latitude.toFixed(6)}, {locationData.otherUserLocation.longitude.toFixed(6)}
+                  </Text>
+                </View>
+
+                {distance && (
+                  <View style={styles.detailRow}>
+                    <Icon name="straighten" size={20} color="#4CAF50" />
+                    <Text style={styles.detailText}>
+                      {formatDistance(distance)} away
+                    </Text>
+                  </View>
+                )}
+
+                <View style={styles.detailRow}>
+                  <Icon name="schedule" size={20} color="#FF9800" />
+                  <Text style={styles.detailText}>
+                    Expires in {timeRemaining}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.actions}>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.directionsButton]}
+                  onPress={openDirections}
+                >
+                  <Icon name="directions" size={20} color="#fff" />
+                  <Text style={styles.buttonText}>Get Directions</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.closeActionButton]}
+                  onPress={onClose}
+                >
+                  <Text style={styles.buttonText}>Close</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.disclaimer}>
+                Location sharing will automatically expire in {timeRemaining}. 
+                Your location is only shared while this session is active.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>No location sharing data available</Text>
+            </View>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+const styles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modal: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '80%',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  content: {
+    padding: 16,
+  },
+  loadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
+  },
+  errorContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#ff6b6b',
+    textAlign: 'center',
+  },
+  userInfo: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  userName: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    marginTop: 8,
+  },
+  statusText: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 4,
+  },
+  locationDetails: {
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 20,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  detailText: {
+    fontSize: 14,
+    color: '#333',
+    marginLeft: 8,
+    flex: 1,
+  },
+  actions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginHorizontal: 4,
+  },
+  directionsButton: {
+    backgroundColor: '#1e90ff',
+  },
+  closeActionButton: {
+    backgroundColor: '#666',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  disclaimer: {
+    fontSize: 12,
+    color: '#888',
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+});
+
+export default LocationSharingModal;

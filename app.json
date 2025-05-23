@@ -19,6 +19,8 @@
       "infoPlist": {
         "NSUserNotificationUsageDescription": "This app uses push notifications to notify you of updates.",
         "NSContactsUsageDescription": "This app requires access to your contacts to find friends who are already using the app.",
+        "NSLocationWhenInUseUsageDescription": "This app needs location access to send and receive meetup signals from nearby friends.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs location access to send and receive meetup signals from nearby friends.",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true
         },
@@ -39,7 +41,7 @@
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#D8CECB"
       },
-      "permissions": ["READ_CONTACTS"],
+      "permissions": ["READ_CONTACTS", "ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
       "package": "com.samlovesit.GoingOutApp",
       "googleServicesFile": "./google-services.json"
     },
@@ -55,6 +57,14 @@
         {
           "icon": "./assets/images/icon_96x96_android.png",
           "color": "#2596be"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Flock to use your location to send and receive meetup signals from nearby friends.",
+          "locationAlwaysPermission": "Allow Flock to use your location to send and receive meetup signals from nearby friends.",
+          "locationWhenInUsePermission": "Allow Flock to use your location to send and receive meetup signals from nearby friends."
         }
       ],
       "expo-router",

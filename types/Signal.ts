@@ -1,0 +1,39 @@
+import { Timestamp } from 'firebase/firestore';
+
+export interface Location {
+  latitude: number;
+  longitude: number;
+}
+
+export interface SignalResponse {
+  id: string;
+  signalId: string;
+  responderId: string;
+  responderName?: string;
+  response: 'accept' | 'ignore';
+  location?: Location;
+  respondedAt: Timestamp;
+}
+
+export interface Signal {
+  id: string;
+  senderId: string;
+  message?: string;
+  radius: number; // in meters
+  location: Location;
+  targetType: 'all' | 'crews' | 'contacts';
+  targetIds: string[]; // crew IDs or contact IDs depending on targetType
+  createdAt: Timestamp;
+  expiresAt: Timestamp;
+  responses: SignalResponse[];
+  status: 'active' | 'expired' | 'cancelled';
+}
+
+export interface SignalNotification {
+  signalId: string;
+  senderId: string;
+  senderName: string;
+  message?: string;
+  distance: number; // distance from recipient in meters
+  createdAt: Timestamp;
+}
