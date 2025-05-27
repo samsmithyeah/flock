@@ -18,6 +18,7 @@ export interface SignalResponse {
 export interface Signal {
   id: string;
   senderId: string;
+  senderName?: string; // Added for display purposes
   message?: string;
   radius: number; // in meters
   location: Location;

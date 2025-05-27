@@ -40,7 +40,11 @@ const SignalCard: React.FC<SignalCardProps> = ({
             <View style={styles.pulse} />
             <Ionicons name="location" size={16} color="#FF6B6B" />
           </View>
-          <Text style={styles.title}>Someone wants to meet!</Text>
+          <Text style={styles.title}>
+            {signal.senderName
+              ? `${signal.senderName} wants to meet!`
+              : 'Someone wants to meet!'}
+          </Text>
         </View>
         <Text style={styles.timeAgo}>
           {getTimeAgo(signal.createdAt.toDate())}
@@ -66,7 +70,7 @@ const SignalCard: React.FC<SignalCardProps> = ({
       {/* Action buttons */}
       <View style={styles.buttonContainer}>
         <CustomButton
-          title="Meet Up"
+          title="Meet up"
           onPress={onAccept}
           variant="success"
           icon={{ name: 'checkmark', size: 16, color: '#fff' }}
@@ -75,7 +79,7 @@ const SignalCard: React.FC<SignalCardProps> = ({
           disabled={isLoading}
         />
         <CustomButton
-          title="Not Now"
+          title="Not now"
           onPress={onIgnore}
           variant="secondaryDanger"
           icon={{ name: 'close', size: 16, color: '#DC3545' }}
@@ -91,20 +95,11 @@ const SignalCard: React.FC<SignalCardProps> = ({
 const styles = StyleSheet.create({
   container: {
     backgroundColor: '#fff',
-    borderRadius: 16,
     padding: 16,
-    marginVertical: 6,
-    marginHorizontal: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
-    borderLeftWidth: 4,
-    borderLeftColor: '#FF6B6B',
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
   },
   header: {
     flexDirection: 'row',

@@ -12,6 +12,7 @@ import Icon from '@expo/vector-icons/MaterialIcons';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/firebase';
 import { Location } from '@/types/Signal';
+import * as ExpoLocation from 'expo-location';
 
 interface LocationSharingModalProps {
   visible: boolean;
@@ -38,10 +39,15 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
   );
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [timeRemaining, setTimeRemaining] = useState<string>('');
+  const [locationAddress, setLocationAddress] = useState<string>('');
 
   useEffect(() => {
     if (visible && signalId) {
       fetchLocationData();
+    } else if (!visible) {
+      // Clear data when modal is closed
+      setLocationData(null);
+      setLocationAddress('');
     }
   }, [visible, signalId]);
 
@@ -51,6 +57,51 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
       return () => clearInterval(interval);
     }
   }, [locationData]);
+
+  const fetchLocationAddress = async (location: Location) => {
+    try {
+      const reverseGeocode = await ExpoLocation.reverseGeocodeAsync({
+        latitude: location.latitude,
+        longitude: location.longitude,
+      });
+
+      if (reverseGeocode && reverseGeocode.length > 0) {
+        const address = reverseGeocode[0];
+        const addressParts = [];
+
+        // Use street number + street name combination if available
+        if (address.streetNumber && address.street) {
+          addressParts.push(`${address.streetNumber} ${address.street}`);
+        } else if (address.street) {
+          addressParts.push(address.street);
+        } else if (address.name && !address.street) {
+          // Only use name if street is not available to avoid duplication
+          addressParts.push(address.name);
+        }
+
+        // Add city if different from street/name
+        if (address.city) {
+          addressParts.push(address.city);
+        }
+
+        const formattedAddress =
+          addressParts.length > 0
+            ? addressParts.join(', ')
+            : `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`;
+
+        setLocationAddress(formattedAddress);
+      } else {
+        setLocationAddress(
+          `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`,
+        );
+      }
+    } catch (error) {
+      console.log('Failed to geocode location:', error);
+      setLocationAddress(
+        `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`,
+      );
+    }
+  };
 
   const fetchLocationData = async () => {
     setIsLoading(true);
@@ -62,11 +113,56 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
       const result = await getLocationSharingCallable({ signalId });
 
       const data = result.data as any;
+      console.log('LocationSharingModal: Received data from Firebase:', data);
+
       if (data.success) {
-        setLocationData({
+        // Handle different timestamp formats from Firebase
+        let expiresAt: Date;
+        if (data.data.expiresAt) {
+          console.log(
+            'LocationSharingModal: Processing expiresAt:',
+            data.data.expiresAt,
+          );
+
+          if (data.data.expiresAt._seconds || data.data.expiresAt.seconds) {
+            // Firestore Timestamp format (with or without underscore)
+            const seconds =
+              data.data.expiresAt._seconds || data.data.expiresAt.seconds;
+            expiresAt = new Date(seconds * 1000);
+            console.log(
+              'LocationSharingModal: Using seconds format, result:',
+              expiresAt,
+            );
+          } else if (data.data.expiresAt.toDate) {
+            // Firestore Timestamp with toDate method
+            expiresAt = data.data.expiresAt.toDate();
+            console.log(
+              'LocationSharingModal: Using toDate format, result:',
+              expiresAt,
+            );
+          } else {
+            // Regular Date string or number
+            expiresAt = new Date(data.data.expiresAt);
+            console.log(
+              'LocationSharingModal: Using direct Date constructor, result:',
+              expiresAt,
+            );
+          }
+        } else {
+          // Fallback: 30 minutes from now
+          console.warn('No expiresAt timestamp found, using fallback');
+          expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+        }
+
+        const locationData = {
           ...data.data,
-          expiresAt: new Date(data.data.expiresAt.seconds * 1000),
-        });
+          expiresAt,
+        };
+
+        setLocationData(locationData);
+
+        // Fetch user-friendly address for the location
+        fetchLocationAddress(locationData.otherUserLocation);
       } else {
         Alert.alert('Error', data.message);
         onClose();
@@ -81,7 +177,24 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
   };
 
   const updateTimeRemaining = () => {
-    if (!locationData?.expiresAt) return;
+    if (!locationData?.expiresAt) {
+      console.warn('LocationSharingModal: No expiresAt timestamp available');
+      setTimeRemaining('Unknown');
+      return;
+    }
+
+    // Ensure we have a valid Date object
+    if (
+      !(locationData.expiresAt instanceof Date) ||
+      isNaN(locationData.expiresAt.getTime())
+    ) {
+      console.error(
+        'LocationSharingModal: Invalid expiresAt timestamp:',
+        locationData.expiresAt,
+      );
+      setTimeRemaining('Invalid time');
+      return;
+    }
 
     const now = new Date();
     const remaining = locationData.expiresAt.getTime() - now.getTime();
@@ -91,9 +204,18 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
       return;
     }
 
-    const minutes = Math.floor(remaining / (1000 * 60));
-    const seconds = Math.floor((remaining % (1000 * 60)) / 1000);
-    setTimeRemaining(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+    const totalMinutes = Math.floor(remaining / (1000 * 60));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+
+    if (hours > 0) {
+      setTimeRemaining(`${hours}h ${minutes}m`);
+    } else if (minutes > 0) {
+      setTimeRemaining(`${minutes}m`);
+    } else {
+      const seconds = Math.floor((remaining % (1000 * 60)) / 1000);
+      setTimeRemaining(`${seconds}s`);
+    }
   };
 
   const calculateDistance = (
@@ -182,8 +304,7 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
                 <View style={styles.detailRow}>
                   <Icon name="location-on" size={20} color="#ff6b6b" />
                   <Text style={styles.detailText}>
-                    {locationData.otherUserLocation.latitude.toFixed(6)},{' '}
-                    {locationData.otherUserLocation.longitude.toFixed(6)}
+                    {locationAddress || 'Loading address...'}
                   </Text>
                 </View>
 

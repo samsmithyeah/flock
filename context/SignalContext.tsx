@@ -13,6 +13,7 @@ import {
   addDoc,
   updateDoc,
   doc,
+  getDoc,
   serverTimestamp,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -366,9 +367,36 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     // For now, we'll get all active signals and filter client-side
     const q = query(collection(db, 'signals'), where('status', '==', 'active'));
 
-    return onSnapshot(q, (snapshot) => {
+    return onSnapshot(q, async (snapshot) => {
       const signals: Signal[] = [];
-      snapshot.forEach((doc) => {
+      const usersCache = new Map<string, string>(); // Cache for user names
+
+      // Helper function to fetch user name
+      const fetchUserName = async (userId: string): Promise<string> => {
+        if (usersCache.has(userId)) {
+          return usersCache.get(userId)!;
+        }
+
+        try {
+          const userDoc = await getDoc(doc(db, 'users', userId));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            const displayName =
+              userData.displayName ||
+              `${userData.firstName || ''} ${userData.lastName || ''}`.trim() ||
+              'Unknown User';
+            usersCache.set(userId, displayName);
+            return displayName;
+          }
+        } catch (error) {
+          console.error('Error fetching user name:', error);
+        }
+
+        usersCache.set(userId, 'Unknown User');
+        return 'Unknown User';
+      };
+
+      const promises = snapshot.docs.map(async (doc) => {
         const signalData = { id: doc.id, ...doc.data() } as Signal;
         // Don't include user's own signals
         if (signalData.senderId !== user.uid) {
@@ -377,10 +405,15 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
             (response: SignalResponse) => response.responderId === user.uid,
           );
           if (!hasResponded) {
+            // Fetch sender's name and add to signal
+            const senderName = await fetchUserName(signalData.senderId);
+            signalData.senderName = senderName;
             signals.push(signalData);
           }
         }
       });
+
+      await Promise.all(promises);
       setReceivedSignals(signals);
     });
   };
@@ -389,42 +422,142 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     if (!user) return;
 
     // Query for shared locations where the current user is either sender or responder
-    const q = query(
+    // We need two separate queries due to Firestore limitations with OR queries
+    const senderQuery = query(
       collection(db, 'locationSharing'),
+      where('senderId', '==', user.uid),
       where('status', '==', 'active'),
     );
 
-    return onSnapshot(q, (snapshot) => {
-      const locations: SharedLocation[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
+    const responderQuery = query(
+      collection(db, 'locationSharing'),
+      where('responderId', '==', user.uid),
+      where('status', '==', 'active'),
+    );
 
-        // Include only location shares involving the current user
-        if (data.senderId === user.uid || data.responderId === user.uid) {
-          // Determine the other user's information
-          const isUserSender = data.senderId === user.uid;
-          const otherUserId = isUserSender ? data.responderId : data.senderId;
+    const locations = new Map<string, SharedLocation>();
+    const usersCache = new Map<string, string>(); // Cache for user names
 
-          locations.push({
-            id: doc.id,
-            signalId: data.signalId,
-            senderId: data.senderId,
-            responderId: data.responderId,
-            senderLocation: data.senderLocation,
-            responderLocation: data.responderLocation,
-            otherUserId,
-            otherUserName: data.otherUserName || 'Unknown User',
-            otherUserLocation: isUserSender
-              ? data.responderLocation
-              : data.senderLocation,
-            expiresAt: data.expiresAt,
-            createdAt: data.createdAt,
-            status: data.status,
-          });
+    // Helper function to fetch user name
+    const fetchUserName = async (userId: string): Promise<string> => {
+      if (usersCache.has(userId)) {
+        return usersCache.get(userId)!;
+      }
+
+      try {
+        const userDoc = await getDoc(doc(db, 'users', userId));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          const displayName =
+            userData.displayName ||
+            `${userData.firstName || ''} ${userData.lastName || ''}`.trim() ||
+            'Unknown User';
+          usersCache.set(userId, displayName);
+          return displayName;
         }
-      });
-      setSharedLocations(locations);
+      } catch (error) {
+        console.error('Error fetching user name:', error);
+      }
+
+      usersCache.set(userId, 'Unknown User');
+      return 'Unknown User';
+    };
+
+    const processSharedLocation = async (
+      doc: any,
+      isCurrentUserSender: boolean,
+    ) => {
+      const data = doc.data();
+
+      // Check if location has expired
+      const now = new Date();
+      const expiresAt = data.expiresAt?.toDate
+        ? data.expiresAt.toDate()
+        : new Date(data.expiresAt);
+
+      if (expiresAt <= now) {
+        console.log(`Location sharing expired: ${doc.id}, updating status...`);
+        // Update the status to expired in the database
+        try {
+          await updateDoc(doc.ref, { status: 'expired' });
+          console.log(
+            `Successfully marked location sharing ${doc.id} as expired`,
+          );
+        } catch (error) {
+          console.error(
+            `Error updating expired location sharing ${doc.id}:`,
+            error,
+          );
+        }
+        return;
+      }
+
+      const otherUserId = isCurrentUserSender
+        ? data.responderId
+        : data.senderId;
+      const otherUserName = await fetchUserName(otherUserId);
+      const otherUserLocation = isCurrentUserSender
+        ? data.responderLocation
+        : data.senderLocation;
+
+      const location: SharedLocation = {
+        id: doc.id,
+        signalId: data.signalId,
+        senderId: data.senderId,
+        responderId: data.responderId,
+        senderLocation: data.senderLocation,
+        responderLocation: data.responderLocation,
+        otherUserId,
+        otherUserName,
+        otherUserLocation,
+        expiresAt,
+        createdAt: data.createdAt?.toDate
+          ? data.createdAt.toDate()
+          : new Date(data.createdAt),
+        status: data.status,
+      };
+
+      locations.set(doc.id, location);
+    };
+
+    const unsubscribeSender = onSnapshot(senderQuery, async (snapshot) => {
+      // Clear locations for sender role before processing new snapshot
+      for (const [key, location] of locations.entries()) {
+        if (location.senderId === user.uid) {
+          locations.delete(key);
+        }
+      }
+
+      const promises = snapshot.docs.map((doc) =>
+        processSharedLocation(doc, true),
+      );
+      await Promise.all(promises);
+      setSharedLocations(Array.from(locations.values()));
     });
+
+    const unsubscribeResponder = onSnapshot(
+      responderQuery,
+      async (snapshot) => {
+        // Clear locations for responder role before processing new snapshot
+        for (const [key, location] of locations.entries()) {
+          if (location.responderId === user.uid) {
+            locations.delete(key);
+          }
+        }
+
+        const promises = snapshot.docs.map((doc) =>
+          processSharedLocation(doc, false),
+        );
+        await Promise.all(promises);
+        setSharedLocations(Array.from(locations.values()));
+      },
+    );
+
+    // Return combined unsubscribe function
+    return () => {
+      unsubscribeSender();
+      unsubscribeResponder();
+    };
   };
 
   const sendSignal = async (signalData: {

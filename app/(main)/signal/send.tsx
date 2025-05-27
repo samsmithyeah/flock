@@ -168,15 +168,15 @@ const SendSignalScreen: React.FC = () => {
   const targetOptions = [
     {
       value: 'all' as const,
-      label: 'All Friends',
+      label: 'All friends',
       description: 'Signal all friends in range',
       icon: 'people' as const,
     },
     {
       value: 'crews' as const,
-      label: 'Specific Crews',
+      label: 'Specific crews',
       description: 'Choose which crews to signal',
-      icon: 'groups' as const,
+      icon: 'person' as const,
     },
   ];
 
@@ -194,7 +194,7 @@ const SendSignalScreen: React.FC = () => {
         >
           {/* Range Section */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Range</Text>
+            <Text style={styles.sectionTitle}>Radius</Text>
             <Text style={styles.sectionDescription}>
               How far should your signal reach?
             </Text>
@@ -256,7 +256,7 @@ const SendSignalScreen: React.FC = () => {
 
           {/* Message Section */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Message (Optional)</Text>
+            <Text style={styles.sectionTitle}>Message (optional)</Text>
             <Text style={styles.sectionDescription}>
               Add a personal message to your signal
             </Text>
@@ -265,7 +265,7 @@ const SendSignalScreen: React.FC = () => {
               style={styles.messageInput}
               value={message}
               onChangeText={setMessage}
-              placeholder="What's the plan? 🎉"
+              placeholder="What's the plan?"
               placeholderTextColor="#999"
               multiline
               maxLength={200}

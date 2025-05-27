@@ -96,7 +96,7 @@ const BackgroundLocationCard: React.FC<BackgroundLocationCardProps> = ({
             color={getStatusColor()}
             style={styles.titleIcon}
           />
-          <Text style={styles.title}>Background Location</Text>
+          <Text style={styles.title}>Background location</Text>
         </View>
 
         <View style={styles.statusContainer}>
@@ -123,7 +123,7 @@ const BackgroundLocationCard: React.FC<BackgroundLocationCardProps> = ({
       {!isPermissionGranted && (
         <View style={styles.permissionSection}>
           <CustomButton
-            title="Grant Background Permission"
+            title="Grant background permission"
             onPress={onRequestPermission}
             variant="secondary"
             icon={{

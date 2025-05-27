@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialIcons';
 import CustomButton from '@/components/CustomButton';
@@ -7,12 +7,32 @@ import { SharedLocation } from '@/types/Signal';
 interface SharedLocationCardProps {
   sharedLocation: SharedLocation;
   onCancel: (sharedLocationId: string) => void;
+  onViewLocation: (signalId: string) => void;
+  onSendMessage: (otherUserId: string) => void;
 }
 
 const SharedLocationCard: React.FC<SharedLocationCardProps> = ({
   sharedLocation,
   onCancel,
+  onViewLocation,
+  onSendMessage,
 }) => {
+  const [timeRemaining, setTimeRemaining] = useState<string>('');
+
+  useEffect(() => {
+    const updateTimeRemaining = () => {
+      const time = getTimeRemaining(sharedLocation.expiresAt);
+      setTimeRemaining(time);
+    };
+
+    // Update immediately
+    updateTimeRemaining();
+
+    // Update every second
+    const interval = setInterval(updateTimeRemaining, 1000);
+    return () => clearInterval(interval);
+  }, [sharedLocation.expiresAt]);
+
   const getTimeRemaining = (expiresAt: any): string => {
     if (!expiresAt) return 'No expiration';
 
@@ -22,13 +42,18 @@ const SharedLocationCard: React.FC<SharedLocationCardProps> = ({
 
     if (diff <= 0) return 'Expired';
 
-    const minutes = Math.floor(diff / (1000 * 60));
-    const hours = Math.floor(minutes / 60);
+    const totalMinutes = Math.floor(diff / (1000 * 60));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
 
     if (hours > 0) {
-      return `${hours}h ${minutes % 60}m remaining`;
+      return `${hours}h ${minutes}m remaining`;
+    } else if (minutes > 0) {
+      return `${minutes}m remaining`;
+    } else {
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+      return `${seconds}s remaining`;
     }
-    return `${minutes}m remaining`;
   };
 
   return (
@@ -36,9 +61,7 @@ const SharedLocationCard: React.FC<SharedLocationCardProps> = ({
       <View style={styles.header}>
         <View style={styles.info}>
           <Text style={styles.userName}>📍 {sharedLocation.otherUserName}</Text>
-          <Text style={styles.timeRemaining}>
-            {getTimeRemaining(sharedLocation.expiresAt)}
-          </Text>
+          <Text style={styles.timeRemaining}>{timeRemaining}</Text>
         </View>
         <View style={styles.status}>
           <Icon name="my-location" size={16} color="#2196F3" />
@@ -46,13 +69,36 @@ const SharedLocationCard: React.FC<SharedLocationCardProps> = ({
         </View>
       </View>
 
-      <CustomButton
-        title="Stop Sharing"
-        onPress={() => onCancel(sharedLocation.id)}
-        variant="danger"
-        icon={{ name: 'stop', size: 16, color: '#fff' }}
-        style={styles.stopButton}
-      />
+      <View style={styles.buttonRow}>
+        <CustomButton
+          title="View location"
+          onPress={() => onViewLocation(sharedLocation.signalId)}
+          variant="secondary"
+          icon={{ name: 'location', size: 16, color: '#2196F3' }}
+          style={styles.actionButton}
+        />
+
+        <CustomButton
+          title="Send message"
+          onPress={() => onSendMessage(sharedLocation.otherUserId)}
+          variant="secondary"
+          icon={{
+            name: 'chatbubble-ellipses-outline',
+            size: 16,
+          }}
+          style={styles.actionButton}
+        />
+      </View>
+
+      <View style={styles.buttonRow}>
+        <CustomButton
+          title="Stop sharing"
+          onPress={() => onCancel(sharedLocation.id)}
+          variant="danger"
+          icon={{ name: 'stop', size: 16, color: '#fff' }}
+          style={styles.fullWidthButton}
+        />
+      </View>
     </View>
   );
 };
@@ -99,8 +145,21 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     fontWeight: '600',
   },
-  stopButton: {
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 8,
+  },
+  actionButton: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#2196F3',
+  },
+  fullWidthButton: {
     backgroundColor: '#ff4757',
+    width: '100%',
   },
 });
 
