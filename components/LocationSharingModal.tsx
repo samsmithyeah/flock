@@ -33,7 +33,9 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
   signalId,
   currentUserLocation,
 }) => {
-  const [locationData, setLocationData] = useState<LocationSharingData | null>(null);
+  const [locationData, setLocationData] = useState<LocationSharingData | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [timeRemaining, setTimeRemaining] = useState<string>('');
 
@@ -53,9 +55,12 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
   const fetchLocationData = async () => {
     setIsLoading(true);
     try {
-      const getLocationSharingCallable = httpsCallable(functions, 'getLocationSharing');
+      const getLocationSharingCallable = httpsCallable(
+        functions,
+        'getLocationSharing',
+      );
       const result = await getLocationSharingCallable({ signalId });
-      
+
       const data = result.data as any;
       if (data.success) {
         setLocationData({
@@ -77,28 +82,34 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
 
   const updateTimeRemaining = () => {
     if (!locationData?.expiresAt) return;
-    
+
     const now = new Date();
     const remaining = locationData.expiresAt.getTime() - now.getTime();
-    
+
     if (remaining <= 0) {
       setTimeRemaining('Expired');
       return;
     }
-    
+
     const minutes = Math.floor(remaining / (1000 * 60));
     const seconds = Math.floor((remaining % (1000 * 60)) / 1000);
     setTimeRemaining(`${minutes}:${seconds.toString().padStart(2, '0')}`);
   };
 
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const calculateDistance = (
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number,
+  ): number => {
     const R = 6371e3; // Earth's radius in meters
     const φ1 = (lat1 * Math.PI) / 180;
     const φ2 = (lat2 * Math.PI) / 180;
     const Δφ = ((lat2 - lat1) * Math.PI) / 180;
     const Δλ = ((lon2 - lon1) * Math.PI) / 180;
 
-    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    const a =
+      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
       Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
@@ -114,10 +125,10 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
 
   const openDirections = () => {
     if (!locationData?.otherUserLocation) return;
-    
+
     const { latitude, longitude } = locationData.otherUserLocation;
     const url = `https://maps.google.com/maps?daddr=${latitude},${longitude}`;
-    
+
     Linking.canOpenURL(url).then((supported) => {
       if (supported) {
         Linking.openURL(url);
@@ -127,14 +138,15 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
     });
   };
 
-  const distance = currentUserLocation && locationData?.otherUserLocation
-    ? calculateDistance(
-        currentUserLocation.latitude,
-        currentUserLocation.longitude,
-        locationData.otherUserLocation.latitude,
-        locationData.otherUserLocation.longitude
-      )
-    : null;
+  const distance =
+    currentUserLocation && locationData?.otherUserLocation
+      ? calculateDistance(
+          currentUserLocation.latitude,
+          currentUserLocation.longitude,
+          locationData.otherUserLocation.latitude,
+          locationData.otherUserLocation.longitude,
+        )
+      : null;
 
   return (
     <Modal
@@ -160,7 +172,9 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
             <View style={styles.content}>
               <View style={styles.userInfo}>
                 <Icon name="person-pin" size={32} color="#1e90ff" />
-                <Text style={styles.userName}>{locationData.otherUserName}</Text>
+                <Text style={styles.userName}>
+                  {locationData.otherUserName}
+                </Text>
                 <Text style={styles.statusText}>wants to meet up!</Text>
               </View>
 
@@ -168,7 +182,8 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
                 <View style={styles.detailRow}>
                   <Icon name="location-on" size={20} color="#ff6b6b" />
                   <Text style={styles.detailText}>
-                    {locationData.otherUserLocation.latitude.toFixed(6)}, {locationData.otherUserLocation.longitude.toFixed(6)}
+                    {locationData.otherUserLocation.latitude.toFixed(6)},{' '}
+                    {locationData.otherUserLocation.longitude.toFixed(6)}
                   </Text>
                 </View>
 
@@ -207,13 +222,15 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
               </View>
 
               <Text style={styles.disclaimer}>
-                Location sharing will automatically expire in {timeRemaining}. 
+                Location sharing will automatically expire in {timeRemaining}.
                 Your location is only shared while this session is active.
               </Text>
             </View>
           ) : (
             <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>No location sharing data available</Text>
+              <Text style={styles.errorText}>
+                No location sharing data available
+              </Text>
             </View>
           )}
         </View>

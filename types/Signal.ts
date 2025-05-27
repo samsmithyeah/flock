@@ -37,3 +37,18 @@ export interface SignalNotification {
   distance: number; // distance from recipient in meters
   createdAt: Timestamp;
 }
+
+export interface SharedLocation {
+  id: string;
+  signalId: string;
+  senderId: string;
+  responderId: string;
+  senderLocation: Location;
+  responderLocation: Location;
+  otherUserId: string;
+  otherUserName: string;
+  otherUserLocation: Location;
+  expiresAt: Date;
+  createdAt: Date;
+  status: 'active' | 'expired';
+}

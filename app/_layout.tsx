@@ -20,6 +20,9 @@ import { BadgeCountProvider } from '@/context/BadgeCountContext';
 import { SignalProvider } from '@/context/SignalContext';
 import GlobalSetup from './GlobalSetup';
 
+// Import background location task to register it
+import '@/services/BackgroundLocationTask';
+
 LogBox.ignoreLogs([
   'Sending `onAnimatedValueUpdate` with no listeners registered.',
 ]);
