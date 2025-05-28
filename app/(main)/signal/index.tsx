@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { View, ScrollView, Text, StyleSheet, Alert } from 'react-native';
-import Icon from '@expo/vector-icons/MaterialIcons';
 import { router } from 'expo-router';
 import { useSignal } from '@/context/SignalContext';
 import { useUser } from '@/context/UserContext';
@@ -10,13 +9,12 @@ import ScreenTitle from '@/components/ScreenTitle';
 import LocationSharingModal from '@/components/LocationSharingModal';
 import BackgroundLocationCard from '@/components/BackgroundLocationCard';
 import CustomButton from '@/components/CustomButton';
-import ActionButton from '@/components/ActionButton';
 import SignalCard from '@/components/SignalCard';
+import OutgoingSignalCard from '@/components/OutgoingSignalCard';
 import EmptyState from '@/components/EmptyState';
 import SharedLocationCard from '@/components/SharedLocationCard';
 import { useGlobalStyles } from '@/styles/globalStyles';
 import * as ExpoLocation from 'expo-location';
-import { getTimeAgo, getTimeRemaining } from '@/utils/timeUtils';
 
 const SignalScreen: React.FC = () => {
   const {
@@ -247,8 +245,9 @@ const SignalScreen: React.FC = () => {
     });
   };
 
-  // Filter expired signals from received signals
+  // Filter expired signals from both received and active signals
   const validReceivedSignals = filterExpiredSignals(receivedSignals);
+  const validActiveSignals = filterExpiredSignals(activeSignals);
 
   // Separate shared locations based on user role
   const incomingSharedLocations = sharedLocations.filter(
@@ -388,132 +387,20 @@ const SignalScreen: React.FC = () => {
           {/* Outgoing Signals */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Outgoing signals</Text>
-            {activeSignals.length > 0 ? (
+            {validActiveSignals.length > 0 ? (
               <>
                 <Text style={styles.description}>
                   Signals you've sent to nearby friends
                 </Text>
-                {activeSignals.map((signal) => (
-                  <View key={signal.id} style={styles.signalCard}>
-                    <View style={styles.signalHeader}>
-                      <View style={styles.signalMainInfo}>
-                        <Icon
-                          name="radio-button-on"
-                          size={20}
-                          color="#4CAF50"
-                          style={styles.signalIcon}
-                        />
-                        <View style={styles.signalDetails}>
-                          <Text style={styles.signalTitle}>
-                            {signalAddresses[signal.id] ||
-                              'Loading location...'}
-                          </Text>
-                          <Text style={styles.signalSubtext}>
-                            {getTimeAgo(signal.createdAt)} •{' '}
-                            {getTimeRemaining(signal.expiresAt)}
-                          </Text>
-                          <Text style={styles.signalRadius}>
-                            {formatDistance(signal.radius)} radius
-                          </Text>
-                        </View>
-                        <View style={styles.signalStatus}>
-                          <Text style={styles.statusText}>Live</Text>
-                        </View>
-                      </View>
-                    </View>
-
-                    {/* Responses List */}
-                    {signal.responses.length > 0 ? (
-                      <View style={styles.responsesList}>
-                        {signal.responses.map((response, index) => (
-                          <View key={index} style={styles.responseItem}>
-                            <View style={styles.responderInfo}>
-                              <View
-                                style={[
-                                  styles.responseIndicator,
-                                  response.response === 'accept'
-                                    ? styles.acceptedIndicator
-                                    : styles.declinedIndicator,
-                                ]}
-                              >
-                                <Icon
-                                  name={
-                                    response.response === 'accept'
-                                      ? 'check'
-                                      : 'close'
-                                  }
-                                  size={12}
-                                  color="#fff"
-                                />
-                              </View>
-                              <View style={styles.responderDetails}>
-                                <Text style={styles.responderName}>
-                                  {response.responderName ||
-                                    `User ${index + 1}`}
-                                </Text>
-                                <Text style={styles.responseStatus}>
-                                  {response.response === 'accept'
-                                    ? 'Accepted'
-                                    : 'Declined'}
-                                </Text>
-                              </View>
-                            </View>
-                            {response.response === 'accept' && (
-                              <View style={styles.responseActions}>
-                                <ActionButton
-                                  onPress={() =>
-                                    setSelectedSignalForSharing(signal.id)
-                                  }
-                                  variant="secondary"
-                                  icon={{
-                                    name: 'location',
-                                    size: 16,
-                                  }}
-                                  style={styles.actionButton}
-                                  accessibilityLabel="Share location"
-                                  accessibilityHint="Share your location with this user"
-                                />
-                                <ActionButton
-                                  onPress={() =>
-                                    router.push({
-                                      pathname: '/chats/dm-chat',
-                                      params: {
-                                        otherUserId: response.responderId,
-                                      },
-                                    })
-                                  }
-                                  variant="secondary"
-                                  icon={{
-                                    name: 'chatbubble-ellipses-outline',
-                                    size: 16,
-                                  }}
-                                  style={styles.actionButton}
-                                  accessibilityLabel="Send message"
-                                  accessibilityHint="Send a direct message to this user"
-                                />
-                              </View>
-                            )}
-                          </View>
-                        ))}
-                      </View>
-                    ) : (
-                      <View style={styles.emptyResponsesContainer}>
-                        <Icon name="schedule" size={24} color="#ccc" />
-                        <Text style={styles.noResponsesText}>
-                          Waiting for responses...
-                        </Text>
-                      </View>
-                    )}
-
-                    {/* Cancel Signal Button */}
-                    <CustomButton
-                      title="Cancel signal"
-                      onPress={() => handleCancelSignal(signal.id)}
-                      variant="secondaryDanger"
-                      icon={{ name: 'close' }}
-                      style={styles.cancelButton}
-                    />
-                  </View>
+                {validActiveSignals.map((signal) => (
+                  <OutgoingSignalCard
+                    key={signal.id}
+                    signal={signal}
+                    signalAddress={signalAddresses[signal.id]}
+                    onCancel={handleCancelSignal}
+                    onLocationShare={setSelectedSignalForSharing}
+                    formatDistance={formatDistance}
+                  />
                 ))}
               </>
             ) : (
@@ -630,143 +517,6 @@ const styles = StyleSheet.create({
   },
   sendButton: {
     marginTop: 16,
-  },
-  signalCard: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E8E8E8',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  signalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  signalMainInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  signalIcon: {
-    marginRight: 12,
-  },
-  signalDetails: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  signalTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 2,
-  },
-  signalSubtext: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 2,
-  },
-  signalRadius: {
-    fontSize: 13,
-    color: '#666',
-  },
-  signalStatus: {
-    backgroundColor: '#E8F5E8',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    minWidth: 50,
-  },
-  statusText: {
-    fontSize: 12,
-    color: '#4CAF50',
-    fontWeight: '600',
-  },
-  responsesList: {
-    marginBottom: 16,
-  },
-  responseItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: '#FAFBFC',
-    borderRadius: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-  },
-  responderInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  responseIndicator: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  acceptedIndicator: {
-    backgroundColor: '#4CAF50',
-  },
-  declinedIndicator: {
-    backgroundColor: '#FF5252',
-  },
-  responderDetails: {
-    flex: 1,
-  },
-  responderName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 2,
-  },
-  responseStatus: {
-    fontSize: 12,
-    color: '#666',
-  },
-  emptyResponsesContainer: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    marginBottom: 16,
-  },
-  noResponsesText: {
-    fontSize: 14,
-    color: '#999',
-    marginTop: 8,
-    textAlign: 'center',
-    fontStyle: 'italic',
-    paddingVertical: 8,
-  },
-  responseActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  actionButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F8F9FA',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cancelButton: {
-    marginTop: 12,
   },
 });
 

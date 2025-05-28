@@ -28,6 +28,7 @@ export interface Signal {
   expiresAt: Timestamp;
   responses: SignalResponse[];
   status: 'active' | 'expired' | 'cancelled';
+  notificationsSent?: number; // Number of users that were notified about this signal
 }
 
 export interface SignalNotification {
