@@ -430,6 +430,12 @@ const SignalScreen: React.FC = () => {
                     signal={signal}
                     onAccept={() => handleRespondToSignal(signal.id, 'accept')}
                     onIgnore={() => handleRespondToSignal(signal.id, 'ignore')}
+                    onSendMessage={() =>
+                      router.push({
+                        pathname: '/chats/dm-chat',
+                        params: { otherUserId: signal.senderId },
+                      })
+                    }
                     isLoading={isLoading}
                   />
                 ))}

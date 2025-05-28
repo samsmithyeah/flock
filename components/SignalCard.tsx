@@ -3,13 +3,14 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import CustomButton from './CustomButton';
+import ActionButton from './ActionButton';
 import { Signal } from '@/types/Signal';
 
 interface SignalCardProps {
   signal: Signal;
   onAccept: () => void;
   onIgnore: () => void;
+  onSendMessage?: () => void;
   isLoading?: boolean;
 }
 
@@ -17,6 +18,7 @@ const SignalCard: React.FC<SignalCardProps> = ({
   signal,
   onAccept,
   onIgnore,
+  onSendMessage,
   isLoading = false,
 }) => {
   const getTimeAgo = (timestamp: Date) => {
@@ -62,31 +64,41 @@ const SignalCard: React.FC<SignalCardProps> = ({
       {/* Distance indicator */}
       <View style={styles.distanceContainer}>
         <Ionicons name="walk-outline" size={14} color="#6B7280" />
-        <Text style={styles.distance}>
-          Within {signal.radius}m • Tap to respond
-        </Text>
+        <Text style={styles.distance}>Within {signal.radius}m</Text>
       </View>
 
       {/* Action buttons */}
       <View style={styles.buttonContainer}>
-        <CustomButton
-          title="Meet up"
+        <ActionButton
+          icon={{ name: 'checkmark', size: 20 }}
           onPress={onAccept}
           variant="success"
-          icon={{ name: 'checkmark', size: 16, color: '#fff' }}
-          style={styles.actionButton}
           loading={isLoading}
           disabled={isLoading}
+          accessibilityLabel="Accept signal"
+          accessibilityHint="Tap to accept this meet up signal"
         />
-        <CustomButton
-          title="Not now"
+
+        <ActionButton
+          icon={{ name: 'close', size: 20 }}
           onPress={onIgnore}
           variant="secondaryDanger"
-          icon={{ name: 'close', size: 16, color: '#DC3545' }}
-          style={styles.actionButton}
           loading={isLoading}
           disabled={isLoading}
+          accessibilityLabel="Ignore signal"
+          accessibilityHint="Tap to ignore this meet up signal"
         />
+        {onSendMessage && (
+          <ActionButton
+            icon={{ name: 'chatbubble-ellipses-outline', size: 20 }}
+            onPress={onSendMessage}
+            variant="secondary"
+            loading={isLoading}
+            disabled={isLoading}
+            accessibilityLabel="Send direct message"
+            accessibilityHint="Tap to send a direct message to this person"
+          />
+        )}
       </View>
     </View>
   );
@@ -115,6 +127,10 @@ const styles = StyleSheet.create({
   pulseContainer: {
     position: 'relative',
     marginRight: 8,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   pulse: {
     position: 'absolute',
@@ -164,10 +180,9 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     flexDirection: 'row',
-    gap: 12,
-  },
-  actionButton: {
-    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
   },
 });
 

@@ -84,7 +84,7 @@ const SharedLocationCard: React.FC<SharedLocationCardProps> = ({
         </View>
         <View style={styles.status}>
           <Icon name="my-location" size={16} color="#2196F3" />
-          <Text style={styles.statusText}>Sharing</Text>
+          <Text style={styles.statusText}>Active</Text>
         </View>
       </View>
 

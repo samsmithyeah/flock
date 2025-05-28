@@ -136,13 +136,6 @@ const DashboardScreen: React.FC = () => {
       {isLoading && <LoadingOverlay />}
       <View style={globalStyles.container}>
         <ScreenTitle title="Your week" />
-        
-        {/* Signal Quick Action */}
-        <TouchableOpacity style={styles.signalButton} onPress={handleSignalPress}>
-          <Icon name="radio" size={24} color="#fff" />
-          <Text style={styles.signalButtonText}>Send Signal</Text>
-          <Text style={styles.signalButtonSubtext}>Let friends know you want to meet up now!</Text>
-        </TouchableOpacity>
 
         {crewIds.length === 0 ? (
           <View style={styles.emptyContainer}>
@@ -196,37 +189,6 @@ const styles = StyleSheet.create({
   createButtonText: {
     color: '#1e90ff',
     fontSize: 20,
-  },
-  signalButton: {
-    backgroundColor: '#ff6b6b',
-    marginHorizontal: 16,
-    marginBottom: 16,
-    padding: 16,
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  signalButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginLeft: 12,
-    flex: 1,
-  },
-  signalButtonSubtext: {
-    color: '#fff',
-    fontSize: 12,
-    opacity: 0.9,
-    marginLeft: 12,
-    flex: 2,
   },
 });
 
