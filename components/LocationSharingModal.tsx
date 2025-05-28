@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Modal, Alert, Linking, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Modal,
+  Alert,
+  Linking,
+  TouchableOpacity,
+} from 'react-native';
 import Icon from '@expo/vector-icons/MaterialIcons';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/firebase';

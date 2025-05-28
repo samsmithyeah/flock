@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Alert } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialIcons';
 import CustomButton from '@/components/CustomButton';
 import { SharedLocation } from '@/types/Signal';
@@ -75,6 +75,43 @@ const SharedLocationCard: React.FC<SharedLocationCardProps> = ({
     }
   };
 
+  // Confirmation dialog handlers
+  const handleCancelPress = () => {
+    Alert.alert(
+      'Cancel your response',
+      `Stop sharing your location with ${sharedLocation.otherUserName}? This will end the current location sharing session.`,
+      [
+        {
+          text: 'No, keep sharing',
+          style: 'cancel',
+        },
+        {
+          text: 'Yes, cancel',
+          style: 'destructive',
+          onPress: () => onCancel(sharedLocation.id),
+        },
+      ],
+    );
+  };
+
+  const handleSendMessagePress = () => {
+    Alert.alert(
+      'Send message',
+      `Send a direct message to ${sharedLocation.otherUserName}? This will navigate you to the chat screen.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Send Message',
+          style: 'default',
+          onPress: () => onSendMessage(sharedLocation.otherUserId),
+        },
+      ],
+    );
+  };
+
   return (
     <View style={styles.card}>
       <View style={styles.header}>
@@ -99,7 +136,7 @@ const SharedLocationCard: React.FC<SharedLocationCardProps> = ({
 
         <CustomButton
           title="Send message"
-          onPress={() => onSendMessage(sharedLocation.otherUserId)}
+          onPress={handleSendMessagePress}
           variant="secondary"
           icon={{
             name: 'chatbubble-ellipses-outline',
@@ -112,21 +149,11 @@ const SharedLocationCard: React.FC<SharedLocationCardProps> = ({
       <View style={styles.buttonRow}>
         <CustomButton
           title="Cancel"
-          onPress={() => onCancel(sharedLocation.id)}
+          onPress={handleCancelPress}
           variant="secondaryDanger"
           icon={{ name: 'close' }}
           style={styles.actionButton}
         />
-
-        {onDecline && (
-          <CustomButton
-            title="Decline"
-            onPress={() => onDecline(sharedLocation.id)}
-            variant="danger"
-            icon={{ name: 'ban' }}
-            style={styles.actionButton}
-          />
-        )}
       </View>
     </View>
   );

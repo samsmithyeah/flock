@@ -692,7 +692,7 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
 
       Toast.show({
         type: 'success',
-        text1: action === 'cancel' ? 'Response Cancelled' : 'Signal Declined',
+        text1: action === 'cancel' ? 'Response cancelled' : 'Signal declined',
         text2:
           action === 'cancel'
             ? 'The signal request will reappear'

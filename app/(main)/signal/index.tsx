@@ -163,7 +163,7 @@ const SignalScreen: React.FC = () => {
       if (response === 'accept') {
         Toast.show({
           type: 'success',
-          text1: 'Signal Accepted! 🎉',
+          text1: 'Signal accepted',
           text2: 'Your location has been shared',
         });
       }
@@ -171,7 +171,7 @@ const SignalScreen: React.FC = () => {
       console.error('Error responding to signal:', error);
       Toast.show({
         type: 'error',
-        text1: 'Response Failed',
+        text1: 'Response failed',
         text2: 'Please try again',
       });
     }
@@ -211,14 +211,14 @@ const SignalScreen: React.FC = () => {
 
               Toast.show({
                 type: 'success',
-                text1: 'Signal Cancelled',
+                text1: 'Signal cancelled',
                 text2: 'Your signal and location sharing have been stopped',
               });
             } catch (error) {
               console.error('Error cancelling signal:', error);
               Toast.show({
                 type: 'error',
-                text1: 'Cancel Failed',
+                text1: 'Cancel failed',
                 text2: 'Please try again',
               });
             }
@@ -270,34 +270,6 @@ const SignalScreen: React.FC = () => {
       }
     } catch (error) {
       console.error('Error cancelling shared location:', error);
-    }
-  };
-
-  const handleDeclineSharedLocation = async (sharedLocationId: string) => {
-    try {
-      // Find the shared location to get the signalId
-      const sharedLocation = sharedLocations.find(
-        (sl) => sl.id === sharedLocationId,
-      );
-      if (sharedLocation) {
-        // Use modifySignalResponse to decline the signal (mark as declined)
-        await modifySignalResponse(sharedLocation.signalId, 'decline');
-      } else {
-        // Fallback to just cancelling the shared location
-        await cancelSharedLocation(sharedLocationId);
-        Toast.show({
-          type: 'info',
-          text1: 'Location Sharing Declined',
-          text2: 'You have declined the location sharing request',
-        });
-      }
-    } catch (error) {
-      console.error('Error declining shared location:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Failed to decline location sharing',
-      });
     }
   };
 
@@ -441,7 +413,6 @@ const SignalScreen: React.FC = () => {
                     key={sharedLocation.id}
                     sharedLocation={sharedLocation}
                     onCancel={handleCancelSharedLocation}
-                    onDecline={handleDeclineSharedLocation}
                     onViewLocation={(signalId) =>
                       setSelectedSignalForSharing(signalId)
                     }
