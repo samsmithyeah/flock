@@ -51,7 +51,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 4,
   } as ViewStyle,
   title: {
     fontWeight: '600',

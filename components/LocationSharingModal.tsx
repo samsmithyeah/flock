@@ -116,7 +116,7 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
       console.log('LocationSharingModal: Received data from Firebase:', data);
 
       if (data.success) {
-        // Handle different timestamp formats from Firebase
+        // Handle different timestamp formats from Firebase consistently
         let expiresAt: Date;
         if (data.data.expiresAt) {
           console.log(
@@ -124,7 +124,20 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
             data.data.expiresAt,
           );
 
-          if (data.data.expiresAt._seconds || data.data.expiresAt.seconds) {
+          if (
+            data.data.expiresAt.toDate &&
+            typeof data.data.expiresAt.toDate === 'function'
+          ) {
+            // Firebase Timestamp with toDate method
+            expiresAt = data.data.expiresAt.toDate();
+            console.log(
+              'LocationSharingModal: Using toDate format, result:',
+              expiresAt,
+            );
+          } else if (
+            data.data.expiresAt._seconds ||
+            data.data.expiresAt.seconds
+          ) {
             // Firestore Timestamp format (with or without underscore)
             const seconds =
               data.data.expiresAt._seconds || data.data.expiresAt.seconds;
@@ -133,11 +146,11 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
               'LocationSharingModal: Using seconds format, result:',
               expiresAt,
             );
-          } else if (data.data.expiresAt.toDate) {
-            // Firestore Timestamp with toDate method
-            expiresAt = data.data.expiresAt.toDate();
+          } else if (data.data.expiresAt instanceof Date) {
+            // Already a Date object
+            expiresAt = data.data.expiresAt;
             console.log(
-              'LocationSharingModal: Using toDate format, result:',
+              'LocationSharingModal: Already Date object, result:',
               expiresAt,
             );
           } else {
@@ -183,11 +196,14 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
       return;
     }
 
-    // Ensure we have a valid Date object
+    // Ensure we have a valid Date object - use consistent timestamp handling
+    let expiry: Date;
     if (
-      !(locationData.expiresAt instanceof Date) ||
-      isNaN(locationData.expiresAt.getTime())
+      locationData.expiresAt instanceof Date &&
+      !isNaN(locationData.expiresAt.getTime())
     ) {
+      expiry = locationData.expiresAt;
+    } else {
       console.error(
         'LocationSharingModal: Invalid expiresAt timestamp:',
         locationData.expiresAt,
@@ -197,7 +213,7 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
     }
 
     const now = new Date();
-    const remaining = locationData.expiresAt.getTime() - now.getTime();
+    const remaining = expiry.getTime() - now.getTime();
 
     if (remaining <= 0) {
       setTimeRemaining('Expired');

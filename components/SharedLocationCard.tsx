@@ -7,6 +7,7 @@ import { SharedLocation } from '@/types/Signal';
 interface SharedLocationCardProps {
   sharedLocation: SharedLocation;
   onCancel: (sharedLocationId: string) => void;
+  onDecline?: (sharedLocationId: string) => void; // Optional decline action
   onViewLocation: (signalId: string) => void;
   onSendMessage: (otherUserId: string) => void;
 }
@@ -14,6 +15,7 @@ interface SharedLocationCardProps {
 const SharedLocationCard: React.FC<SharedLocationCardProps> = ({
   sharedLocation,
   onCancel,
+  onDecline,
   onViewLocation,
   onSendMessage,
 }) => {
@@ -37,7 +39,24 @@ const SharedLocationCard: React.FC<SharedLocationCardProps> = ({
     if (!expiresAt) return 'No expiration';
 
     const now = new Date();
-    const expiry = expiresAt.toDate ? expiresAt.toDate() : new Date(expiresAt);
+
+    // Handle different timestamp formats consistently
+    let expiry: Date;
+    if (expiresAt.toDate && typeof expiresAt.toDate === 'function') {
+      // Firebase Timestamp with toDate method
+      expiry = expiresAt.toDate();
+    } else if (expiresAt._seconds || expiresAt.seconds) {
+      // Firebase Timestamp object format
+      const seconds = expiresAt._seconds || expiresAt.seconds;
+      expiry = new Date(seconds * 1000);
+    } else if (expiresAt instanceof Date) {
+      // Already a Date object
+      expiry = expiresAt;
+    } else {
+      // String or number timestamp
+      expiry = new Date(expiresAt);
+    }
+
     const diff = expiry.getTime() - now.getTime();
 
     if (diff <= 0) return 'Expired';
@@ -92,12 +111,22 @@ const SharedLocationCard: React.FC<SharedLocationCardProps> = ({
 
       <View style={styles.buttonRow}>
         <CustomButton
-          title="Stop sharing"
+          title="Cancel"
           onPress={() => onCancel(sharedLocation.id)}
-          variant="danger"
-          icon={{ name: 'stop', size: 16, color: '#fff' }}
-          style={styles.fullWidthButton}
+          variant="secondaryDanger"
+          icon={{ name: 'close' }}
+          style={styles.actionButton}
         />
+
+        {onDecline && (
+          <CustomButton
+            title="Decline"
+            onPress={() => onDecline(sharedLocation.id)}
+            variant="danger"
+            icon={{ name: 'ban' }}
+            style={styles.actionButton}
+          />
+        )}
       </View>
     </View>
   );
@@ -153,13 +182,6 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
-    borderWidth: 1,
-    borderColor: '#2196F3',
-  },
-  fullWidthButton: {
-    backgroundColor: '#ff4757',
-    width: '100%',
   },
 });
 

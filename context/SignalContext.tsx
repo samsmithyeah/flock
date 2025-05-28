@@ -68,6 +68,10 @@ interface SignalContextType {
     signalId: string,
     response: 'accept' | 'ignore',
   ) => Promise<void>;
+  modifySignalResponse: (
+    signalId: string,
+    action: 'cancel' | 'decline',
+  ) => Promise<void>;
   updateUserLocation: (location: LocationType) => Promise<void>;
   cancelSignal: (signalId: string) => Promise<void>;
   cancelSharedLocation: (sharedLocationId: string) => Promise<void>;
@@ -666,6 +670,47 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     }
   };
 
+  const modifySignalResponse = async (
+    signalId: string,
+    action: 'cancel' | 'decline',
+  ): Promise<void> => {
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
+    setIsLoading(true);
+
+    try {
+      const modifySignalResponseCallable = httpsCallable(
+        functions,
+        'modifySignalResponse',
+      );
+      await modifySignalResponseCallable({
+        signalId,
+        action,
+      });
+
+      Toast.show({
+        type: 'success',
+        text1: action === 'cancel' ? 'Response Cancelled' : 'Signal Declined',
+        text2:
+          action === 'cancel'
+            ? 'The signal request will reappear'
+            : 'You have declined the signal',
+      });
+    } catch (error) {
+      console.error('Error modifying signal response:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to modify response',
+      });
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const cancelSignal = async (signalId: string): Promise<void> => {
     try {
       await updateDoc(doc(db, 'signals', signalId), {
@@ -730,6 +775,7 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     stopBackgroundLocationTracking: stopBackgroundLocationTrackingHandler,
     sendSignal,
     respondToSignal,
+    modifySignalResponse,
     updateUserLocation,
     cancelSignal,
     cancelSharedLocation,

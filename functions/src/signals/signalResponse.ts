@@ -30,6 +30,16 @@ interface SignalResponse {
   respondedAt: admin.firestore.Timestamp;
 }
 
+interface ModifyResponseData {
+  signalId: string;
+  action: 'cancel' | 'decline'; // cancel = remove response, decline = change to ignore
+}
+
+interface ModifyResponseResult {
+  success: boolean;
+  message: string;
+}
+
 export const respondToSignal = functions.https.onCall(
   async (request): Promise<SignalResponseResult> => {
     const { auth, data } = request;
@@ -111,16 +121,33 @@ export const respondToSignal = functions.https.onCall(
       const responderData = responderDoc.data();
       const responderName = responderData?.displayName || 'Someone';
 
-      // Create response object
-      const responseData = {
+      // Create response object with actual timestamp (not serverTimestamp in array)
+      const responseData: {
+        id: string;
+        signalId: string;
+        responderId: string;
+        responderName: string;
+        response: 'accept' | 'ignore';
+        respondedAt: admin.firestore.Timestamp;
+        location?: {
+          latitude: number;
+          longitude: number;
+        };
+      } = {
         id: db.collection('signalResponses').doc().id,
         signalId,
         responderId: auth.uid,
         responderName,
         response,
-        location: response === 'accept' ? location : undefined,
-        respondedAt: admin.firestore.FieldValue.serverTimestamp(),
+        respondedAt: admin.firestore.Timestamp.now(),
       };
+
+      // Only add location if accepting the signal and location is valid
+      if (response === 'accept' && location &&
+          typeof location.latitude === 'number' &&
+          typeof location.longitude === 'number') {
+        responseData.location = location;
+      }
 
       // Update signal with new response
       await signalRef.update({
@@ -207,6 +234,181 @@ export const respondToSignal = functions.https.onCall(
       throw new functions.https.HttpsError(
         'internal',
         'Failed to respond to signal.',
+      );
+    }
+  },
+);
+
+export const modifySignalResponse = functions.https.onCall(
+  async (request): Promise<ModifyResponseResult> => {
+    const { auth, data } = request;
+
+    if (!auth || !auth.uid) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'The function must be called while authenticated.',
+      );
+    }
+
+    const { signalId, action }: ModifyResponseData = data;
+
+    if (!signalId || !action || !['cancel', 'decline'].includes(action)) {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'Valid signalId and action (cancel/decline) are required.',
+      );
+    }
+
+    const db = admin.firestore();
+
+    try {
+      // Get the signal document
+      const signalRef = db.collection('signals').doc(signalId);
+      const signalDoc = await signalRef.get();
+
+      if (!signalDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'Signal not found.');
+      }
+
+      const signalData = signalDoc.data();
+      if (!signalData) {
+        throw new functions.https.HttpsError('invalid-argument', 'Signal data is invalid.');
+      }
+
+      // Find user's existing response
+      const existingResponses = signalData.responses || [];
+      const userResponse = existingResponses.find((r: SignalResponse) => r.responderId === auth.uid);
+
+      if (!userResponse) {
+        throw new functions.https.HttpsError(
+          'not-found',
+          'No existing response found for this signal.',
+        );
+      }
+
+      // Get user information for notifications
+      const userDoc = await db.collection('users').doc(auth.uid).get();
+      const userData = userDoc.exists ? userDoc.data() : null;
+      const userName = userData?.displayName || 'Someone';
+
+      let updatedResponses;
+      let notificationTitle = '';
+      let notificationBody = '';
+
+      if (action === 'cancel') {
+        // Remove the user's response entirely
+        updatedResponses = existingResponses.filter((r: SignalResponse) => r.responderId !== auth.uid);
+        notificationTitle = '📱 Signal response cancelled';
+        notificationBody = `${userName} cancelled their response to your signal.`;
+      } else if (action === 'decline') {
+        // Change the response from 'accept' to 'ignore' (decline)
+        updatedResponses = existingResponses.map((r: SignalResponse) => {
+          if (r.responderId === auth.uid) {
+            // Build a clean response object without any undefined fields
+            // Explicitly exclude location field to prevent undefined values
+            const updatedResponse: {
+              id: string;
+              signalId: string;
+              responderId: string;
+              responderName?: string;
+              response: 'ignore';
+              respondedAt: admin.firestore.Timestamp;
+            } = {
+              id: r.id,
+              signalId: r.signalId,
+              responderId: r.responderId,
+              response: 'ignore' as const,
+              respondedAt: admin.firestore.Timestamp.now(),
+            };
+            // Only add responderName if it exists and is not undefined
+            if (r.responderName && r.responderName !== undefined) {
+              updatedResponse.responderName = r.responderName;
+            }
+            // NOTE: Explicitly NOT including location field to avoid undefined values
+            return updatedResponse;
+          }
+          return r;
+        });
+        notificationTitle = '❌ Signal declined';
+        notificationBody = `${userName} declined your signal.`;
+      }
+
+      // Update signal with modified responses
+      await signalRef.update({
+        responses: updatedResponses,
+      });
+
+      // Cancel any active location sharing for this signal and user
+      const locationSharingSnapshot = await db.collection('locationSharing')
+        .where('signalId', '==', signalId)
+        .where('responderId', '==', auth.uid)
+        .where('status', '==', 'active')
+        .get();
+
+      const cancellationPromises = locationSharingSnapshot.docs.map((doc) =>
+        doc.ref.update({
+          status: 'cancelled',
+          cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+        }),
+      );
+
+      await Promise.all(cancellationPromises);
+
+      // Send notification to signal sender
+      const senderDoc = await db.collection('users').doc(signalData.senderId).get();
+      if (senderDoc.exists) {
+        const senderData = senderDoc.data();
+        const expoPushTokens: string[] = [];
+
+        // Collect sender's push tokens
+        if (senderData?.expoPushToken && Expo.isExpoPushToken(senderData.expoPushToken)) {
+          expoPushTokens.push(senderData.expoPushToken);
+        }
+        if (senderData?.expoPushTokens && Array.isArray(senderData.expoPushTokens)) {
+          senderData.expoPushTokens.forEach((token: string) => {
+            if (Expo.isExpoPushToken(token)) {
+              expoPushTokens.push(token);
+            }
+          });
+        }
+
+        if (expoPushTokens.length > 0) {
+          const messages: ExpoPushMessage[] = expoPushTokens.map((token) => ({
+            to: token,
+            sound: 'default',
+            title: notificationTitle,
+            body: notificationBody,
+            data: {
+              type: 'signal_response_modified',
+              signalId,
+              responderId: auth.uid,
+              responderName: userName,
+              action,
+              screen: 'Signal',
+            },
+            priority: 'normal',
+          }));
+
+          await sendExpoNotifications(messages);
+        }
+      }
+
+      const successMessage = action === 'cancel' ?
+        'Your response has been cancelled. The signal request will reappear.' :
+        'You have declined the signal.';
+
+      return {
+        success: true,
+        message: successMessage,
+      };
+    } catch (error) {
+      console.error('Error modifying signal response:', error);
+      if (error instanceof functions.https.HttpsError) {
+        throw error;
+      }
+      throw new functions.https.HttpsError(
+        'internal',
+        'Failed to modify signal response.',
       );
     }
   },

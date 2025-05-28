@@ -15,6 +15,8 @@ import SignalCard from '@/components/SignalCard';
 import EmptyState from '@/components/EmptyState';
 import SharedLocationCard from '@/components/SharedLocationCard';
 import { useGlobalStyles } from '@/styles/globalStyles';
+import * as ExpoLocation from 'expo-location';
+import { getTimeAgo, getTimeRemaining } from '@/utils/timeUtils';
 
 const SignalScreen: React.FC = () => {
   const {
@@ -32,6 +34,7 @@ const SignalScreen: React.FC = () => {
     startBackgroundLocationTracking,
     stopBackgroundLocationTracking,
     respondToSignal: respondToSignalContext,
+    modifySignalResponse,
     cancelSignal,
     cancelSharedLocation,
   } = useSignal();
@@ -43,6 +46,48 @@ const SignalScreen: React.FC = () => {
   >(null);
   const [locationLoading, setLocationLoading] = useState<boolean>(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [signalAddresses, setSignalAddresses] = useState<{
+    [key: string]: string;
+  }>({});
+
+  // Utility function to format location address
+  const formatLocationAddress = async (location: any): Promise<string> => {
+    try {
+      const reverseGeocode = await ExpoLocation.reverseGeocodeAsync({
+        latitude: location.latitude,
+        longitude: location.longitude,
+      });
+
+      if (reverseGeocode && reverseGeocode.length > 0) {
+        const address = reverseGeocode[0];
+        const addressParts = [];
+
+        // Use street number + street name combination if available
+        if (address.streetNumber && address.street) {
+          addressParts.push(`${address.streetNumber} ${address.street}`);
+        } else if (address.street) {
+          addressParts.push(address.street);
+        } else if (address.name && !address.street) {
+          // Only use name if street is not available to avoid duplication
+          addressParts.push(address.name);
+        }
+
+        // Add city if different from street/name
+        if (address.city) {
+          addressParts.push(address.city);
+        }
+
+        return addressParts.length > 0
+          ? addressParts.join(', ')
+          : `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`;
+      } else {
+        return `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`;
+      }
+    } catch (error) {
+      console.log('Failed to geocode location:', error);
+      return `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`;
+    }
+  };
 
   // Auto-enable location when background location is already granted
   useEffect(() => {
@@ -54,6 +99,29 @@ const SignalScreen: React.FC = () => {
       handleLocationRequest();
     }
   }, [backgroundLocationPermissionGranted, currentLocation, locationLoading]);
+
+  // Cache signal addresses when signals change
+  useEffect(() => {
+    const cacheSignalAddresses = async () => {
+      for (const signal of activeSignals) {
+        if (signal.location && !signalAddresses[signal.id]) {
+          try {
+            const address = await formatLocationAddress(signal.location);
+            setSignalAddresses((prev) => ({
+              ...prev,
+              [signal.id]: address,
+            }));
+          } catch (error) {
+            console.error('Failed to geocode signal location:', error);
+          }
+        }
+      }
+    };
+
+    if (activeSignals.length > 0) {
+      cacheSignalAddresses();
+    }
+  }, [activeSignals]);
 
   const handleLocationRequest = async () => {
     setLocationLoading(true);
@@ -189,9 +257,47 @@ const SignalScreen: React.FC = () => {
 
   const handleCancelSharedLocation = async (sharedLocationId: string) => {
     try {
-      await cancelSharedLocation(sharedLocationId);
+      // Find the shared location to get the signalId
+      const sharedLocation = sharedLocations.find(
+        (sl) => sl.id === sharedLocationId,
+      );
+      if (sharedLocation) {
+        // Use modifySignalResponse to cancel the response (revert to original signal state)
+        await modifySignalResponse(sharedLocation.signalId, 'cancel');
+      } else {
+        // Fallback to just cancelling the shared location
+        await cancelSharedLocation(sharedLocationId);
+      }
     } catch (error) {
       console.error('Error cancelling shared location:', error);
+    }
+  };
+
+  const handleDeclineSharedLocation = async (sharedLocationId: string) => {
+    try {
+      // Find the shared location to get the signalId
+      const sharedLocation = sharedLocations.find(
+        (sl) => sl.id === sharedLocationId,
+      );
+      if (sharedLocation) {
+        // Use modifySignalResponse to decline the signal (mark as declined)
+        await modifySignalResponse(sharedLocation.signalId, 'decline');
+      } else {
+        // Fallback to just cancelling the shared location
+        await cancelSharedLocation(sharedLocationId);
+        Toast.show({
+          type: 'info',
+          text1: 'Location Sharing Declined',
+          text2: 'You have declined the location sharing request',
+        });
+      }
+    } catch (error) {
+      console.error('Error declining shared location:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to decline location sharing',
+      });
     }
   };
 
@@ -298,7 +404,14 @@ const SignalScreen: React.FC = () => {
                           style={styles.signalIcon}
                         />
                         <View style={styles.signalDetails}>
-                          <Text style={styles.signalTitle}>Signal Active</Text>
+                          <Text style={styles.signalTitle}>
+                            {signalAddresses[signal.id] ||
+                              'Loading location...'}
+                          </Text>
+                          <Text style={styles.signalSubtext}>
+                            {getTimeAgo(signal.createdAt)} •{' '}
+                            {getTimeRemaining(signal.expiresAt)}
+                          </Text>
                           <Text style={styles.signalRadius}>
                             {formatDistance(signal.radius)} radius
                           </Text>
@@ -396,8 +509,8 @@ const SignalScreen: React.FC = () => {
                     <CustomButton
                       title="Cancel signal"
                       onPress={() => handleCancelSignal(signal.id)}
-                      variant="danger"
-                      icon={{ name: 'close', size: 16, color: '#fff' }}
+                      variant="secondaryDanger"
+                      icon={{ name: 'close' }}
                       style={styles.cancelButton}
                     />
                   </View>
@@ -406,7 +519,7 @@ const SignalScreen: React.FC = () => {
             ) : (
               <EmptyState
                 icon="cellular-outline"
-                title="No outgoing signals"
+                title="No Outgoing Signals"
                 description="Send a signal to let nearby friends know you want to meet up!"
                 size="small"
               />
@@ -440,6 +553,7 @@ const SignalScreen: React.FC = () => {
                     key={sharedLocation.id}
                     sharedLocation={sharedLocation}
                     onCancel={handleCancelSharedLocation}
+                    onDecline={handleDeclineSharedLocation}
                     onViewLocation={(signalId) =>
                       setSelectedSignalForSharing(signalId)
                     }
@@ -556,6 +670,11 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 2,
   },
+  signalSubtext: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 2,
+  },
   signalRadius: {
     fontSize: 13,
     color: '#666',
@@ -648,7 +767,6 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     marginTop: 12,
-    backgroundColor: '#ff4757',
   },
 });
 
