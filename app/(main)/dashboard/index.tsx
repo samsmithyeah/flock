@@ -102,10 +102,6 @@ const DashboardScreen: React.FC = () => {
     );
   };
 
-  const handleSignalPress = () => {
-    router.push('/(main)/signal');
-  };
-
   const renderDayItem = ({ item }: { item: string }) => {
     const availableCount = dateCounts[item]?.available ?? 0;
     const unavailableCount = dateCounts[item]?.unavailable ?? 0;

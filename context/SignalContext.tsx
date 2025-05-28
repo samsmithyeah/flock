@@ -63,6 +63,7 @@ interface SignalContextType {
     radius: number;
     targetType: 'all' | 'crews' | 'contacts';
     targetIds: string[];
+    durationMinutes?: number;
   }) => Promise<void>;
   respondToSignal: (
     signalId: string,
@@ -210,7 +211,7 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
         setBackgroundLocationTrackingActive(true);
         Toast.show({
           type: 'success',
-          text1: 'Background Tracking Started',
+          text1: 'Background tracking started',
           text2: 'Your location will be updated automatically',
         });
       }
@@ -233,7 +234,7 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
       setBackgroundLocationTrackingActive(false);
       Toast.show({
         type: 'success',
-        text1: 'Background Tracking Stopped',
+        text1: 'Background tracking stopped',
         text2: 'Location updates paused',
       });
     } catch (error) {
@@ -569,6 +570,7 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     radius: number;
     targetType: 'all' | 'crews' | 'contacts';
     targetIds: string[];
+    durationMinutes?: number;
   }): Promise<void> => {
     if (!user) {
       throw new Error('User not authenticated');
@@ -584,6 +586,7 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     try {
       // Create signal data, only including message if it has content
       const trimmedMessage = signalData.message?.trim();
+      const durationMinutes = signalData.durationMinutes || 120; // Default 2 hours
       const signal: Omit<Signal, 'id'> = {
         senderId: user.uid,
         radius: signalData.radius,
@@ -591,7 +594,8 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
         targetType: signalData.targetType,
         targetIds: signalData.targetIds,
         createdAt: serverTimestamp() as any,
-        expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000) as any, // 2 hours
+        expiresAt: new Date(Date.now() + durationMinutes * 60 * 1000) as any,
+        durationMinutes,
         responses: [],
         status: 'active',
         // Only include message if it exists and has content
@@ -720,7 +724,7 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
 
       Toast.show({
         type: 'success',
-        text1: 'Signal Cancelled',
+        text1: 'Signal cancelled',
         text2: 'Your signal has been cancelled',
       });
     } catch (error) {

@@ -281,7 +281,7 @@ const SignalScreen: React.FC = () => {
           <ScreenTitle title="Signal" />
 
           {/* Send Signal Section */}
-          <View style={styles.section}>
+          <View>
             <Text style={styles.description}>
               Let nearby friends know you want to meet up right now!
             </Text>
@@ -304,7 +304,7 @@ const SignalScreen: React.FC = () => {
             isLoading={isLoading}
           />
 
-          <View style={styles.section}>
+          <View>
             {!currentLocation && (
               <View style={styles.locationSection}>
                 <EmptyState
@@ -352,7 +352,7 @@ const SignalScreen: React.FC = () => {
           </View>
 
           {/* Outgoing Signals */}
-          <View style={styles.section}>
+          <View>
             <Text style={styles.sectionTitle}>Outgoing signals</Text>
             {validActiveSignals.length > 0 ? (
               <>
@@ -381,7 +381,7 @@ const SignalScreen: React.FC = () => {
           </View>
 
           {/* Incoming Signals */}
-          <View style={styles.section}>
+          <View>
             <Text style={styles.sectionTitle}>Incoming signals</Text>
             {validReceivedSignals.length > 0 ||
             incomingSharedLocations.length > 0 ? (
@@ -448,9 +448,6 @@ const SignalScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  section: {
-    paddingTop: 16,
-  },
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',

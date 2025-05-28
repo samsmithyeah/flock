@@ -28,6 +28,7 @@ interface Signal {
   targetIds: string[];
   createdAt: admin.firestore.Timestamp;
   expiresAt: admin.firestore.Timestamp;
+  durationMinutes?: number;
   responses: SignalResponse[];
   status: 'active' | 'expired' | 'cancelled';
 }
@@ -179,6 +180,7 @@ export const processSignal = functions.firestore.onDocumentCreated(
       }
 
       // Prepare notification messages
+      const durationMinutes = signalData.durationMinutes || 120; // Default 2 hours
       const messages: ExpoPushMessage[] = eligibleUsers.map((user) => {
         const distanceText = user.distance < 1000 ?
           `${Math.round(user.distance)}m away` :
@@ -199,7 +201,7 @@ export const processSignal = functions.firestore.onDocumentCreated(
             screen: 'Signal',
           },
           priority: 'high',
-          ttl: 7200, // 2 hours
+          ttl: durationMinutes * 60, // TTL in seconds = duration in minutes * 60
         };
       });
 

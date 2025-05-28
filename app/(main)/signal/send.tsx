@@ -17,9 +17,20 @@ import { useSignal } from '@/context/SignalContext';
 import { router, useNavigation } from 'expo-router';
 import RadioButtonGroup from '@/components/RadioButtonGroup';
 import CrewSelector from '@/components/CrewSelector';
-import CustomButton from '@/components/CustomButton';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import Toast from 'react-native-toast-message';
+
+const formatDuration = (minutes: number): string => {
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    if (remainingMinutes === 0) {
+      return `${hours}h`;
+    }
+    return `${hours}h ${remainingMinutes}m`;
+  }
+  return `${minutes}m`;
+};
 
 const SendSignalScreen: React.FC = () => {
   const { user } = useUser();
@@ -27,10 +38,11 @@ const SendSignalScreen: React.FC = () => {
   const { currentLocation, sendSignal: sendSignalContext } = useSignal();
   const navigation = useNavigation();
 
-  const [radius, setRadius] = useState<number>(1000);
+  const [radius, setRadius] = useState<number>(2000);
   const [targetType, setTargetType] = useState<'all' | 'crews'>('all');
   const [selectedCrews, setSelectedCrews] = useState<string[]>([]);
   const [message, setMessage] = useState<string>('');
+  const [durationMinutes, setDurationMinutes] = useState<number>(60); // Default 1 hour
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -71,7 +83,7 @@ const SendSignalScreen: React.FC = () => {
           <Text style={{ color: '#1e90ff', fontSize: 16 }}>Cancel</Text>
         </TouchableOpacity>
       ),
-      title: 'Send Signal',
+      title: 'Send signal',
       presentation: 'modal',
     });
   }, [navigation, isLoading, currentLocation, targetType, selectedCrews]);
@@ -118,11 +130,12 @@ const SendSignalScreen: React.FC = () => {
         radius,
         targetType,
         targetIds: targetType === 'crews' ? selectedCrews : [],
+        durationMinutes,
       });
 
       Toast.show({
         type: 'success',
-        text1: 'Signal Sent! 🚀',
+        text1: 'Signal sent!',
         text2: `Friends within ${formatDistance(radius)} will be notified`,
       });
 
@@ -144,14 +157,15 @@ const SendSignalScreen: React.FC = () => {
       message.trim() ||
       targetType !== 'all' ||
       selectedCrews.length > 0 ||
-      radius !== 1000
+      radius !== 1000 ||
+      durationMinutes !== 120
     ) {
       Alert.alert(
         'Cancel Signal',
         'Are you sure you want to discard your signal?',
         [
           {
-            text: 'Keep Editing',
+            text: 'Keep editing',
             style: 'cancel',
           },
           {
@@ -168,14 +182,14 @@ const SendSignalScreen: React.FC = () => {
   const targetOptions = [
     {
       value: 'all' as const,
-      label: 'All friends',
-      description: 'Signal all friends in range',
+      label: 'All contacts',
+      description: 'Send the signal to all contacts in range',
       icon: 'people' as const,
     },
     {
       value: 'crews' as const,
       label: 'Specific crews',
-      description: 'Choose which crews to signal',
+      description: 'Choose which crews to signal to',
       icon: 'person' as const,
     },
   ];
@@ -204,7 +218,7 @@ const SendSignalScreen: React.FC = () => {
               <Slider
                 style={styles.slider}
                 minimumValue={100}
-                maximumValue={5000}
+                maximumValue={10000}
                 value={radius}
                 onValueChange={setRadius}
                 step={100}
@@ -213,14 +227,42 @@ const SendSignalScreen: React.FC = () => {
               />
               <View style={styles.rangeLabels}>
                 <Text style={styles.rangeLabel}>100m</Text>
-                <Text style={styles.rangeLabel}>5km</Text>
+                <Text style={styles.rangeLabel}>10km</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Duration Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Duration</Text>
+            <Text style={styles.sectionDescription}>
+              How long should your signal stay active?
+            </Text>
+
+            <View style={styles.rangeContainer}>
+              <Text style={styles.rangeValue}>
+                {formatDuration(durationMinutes)}
+              </Text>
+              <Slider
+                style={styles.slider}
+                minimumValue={30}
+                maximumValue={480}
+                value={durationMinutes}
+                onValueChange={setDurationMinutes}
+                step={30}
+                minimumTrackTintColor="#4CAF50"
+                maximumTrackTintColor="#E0E0E0"
+              />
+              <View style={styles.rangeLabels}>
+                <Text style={styles.rangeLabel}>30m</Text>
+                <Text style={styles.rangeLabel}>8h</Text>
               </View>
             </View>
           </View>
 
           {/* Target Selection */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Who to Signal</Text>
+            <Text style={styles.sectionTitle}>Who to signal</Text>
             <Text style={styles.sectionDescription}>
               Choose who should receive your signal
             </Text>
@@ -235,9 +277,9 @@ const SendSignalScreen: React.FC = () => {
           {/* Crew Selection */}
           {targetType === 'crews' && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Select Crews</Text>
+              <Text style={styles.sectionTitle}>Select crews</Text>
               <Text style={styles.sectionDescription}>
-                Choose which crews to signal
+                Choose which crews to signal to
               </Text>
 
               <CrewSelector
@@ -289,45 +331,45 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   section: {
-    marginBottom: 32,
+    marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '600',
     color: '#333',
     marginBottom: 4,
   },
   sectionDescription: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#666',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   rangeContainer: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 12,
+    backgroundColor: '#f9f9f9',
+    padding: 16,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: '#f0f0f0',
   },
   rangeValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '600',
     color: '#4CAF50',
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   slider: {
     width: '100%',
-    height: 40,
+    height: 32,
   },
   rangeLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 8,
+    marginTop: 6,
   },
   rangeLabel: {
-    fontSize: 12,
-    color: '#666',
+    fontSize: 11,
+    color: '#888',
   },
   messageInput: {
     backgroundColor: '#fff',

@@ -163,7 +163,7 @@ export const respondToSignal = functions.https.onCall(
           senderLocation: signalData.location,
           responderLocation: location,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30 minutes
+          expiresAt: signalData.expiresAt, // Use signal's expiry time
           status: 'active',
         };
 

@@ -26,6 +26,7 @@ export interface Signal {
   targetIds: string[]; // crew IDs or contact IDs depending on targetType
   createdAt: Timestamp;
   expiresAt: Timestamp;
+  durationMinutes?: number; // Duration in minutes, defaults to 120 (2 hours)
   responses: SignalResponse[];
   status: 'active' | 'expired' | 'cancelled';
   notificationsSent?: number; // Number of users that were notified about this signal
