@@ -13,6 +13,7 @@ import SignalCard from '@/components/SignalCard';
 import OutgoingSignalCard from '@/components/OutgoingSignalCard';
 import EmptyState from '@/components/EmptyState';
 import SharedLocationCard from '@/components/SharedLocationCard';
+import SendSignalButton from '@/components/SendSignalButton';
 import { useGlobalStyles } from '@/styles/globalStyles';
 import * as ExpoLocation from 'expo-location';
 
@@ -178,15 +179,15 @@ const SignalScreen: React.FC = () => {
 
   const handleCancelSignal = async (signalId: string) => {
     Alert.alert(
-      'Cancel Signal',
+      'Cancel signal',
       'Are you sure you want to cancel this signal? This will also stop any active location sharing.',
       [
         {
-          text: 'Keep Signal',
+          text: 'No, keep it',
           style: 'cancel',
         },
         {
-          text: 'Cancel Signal',
+          text: 'Yes, cancel',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -373,13 +374,7 @@ const SignalScreen: React.FC = () => {
 
             {currentLocation && (
               <View style={styles.locationSection}>
-                <CustomButton
-                  title="Send signal"
-                  onPress={() => router.push('/signal/send')}
-                  variant="primary"
-                  icon={{ name: 'send', size: 20, color: '#fff' }}
-                  style={styles.sendButton}
-                />
+                <SendSignalButton onPress={() => router.push('/signal/send')} />
               </View>
             )}
           </View>
@@ -520,9 +515,6 @@ const styles = StyleSheet.create({
   },
   retryButton: {
     marginTop: 0,
-  },
-  sendButton: {
-    marginTop: 16,
   },
 });
 

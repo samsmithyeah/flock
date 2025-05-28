@@ -1,7 +1,7 @@
 // components/SignalCard.tsx
 
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ActionButton from './ActionButton';
 import { Signal } from '@/types/Signal';
@@ -21,6 +21,8 @@ const SignalCard: React.FC<SignalCardProps> = ({
   onSendMessage,
   isLoading = false,
 }) => {
+  const [timeRemaining, setTimeRemaining] = useState<string>('');
+
   const getTimeAgo = (timestamp: Date) => {
     const now = new Date();
     const diffMs = now.getTime() - timestamp.getTime();
@@ -31,6 +33,108 @@ const SignalCard: React.FC<SignalCardProps> = ({
     const diffHours = Math.floor(diffMins / 60);
     if (diffHours < 24) return `${diffHours}h ago`;
     return `${Math.floor(diffHours / 24)}d ago`;
+  };
+
+  const getTimeRemaining = (expiresAt: any): string => {
+    if (!expiresAt) return 'No expiration';
+
+    const now = new Date();
+    let expiry: Date;
+
+    // Handle different timestamp formats
+    if (expiresAt.toDate && typeof expiresAt.toDate === 'function') {
+      expiry = expiresAt.toDate();
+    } else if (expiresAt instanceof Date) {
+      expiry = expiresAt;
+    } else {
+      expiry = new Date(expiresAt);
+    }
+
+    const diff = expiry.getTime() - now.getTime();
+
+    if (diff <= 0) return 'Expired';
+
+    const totalMinutes = Math.floor(diff / (1000 * 60));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+
+    if (hours > 0) {
+      return `${hours}h ${minutes}m left`;
+    } else if (minutes > 0) {
+      return `${minutes}m left`;
+    } else {
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+      return `${seconds}s left`;
+    }
+  };
+
+  // Update time remaining every second
+  useEffect(() => {
+    const updateTimeRemaining = () => {
+      const time = getTimeRemaining(signal.expiresAt);
+      setTimeRemaining(time);
+    };
+
+    updateTimeRemaining();
+    const interval = setInterval(updateTimeRemaining, 1000);
+    return () => clearInterval(interval);
+  }, [signal.expiresAt]);
+
+  // Confirmation dialog handlers
+  const handleAcceptPress = () => {
+    Alert.alert(
+      'Accept signal',
+      `Accept ${signal.senderName ? `${signal.senderName}'s` : 'this'} signal? This will share your location.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Accept',
+          style: 'default',
+          onPress: onAccept,
+        },
+      ],
+    );
+  };
+
+  const handleIgnorePress = () => {
+    Alert.alert(
+      'Decline signal',
+      `Decline ${signal.senderName ? `${signal.senderName}'s` : 'this'} signal?`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Decline',
+          style: 'destructive',
+          onPress: onIgnore,
+        },
+      ],
+    );
+  };
+
+  const handleSendMessagePress = () => {
+    if (!onSendMessage) return;
+
+    Alert.alert(
+      'Send message',
+      `Send a direct message to ${signal.senderName || 'this person'}? This will navigate you to the chat screen.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Send message',
+          style: 'default',
+          onPress: onSendMessage,
+        },
+      ],
+    );
   };
 
   return (
@@ -48,9 +152,12 @@ const SignalCard: React.FC<SignalCardProps> = ({
               : 'Someone wants to meet!'}
           </Text>
         </View>
-        <Text style={styles.timeAgo}>
-          {getTimeAgo(signal.createdAt.toDate())}
-        </Text>
+        <View style={styles.timeContainer}>
+          <Text style={styles.timeAgo}>
+            {getTimeAgo(signal.createdAt.toDate())}
+          </Text>
+          <Text style={styles.timeRemaining}>{timeRemaining}</Text>
+        </View>
       </View>
 
       {/* Message */}
@@ -71,7 +178,7 @@ const SignalCard: React.FC<SignalCardProps> = ({
       <View style={styles.buttonContainer}>
         <ActionButton
           icon={{ name: 'checkmark', size: 20 }}
-          onPress={onAccept}
+          onPress={handleAcceptPress}
           variant="success"
           loading={isLoading}
           disabled={isLoading}
@@ -81,7 +188,7 @@ const SignalCard: React.FC<SignalCardProps> = ({
 
         <ActionButton
           icon={{ name: 'close', size: 20 }}
-          onPress={onIgnore}
+          onPress={handleIgnorePress}
           variant="secondaryDanger"
           loading={isLoading}
           disabled={isLoading}
@@ -91,7 +198,7 @@ const SignalCard: React.FC<SignalCardProps> = ({
         {onSendMessage && (
           <ActionButton
             icon={{ name: 'chatbubble-ellipses-outline', size: 20 }}
-            onPress={onSendMessage}
+            onPress={handleSendMessagePress}
             variant="secondary"
             loading={isLoading}
             disabled={isLoading}
@@ -147,10 +254,19 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     flex: 1,
   },
+  timeContainer: {
+    alignItems: 'flex-end',
+  },
   timeAgo: {
     fontSize: 12,
     color: '#6B7280',
     fontWeight: '500',
+  },
+  timeRemaining: {
+    fontSize: 11,
+    color: '#EF4444',
+    fontWeight: '600',
+    marginTop: 2,
   },
   messageContainer: {
     flexDirection: 'row',

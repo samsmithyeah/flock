@@ -1,18 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Modal,
-  TouchableOpacity,
-  Alert,
-  Linking,
-} from 'react-native';
+import { View, Text, StyleSheet, Modal, Alert, Linking, TouchableOpacity } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialIcons';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/firebase';
 import { Location } from '@/types/Signal';
 import * as ExpoLocation from 'expo-location';
+import SpinLoader from './SpinLoader';
+import CustomButton from './CustomButton';
 
 interface LocationSharingModalProps {
   visible: boolean;
@@ -264,16 +258,32 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
   const openDirections = () => {
     if (!locationData?.otherUserLocation) return;
 
-    const { latitude, longitude } = locationData.otherUserLocation;
-    const url = `https://maps.google.com/maps?daddr=${latitude},${longitude}`;
+    Alert.alert(
+      'Open Google Maps',
+      `This will open Google Maps to show directions to ${locationData.otherUserName}'s location.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Continue',
+          style: 'default',
+          onPress: () => {
+            const { latitude, longitude } = locationData.otherUserLocation;
+            const url = `https://maps.google.com/maps?daddr=${latitude},${longitude}`;
 
-    Linking.canOpenURL(url).then((supported) => {
-      if (supported) {
-        Linking.openURL(url);
-      } else {
-        Alert.alert('Error', 'Unable to open maps');
-      }
-    });
+            Linking.canOpenURL(url).then((supported) => {
+              if (supported) {
+                Linking.openURL(url);
+              } else {
+                Alert.alert('Error', 'Unable to open maps');
+              }
+            });
+          },
+        },
+      ],
+    );
   };
 
   const distance =
@@ -290,13 +300,13 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType="fade"
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
         <View style={styles.modal}>
           <View style={styles.header}>
-            <Text style={styles.title}>Location Shared</Text>
+            <Text style={styles.title}>Location shared</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
               <Icon name="close" size={24} color="#666" />
             </TouchableOpacity>
@@ -304,7 +314,7 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
 
           {isLoading ? (
             <View style={styles.loadingContainer}>
-              <Text style={styles.loadingText}>Loading location data...</Text>
+              <SpinLoader text="Loading location data..." />
             </View>
           ) : locationData ? (
             <View style={styles.content}>
@@ -342,20 +352,17 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
               </View>
 
               <View style={styles.actions}>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.directionsButton]}
+                <CustomButton
+                  title="Get directions"
                   onPress={openDirections}
-                >
-                  <Icon name="directions" size={20} color="#fff" />
-                  <Text style={styles.buttonText}>Get Directions</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.closeActionButton]}
-                  onPress={onClose}
-                >
-                  <Text style={styles.buttonText}>Close</Text>
-                </TouchableOpacity>
+                  variant="primary"
+                  icon={{
+                    name: 'map-outline',
+                    size: 20,
+                    color: '#fff',
+                  }}
+                  style={styles.directionsButton}
+                />
               </View>
 
               <Text style={styles.disclaimer}>
@@ -414,10 +421,6 @@ const styles = StyleSheet.create({
     padding: 40,
     alignItems: 'center',
   },
-  loadingText: {
-    fontSize: 16,
-    color: '#666',
-  },
   errorContainer: {
     padding: 40,
     alignItems: 'center',
@@ -460,30 +463,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   actions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 16,
   },
-  actionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 12,
-    borderRadius: 8,
-    marginHorizontal: 4,
-  },
   directionsButton: {
-    backgroundColor: '#1e90ff',
-  },
-  closeActionButton: {
-    backgroundColor: '#666',
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 4,
+    width: '100%',
   },
   disclaimer: {
     fontSize: 12,
