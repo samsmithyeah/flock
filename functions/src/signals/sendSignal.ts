@@ -251,7 +251,19 @@ export const updateUserLocation = functions.https.onCall(
     const db = admin.firestore();
 
     try {
+      // Hash the coordinates for privacy protection
+      const { hashCoordinate, createLocationAreaHash } = await import('../utils/locationHash');
+      const hashedLatitude = hashCoordinate(latitude);
+      const hashedLongitude = hashCoordinate(longitude);
+      const areaHash = createLocationAreaHash(latitude, longitude);
+
       await db.collection('userLocations').doc(auth.uid).set({
+        // Store hashed coordinates for privacy
+        hashedLatitude,
+        hashedLongitude,
+        areaHash,
+        // Store original coordinates for server-side proximity calculations
+        // These should only be used server-side and never sent to clients
         latitude,
         longitude,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),

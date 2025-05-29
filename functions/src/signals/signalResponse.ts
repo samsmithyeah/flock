@@ -156,10 +156,24 @@ export const respondToSignal = functions.https.onCall(
 
       // If accepting, create a mutual location sharing session
       if (response === 'accept' && location) {
+        // Hash the location coordinates for privacy protection
+        const { hashLocation, createLocationAreaHash } = await import('../utils/locationHash');
+
+        const hashedSenderLocation = hashLocation(signalData.location.latitude, signalData.location.longitude);
+        const hashedResponderLocation = hashLocation(location.latitude, location.longitude);
+        const senderAreaHash = createLocationAreaHash(signalData.location.latitude, signalData.location.longitude);
+        const responderAreaHash = createLocationAreaHash(location.latitude, location.longitude);
+
         const locationSharingData = {
           signalId,
           senderId: signalData.senderId,
           responderId: auth.uid,
+          // Store hashed coordinates for privacy
+          hashedSenderLocation,
+          hashedResponderLocation,
+          senderAreaHash,
+          responderAreaHash,
+          // Store original coordinates for server-side calculations only
           senderLocation: signalData.location,
           responderLocation: location,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
