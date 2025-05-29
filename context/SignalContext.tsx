@@ -44,6 +44,7 @@ import {
   getCurrentTrackingMode,
   LocationTrackingMode,
 } from '@/services/BackgroundLocationTask';
+import { calculateDistance } from '@/utils/locationUtils';
 
 interface SignalContextType {
   // State
@@ -429,10 +430,23 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
             (response: SignalResponse) => response.responderId === user.uid,
           );
           if (!hasResponded) {
-            // Fetch sender's name and add to signal
-            const senderName = await fetchUserName(signalData.senderId);
-            signalData.senderName = senderName;
-            signals.push(signalData);
+            // Check if user is within the signal's radius
+            if (currentLocation && signalData.location) {
+              const distance = calculateDistance(
+                currentLocation.latitude,
+                currentLocation.longitude,
+                signalData.location.latitude,
+                signalData.location.longitude,
+              );
+              
+              // Only include signals within radius
+              if (distance <= signalData.radius) {
+                // Fetch sender's name and add to signal
+                const senderName = await fetchUserName(signalData.senderId);
+                signalData.senderName = senderName;
+                signals.push(signalData);
+              }
+            }
           }
         }
       });
