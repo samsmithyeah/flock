@@ -39,6 +39,10 @@ import {
   startBackgroundLocationTracking,
   stopBackgroundLocationTracking,
   isBackgroundLocationTrackingActive,
+  switchTrackingMode,
+  determineTrackingMode,
+  getCurrentTrackingMode,
+  LocationTrackingMode,
 } from '@/services/BackgroundLocationTask';
 
 interface SignalContextType {
@@ -76,6 +80,10 @@ interface SignalContextType {
   updateUserLocation: (location: LocationType) => Promise<void>;
   cancelSignal: (signalId: string) => Promise<void>;
   cancelSharedLocation: (sharedLocationId: string) => Promise<void>;
+
+  // Location tracking mode management
+  getCurrentLocationTrackingMode: () => LocationTrackingMode;
+  hasActiveLocationSharing: () => boolean;
 }
 
 const SignalContext = createContext<SignalContextType | undefined>(undefined);
@@ -205,14 +213,25 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
         }
       }
 
-      // Start background location tracking
-      const success = await startBackgroundLocationTracking();
+      // Determine appropriate mode based on current shared locations
+      const hasActiveSharedLocations = sharedLocations.length > 0;
+      const initialMode = determineTrackingMode(hasActiveSharedLocations);
+
+      // Start background location tracking with appropriate mode
+      const success = await startBackgroundLocationTracking(initialMode);
       if (success) {
         setBackgroundLocationTrackingActive(true);
+
+        const modeText = initialMode === 'active' ? 'Active' : 'Passive';
+        const description =
+          initialMode === 'active'
+            ? 'High frequency updates for location sharing'
+            : 'Battery-optimized location updates';
+
         Toast.show({
           type: 'success',
-          text1: 'Background tracking started',
-          text2: 'Your location will be updated automatically',
+          text1: `${modeText} background tracking started`,
+          text2: description,
         });
       }
 
@@ -763,6 +782,57 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     }
   };
 
+  // Helper function to get current location tracking mode
+  const getCurrentLocationTrackingMode = (): LocationTrackingMode => {
+    return getCurrentTrackingMode();
+  };
+
+  // Helper function to check if user has active location sharing
+  const hasActiveLocationSharing = (): boolean => {
+    return sharedLocations.length > 0;
+  };
+
+  // Check and update location tracking mode based on shared locations
+  const updateLocationTrackingMode = async () => {
+    if (!backgroundLocationTrackingActive) {
+      return; // Not tracking, so no need to update mode
+    }
+
+    try {
+      const hasActiveSharedLocations = sharedLocations.length > 0;
+      const requiredMode = determineTrackingMode(hasActiveSharedLocations);
+      const currentMode = getCurrentTrackingMode();
+
+      if (requiredMode !== currentMode) {
+        console.log(
+          `Switching location tracking from ${currentMode} to ${requiredMode} mode`,
+        );
+        const success = await switchTrackingMode(requiredMode);
+
+        if (success) {
+          const modeText = requiredMode === 'active' ? 'Active' : 'Passive';
+          const description =
+            requiredMode === 'active'
+              ? 'More frequent updates for location sharing'
+              : 'Battery-saving mode';
+
+          Toast.show({
+            type: 'info',
+            text1: `${modeText} Location Tracking`,
+            text2: description,
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error updating location tracking mode:', error);
+    }
+  };
+
+  // Effect to update tracking mode when shared locations change
+  useEffect(() => {
+    updateLocationTrackingMode();
+  }, [sharedLocations, backgroundLocationTrackingActive]);
+
   const value: SignalContextType = {
     currentLocation,
     activeSignals,
@@ -783,6 +853,8 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     updateUserLocation,
     cancelSignal,
     cancelSharedLocation,
+    getCurrentLocationTrackingMode,
+    hasActiveLocationSharing,
   };
 
   return (

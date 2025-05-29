@@ -5,6 +5,28 @@ import { functions } from '@/firebase';
 
 const BACKGROUND_LOCATION_TASK = 'background-location-task';
 
+// Location tracking modes
+export type LocationTrackingMode = 'passive' | 'active';
+
+// Configuration for different tracking modes
+const TRACKING_CONFIGS = {
+  passive: {
+    timeInterval: 300000, // Update every 5 minutes
+    distanceInterval: 200, // Update when moved 200 meters
+    accuracy: Location.Accuracy.Balanced,
+    deferredUpdatesInterval: 300000, // Batch updates every 5 minutes
+  },
+  active: {
+    timeInterval: 15000, // Update every 15 seconds
+    distanceInterval: 25, // Update when moved 25 meters
+    accuracy: Location.Accuracy.High,
+    deferredUpdatesInterval: 30000, // Batch updates every 30 seconds
+  },
+};
+
+// Store current mode
+let currentTrackingMode: LocationTrackingMode = 'passive';
+
 // Define the background task
 TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
   console.log(
@@ -75,10 +97,14 @@ const updateUserLocationInBackground = async (
   }
 };
 
-// Function to start background location tracking
-export const startBackgroundLocationTracking = async (): Promise<boolean> => {
+// Function to start background location tracking with specific mode
+export const startBackgroundLocationTracking = async (
+  mode: LocationTrackingMode = 'passive',
+): Promise<boolean> => {
   const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] Starting background location tracking...`);
+  console.log(
+    `[${timestamp}] Starting background location tracking in ${mode} mode...`,
+  );
 
   try {
     // Check if the task is already registered
@@ -87,9 +113,12 @@ export const startBackgroundLocationTracking = async (): Promise<boolean> => {
     );
     console.log(`[${timestamp}] Task already registered: ${isRegistered}`);
 
+    // If already registered, stop and restart with new mode
     if (isRegistered) {
-      console.log(`[${timestamp}] Background location task already registered`);
-      return true;
+      console.log(
+        `[${timestamp}] Stopping existing task to restart with ${mode} mode`,
+      );
+      await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
     }
 
     // Request background location permissions
@@ -101,25 +130,32 @@ export const startBackgroundLocationTracking = async (): Promise<boolean> => {
       return false;
     }
 
-    // Start location updates
+    // Get configuration for the specified mode
+    const config = TRACKING_CONFIGS[mode];
+    currentTrackingMode = mode;
+
+    // Start location updates with mode-specific configuration
     await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
-      accuracy: Location.Accuracy.Balanced,
-      timeInterval: 30000, // Update every 30 seconds
-      distanceInterval: 50, // Update when moved 50 meters
+      accuracy: config.accuracy,
+      timeInterval: config.timeInterval,
+      distanceInterval: config.distanceInterval,
       foregroundService: {
         notificationTitle: 'Flock is tracking your location',
         notificationBody:
-          'This allows friends to send you signals based on your current location.',
+          mode === 'active'
+            ? 'Active location sharing - updating frequently for signal sessions.'
+            : 'This allows friends to send you signals based on your current location.',
         notificationColor: '#2596be',
       },
       pausesUpdatesAutomatically: false,
-      deferredUpdatesInterval: 60000, // Batch updates every minute when possible
-      showsBackgroundLocationIndicator: true,
+      deferredUpdatesInterval: config.deferredUpdatesInterval,
+      showsBackgroundLocationIndicator: mode === 'active',
     });
 
     console.log(
-      `[${timestamp}] Background location tracking started successfully`,
+      `[${timestamp}] Background location tracking started successfully in ${mode} mode`,
     );
+    console.log(`[${timestamp}] Config: ${JSON.stringify(config)}`);
 
     // Verify the task is now registered
     const finalStatus = await TaskManager.isTaskRegisteredAsync(
@@ -179,5 +215,45 @@ export const isBackgroundLocationTrackingActive =
       return false;
     }
   };
+
+// Function to get current tracking mode
+export const getCurrentTrackingMode = (): LocationTrackingMode => {
+  return currentTrackingMode;
+};
+
+// Function to switch tracking mode if different from current
+export const switchTrackingMode = async (
+  newMode: LocationTrackingMode,
+): Promise<boolean> => {
+  const timestamp = new Date().toISOString();
+
+  // If mode is the same, no need to switch
+  if (currentTrackingMode === newMode) {
+    console.log(`[${timestamp}] Already in ${newMode} mode, no switch needed`);
+    return true;
+  }
+
+  // If not currently tracking, just start with the new mode
+  const isCurrentlyActive = await isBackgroundLocationTrackingActive();
+  if (!isCurrentlyActive) {
+    console.log(
+      `[${timestamp}] Not currently tracking, starting in ${newMode} mode`,
+    );
+    return await startBackgroundLocationTracking(newMode);
+  }
+
+  // Switch to new mode by restarting with new configuration
+  console.log(
+    `[${timestamp}] Switching from ${currentTrackingMode} to ${newMode} mode`,
+  );
+  return await startBackgroundLocationTracking(newMode);
+};
+
+// Function to determine appropriate tracking mode based on user's sharing sessions
+export const determineTrackingMode = (
+  hasActiveSharedLocations: boolean,
+): LocationTrackingMode => {
+  return hasActiveSharedLocations ? 'active' : 'passive';
+};
 
 export { BACKGROUND_LOCATION_TASK };

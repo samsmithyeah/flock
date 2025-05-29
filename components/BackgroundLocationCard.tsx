@@ -75,14 +75,14 @@ const BackgroundLocationCard: React.FC<BackgroundLocationCardProps> = ({
 
   const getDescriptionText = () => {
     if (!isPermissionGranted) {
-      return 'Grant background location permission to automatically update your location for signals, even when the app is closed.';
+      return 'Grant background location permission to receive signals and automatically update your location, even when the app is closed.';
     }
 
     if (isTrackingActive) {
-      return 'Your location is being updated automatically. Friends can send you signals even when the app is closed.';
+      return 'Smart location tracking is active. Battery-optimized updates when idle, high-frequency updates during location sharing sessions.';
     }
 
-    return 'Enable to receive signals when the app is closed. Your location will be updated automatically every 30 seconds or when you move 50+ meters.';
+    return 'Enable smart background tracking to receive signals when the app is closed. Automatically switches between battery-saving and high-precision modes.';
   };
 
   return (
@@ -96,7 +96,7 @@ const BackgroundLocationCard: React.FC<BackgroundLocationCardProps> = ({
             color={getStatusColor()}
             style={styles.titleIcon}
           />
-          <Text style={styles.title}>Background location</Text>
+          <Text style={styles.title}>Location tracking</Text>
         </View>
 
         <View style={styles.statusContainer}>
@@ -123,7 +123,7 @@ const BackgroundLocationCard: React.FC<BackgroundLocationCardProps> = ({
       {!isPermissionGranted && (
         <View style={styles.permissionSection}>
           <CustomButton
-            title="Grant background permission"
+            title="Enable background tracking"
             onPress={onRequestPermission}
             variant="secondary"
             icon={{
@@ -143,7 +143,7 @@ const BackgroundLocationCard: React.FC<BackgroundLocationCardProps> = ({
           <View style={styles.infoRow}>
             <Ionicons name="time-outline" size={16} color={AppColors.gray} />
             <Text style={styles.infoText}>
-              Updates every 30 seconds or 50+ meters
+              Passive mode: 5-minute updates • Active mode: 15-second updates
             </Text>
           </View>
           <View style={styles.infoRow}>
@@ -153,7 +153,7 @@ const BackgroundLocationCard: React.FC<BackgroundLocationCardProps> = ({
               color={AppColors.gray}
             />
             <Text style={styles.infoText}>
-              Optimized for battery efficiency
+              Automatically switches modes to save battery
             </Text>
           </View>
           <View style={styles.infoRow}>
@@ -163,7 +163,7 @@ const BackgroundLocationCard: React.FC<BackgroundLocationCardProps> = ({
               color={AppColors.gray}
             />
             <Text style={styles.infoText}>
-              Only shared with your crew members
+              Secure and private - only visible to friends
             </Text>
           </View>
         </View>
