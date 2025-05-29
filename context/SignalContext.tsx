@@ -122,6 +122,10 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     setBackgroundLocationTrackingActive,
   ] = useState<boolean>(false);
 
+  // Flag to prevent recursive calls to updateLocationTrackingMode
+  const [isUpdatingTrackingMode, setIsUpdatingTrackingMode] =
+    useState<boolean>(false);
+
   useEffect(() => {
     if (user) {
       subscribeToActiveSignals();
@@ -421,6 +425,30 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
         return 'Unknown User';
       };
 
+      // Helper function to get user's stored location (same as server uses)
+      const getStoredUserLocation = async (): Promise<LocationType | null> => {
+        try {
+          const userLocationDoc = await getDoc(
+            doc(db, 'userLocations', user.uid),
+          );
+          if (userLocationDoc.exists()) {
+            const locationData = userLocationDoc.data();
+            if (locationData?.latitude && locationData?.longitude) {
+              return {
+                latitude: locationData.latitude,
+                longitude: locationData.longitude,
+              };
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching stored user location:', error);
+        }
+        return null;
+      };
+
+      // Get stored location to match server-side logic
+      const storedLocation = await getStoredUserLocation();
+
       const promises = snapshot.docs.map(async (doc) => {
         const signalData = { id: doc.id, ...doc.data() } as Signal;
         // Don't include user's own signals
@@ -430,17 +458,57 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
             (response: SignalResponse) => response.responderId === user.uid,
           );
           if (!hasResponded) {
-            // Check if user is within the signal's radius
-            if (currentLocation && signalData.location) {
-              const distance = calculateDistance(
-                currentLocation.latitude,
-                currentLocation.longitude,
-                signalData.location.latitude,
-                signalData.location.longitude,
-              );
-              
+            // Check if user is within the signal's radius using multiple location sources
+            if (signalData.location) {
+              let isWithinRadius = false;
+              let usedStoredLocation = false;
+
+              // Primary check: Use stored location (same as server-side for consistency)
+              if (storedLocation) {
+                const storedDistance = calculateDistance(
+                  storedLocation.latitude,
+                  storedLocation.longitude,
+                  signalData.location.latitude,
+                  signalData.location.longitude,
+                );
+                isWithinRadius = storedDistance <= signalData.radius;
+                usedStoredLocation = true;
+
+                if (__DEV__) {
+                  console.log(
+                    `[SignalFilter] Signal ${signalData.id}: stored location distance = ${storedDistance.toFixed(0)}m, within radius: ${isWithinRadius}`,
+                  );
+                }
+              }
+
+              // Fallback check: Use current GPS location if stored location unavailable
+              // or if stored location says we're outside but current location might be inside
+              if (!isWithinRadius && currentLocation) {
+                const currentDistance = calculateDistance(
+                  currentLocation.latitude,
+                  currentLocation.longitude,
+                  signalData.location.latitude,
+                  signalData.location.longitude,
+                );
+                const currentLocationWithinRadius =
+                  currentDistance <= signalData.radius;
+
+                if (__DEV__) {
+                  console.log(
+                    `[SignalFilter] Signal ${signalData.id}: current location distance = ${currentDistance.toFixed(0)}m, within radius: ${currentLocationWithinRadius}`,
+                  );
+                  if (usedStoredLocation && currentLocationWithinRadius) {
+                    console.log(
+                      `[SignalFilter] Location discrepancy detected for signal ${signalData.id}: stored location outside radius but current location inside`,
+                    );
+                  }
+                }
+
+                isWithinRadius = currentLocationWithinRadius;
+              }
+
               // Only include signals within radius
-              if (distance <= signalData.radius) {
+              if (isWithinRadius) {
                 // Fetch sender's name and add to signal
                 const senderName = await fetchUserName(signalData.senderId);
                 signalData.senderName = senderName;
@@ -808,44 +876,134 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
 
   // Check and update location tracking mode based on shared locations
   const updateLocationTrackingMode = async () => {
-    if (!backgroundLocationTrackingActive) {
-      return; // Not tracking, so no need to update mode
+    // Prevent recursive calls
+    if (isUpdatingTrackingMode) {
+      console.log('[UpdateLocationTrackingMode] Already updating, skipping...');
+      return;
     }
+
+    setIsUpdatingTrackingMode(true);
 
     try {
       const hasActiveSharedLocations = sharedLocations.length > 0;
       const requiredMode = determineTrackingMode(hasActiveSharedLocations);
+
+      console.log(
+        `[UpdateLocationTrackingMode] Shared locations: ${sharedLocations.length}, Required mode: ${requiredMode}, Currently active: ${backgroundLocationTrackingActive}`,
+      );
+
+      if (!backgroundLocationTrackingActive) {
+        // If not tracking but we have shared locations, start tracking with appropriate mode
+        if (hasActiveSharedLocations) {
+          console.log(
+            `Starting background tracking in ${requiredMode} mode for location sharing`,
+          );
+          try {
+            const success = await startBackgroundLocationTrackingHandler();
+            if (!success) {
+              console.error(
+                'Failed to start background tracking for location sharing',
+              );
+              // Show user-friendly error
+              Toast.show({
+                type: 'error',
+                text1: 'Location tracking issue',
+                text2:
+                  'Could not start background tracking. Please try enabling it manually.',
+              });
+            }
+          } catch (error) {
+            console.error(
+              'Error starting background tracking for location sharing:',
+              error,
+            );
+            // Show user-friendly error
+            Toast.show({
+              type: 'error',
+              text1: 'Location tracking error',
+              text2:
+                'Please try restarting the app or enabling location tracking manually.',
+            });
+          }
+        }
+        return;
+      }
+
+      // If already tracking, check if we need to switch modes
       const currentMode = getCurrentTrackingMode();
 
       if (requiredMode !== currentMode) {
         console.log(
           `Switching location tracking from ${currentMode} to ${requiredMode} mode`,
         );
-        const success = await switchTrackingMode(requiredMode);
+        try {
+          const success = await switchTrackingMode(requiredMode);
 
-        if (success) {
-          const modeText = requiredMode === 'active' ? 'Active' : 'Passive';
-          const description =
-            requiredMode === 'active'
-              ? 'More frequent updates for location sharing'
-              : 'Battery-saving mode';
+          if (success) {
+            const modeText = requiredMode === 'active' ? 'Active' : 'Passive';
+            const description =
+              requiredMode === 'active'
+                ? 'More frequent updates for location sharing'
+                : 'Battery-saving mode';
 
-          Toast.show({
-            type: 'info',
-            text1: `${modeText} Location Tracking`,
-            text2: description,
-          });
+            Toast.show({
+              type: 'info',
+              text1: `${modeText} location tracking`,
+              text2: description,
+            });
+          } else {
+            console.error(`Failed to switch to ${requiredMode} mode`);
+            // Don't show error toast for mode switching - it's less critical
+            // The tracking should still work in the previous mode
+          }
+        } catch (error) {
+          console.error('Error switching tracking mode:', error);
+          // Log but don't show error to user unless tracking completely fails
+        }
+      }
+
+      // If no more shared locations and tracking in active mode, switch to passive
+      if (!hasActiveSharedLocations && currentMode === 'active') {
+        console.log('No more shared locations, switching to passive mode');
+        try {
+          const success = await switchTrackingMode('passive');
+          if (success) {
+            Toast.show({
+              type: 'info',
+              text1: 'Passive location tracking',
+              text2: 'Switched to battery-saving mode',
+            });
+          }
+        } catch (error) {
+          console.error('Error switching to passive mode:', error);
+          // Don't show error - passive mode switch is not critical for functionality
         }
       }
     } catch (error) {
       console.error('Error updating location tracking mode:', error);
+      // Only show error if it's a critical failure that affects core functionality
+      if (sharedLocations.length > 0) {
+        Toast.show({
+          type: 'error',
+          text1: 'Location tracking issue',
+          text2:
+            'Background tracking may not be optimized. Check location permissions.',
+        });
+      }
+    } finally {
+      setIsUpdatingTrackingMode(false);
     }
   };
 
   // Effect to update tracking mode when shared locations change
   useEffect(() => {
-    updateLocationTrackingMode();
-  }, [sharedLocations, backgroundLocationTrackingActive]);
+    // Add a small delay to avoid race conditions when state updates
+    const timeoutId = setTimeout(() => {
+      updateLocationTrackingMode();
+    }, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [sharedLocations.length, backgroundLocationTrackingActive]); // Only depend on length, not the full array
 
   const value: SignalContextType = {
     currentLocation,

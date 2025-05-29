@@ -107,27 +107,37 @@ export const startBackgroundLocationTracking = async (
   );
 
   try {
-    // Check if the task is already registered
-    const isRegistered = await TaskManager.isTaskRegisteredAsync(
-      BACKGROUND_LOCATION_TASK,
-    );
-    console.log(`[${timestamp}] Task already registered: ${isRegistered}`);
-
-    // If already registered, stop and restart with new mode
-    if (isRegistered) {
-      console.log(
-        `[${timestamp}] Stopping existing task to restart with ${mode} mode`,
-      );
-      await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
-    }
-
-    // Request background location permissions
+    // Request background location permissions first
     const { status } = await Location.requestBackgroundPermissionsAsync();
     console.log(`[${timestamp}] Background permission status: ${status}`);
 
     if (status !== 'granted') {
       console.warn(`[${timestamp}] Background location permission not granted`);
       return false;
+    }
+
+    // Check if the task is already registered
+    const isRegistered = await TaskManager.isTaskRegisteredAsync(
+      BACKGROUND_LOCATION_TASK,
+    );
+    console.log(`[${timestamp}] Task already registered: ${isRegistered}`);
+
+    // If already registered, stop it first to avoid conflicts
+    if (isRegistered) {
+      console.log(
+        `[${timestamp}] Stopping existing task to restart with ${mode} mode`,
+      );
+      try {
+        await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+        // Add small delay to ensure task is fully stopped
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      } catch (stopError) {
+        console.warn(
+          `[${timestamp}] Error stopping existing task (proceeding anyway):`,
+          stopError,
+        );
+        // Continue anyway - sometimes tasks can be in inconsistent state
+      }
     }
 
     // Get configuration for the specified mode
@@ -171,6 +181,49 @@ export const startBackgroundLocationTracking = async (
       `[${timestamp}] Error starting background location tracking:`,
       error,
     );
+
+    // If we get E_TASK_NOT_FOUND or similar, try one more time after clearing any stale state
+    if (
+      error instanceof Error &&
+      (error.message.includes('E_TASK_NOT_FOUND') ||
+        error.message.includes('task'))
+    ) {
+      console.log(
+        `[${timestamp}] Detected task-related error, attempting recovery...`,
+      );
+      try {
+        // Wait a bit longer and try again
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        // Try to start again - the startLocationUpdatesAsync will handle registration
+        const config = TRACKING_CONFIGS[mode];
+        currentTrackingMode = mode;
+
+        await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
+          accuracy: config.accuracy,
+          timeInterval: config.timeInterval,
+          distanceInterval: config.distanceInterval,
+          foregroundService: {
+            notificationTitle: 'Flock is tracking your location',
+            notificationBody:
+              mode === 'active'
+                ? 'Active location sharing - updating frequently for signal sessions.'
+                : 'This allows friends to send you signals based on your current location.',
+            notificationColor: '#2596be',
+          },
+          pausesUpdatesAutomatically: false,
+          deferredUpdatesInterval: config.deferredUpdatesInterval,
+          showsBackgroundLocationIndicator: mode === 'active',
+        });
+
+        console.log(`[${timestamp}] Recovery attempt successful`);
+        return true;
+      } catch (recoveryError) {
+        console.error(`[${timestamp}] Recovery attempt failed:`, recoveryError);
+        return false;
+      }
+    }
+
     return false;
   }
 };
@@ -227,14 +280,20 @@ export const switchTrackingMode = async (
 ): Promise<boolean> => {
   const timestamp = new Date().toISOString();
 
+  console.log(
+    `[${timestamp}] switchTrackingMode called: current=${currentTrackingMode}, new=${newMode}`,
+  );
+
   // If mode is the same, no need to switch
   if (currentTrackingMode === newMode) {
     console.log(`[${timestamp}] Already in ${newMode} mode, no switch needed`);
     return true;
   }
 
-  // If not currently tracking, just start with the new mode
+  // Check if currently tracking
   const isCurrentlyActive = await isBackgroundLocationTrackingActive();
+  console.log(`[${timestamp}] Currently active: ${isCurrentlyActive}`);
+
   if (!isCurrentlyActive) {
     console.log(
       `[${timestamp}] Not currently tracking, starting in ${newMode} mode`,
@@ -246,7 +305,42 @@ export const switchTrackingMode = async (
   console.log(
     `[${timestamp}] Switching from ${currentTrackingMode} to ${newMode} mode`,
   );
-  return await startBackgroundLocationTracking(newMode);
+
+  try {
+    // First, stop the existing task explicitly to avoid E_TASK_NOT_FOUND
+    console.log(`[${timestamp}] Stopping existing task before switching modes`);
+    await stopBackgroundLocationTracking();
+
+    // Add a small delay to ensure task is fully stopped
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Now start with new mode
+    const success = await startBackgroundLocationTracking(newMode);
+    console.log(
+      `[${timestamp}] Switch to ${newMode} mode ${success ? 'succeeded' : 'failed'}`,
+    );
+    return success;
+  } catch (error) {
+    console.error(`[${timestamp}] Error switching to ${newMode} mode:`, error);
+
+    // If switching fails, try to ensure we at least have some tracking active
+    try {
+      console.log(
+        `[${timestamp}] Attempting recovery by starting ${newMode} mode directly`,
+      );
+      const recoverySuccess = await startBackgroundLocationTracking(newMode);
+      console.log(
+        `[${timestamp}] Recovery attempt ${recoverySuccess ? 'succeeded' : 'failed'}`,
+      );
+      return recoverySuccess;
+    } catch (recoveryError) {
+      console.error(
+        `[${timestamp}] Recovery attempt also failed:`,
+        recoveryError,
+      );
+      return false;
+    }
+  }
 };
 
 // Function to determine appropriate tracking mode based on user's sharing sessions
