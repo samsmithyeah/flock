@@ -86,7 +86,16 @@ const SendSignalScreen: React.FC = () => {
       title: 'Send signal',
       presentation: 'modal',
     });
-  }, [navigation, isLoading, currentLocation, targetType, selectedCrews]);
+  }, [
+    navigation,
+    isLoading,
+    currentLocation,
+    targetType,
+    selectedCrews,
+    message,
+    durationMinutes,
+    radius,
+  ]);
 
   // Redirect back if no location is available
   useEffect(() => {
