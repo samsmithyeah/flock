@@ -50,11 +50,7 @@ export const BadgeCountProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     updateBadgeCount();
-  }, [
-    totalBadgeCount,
-    user,
-    setBadgeCount,
-  ]);
+  }, [totalBadgeCount, user, setBadgeCount]);
 
   const value: BadgeCountContextType = {
     totalBadgeCount,
