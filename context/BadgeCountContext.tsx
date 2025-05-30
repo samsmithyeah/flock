@@ -4,10 +4,19 @@ import React, { useEffect, createContext, useContext } from 'react';
 import { useCrewDateChat } from '@/context/CrewDateChatContext';
 import { useDirectMessages } from '@/context/DirectMessagesContext';
 import { useInvitations } from '@/context/InvitationsContext';
+import { useSignal } from '@/context/SignalContext';
 import { useUser } from '@/context/UserContext';
 import Toast from 'react-native-toast-message';
 
-const BadgeCountContext = createContext(null);
+interface BadgeCountContextType {
+  totalBadgeCount: number;
+  crewTotalUnread: number;
+  dmTotalUnread: number;
+  invitationsPendingCount: number;
+  unansweredSignalCount: number;
+}
+
+const BadgeCountContext = createContext<BadgeCountContextType | null>(null);
 
 export const BadgeCountProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -15,16 +24,21 @@ export const BadgeCountProvider: React.FC<{ children: React.ReactNode }> = ({
   const { totalUnread: crewTotalUnread } = useCrewDateChat();
   const { totalUnread: dmTotalUnread } = useDirectMessages();
   const { pendingCount: invitationsPendingCount } = useInvitations();
+  const { unansweredSignalCount } = useSignal();
   const { user, setBadgeCount } = useUser();
+
+  const totalBadgeCount =
+    crewTotalUnread +
+    dmTotalUnread +
+    invitationsPendingCount +
+    unansweredSignalCount;
 
   useEffect(() => {
     const updateBadgeCount = async () => {
       if (!user?.uid) return;
 
-      const total = crewTotalUnread + dmTotalUnread + invitationsPendingCount;
-
       try {
-        await setBadgeCount(total);
+        await setBadgeCount(totalBadgeCount);
       } catch (error) {
         console.error('Error updating badge count:', error);
         Toast.show({
@@ -37,15 +51,21 @@ export const BadgeCountProvider: React.FC<{ children: React.ReactNode }> = ({
 
     updateBadgeCount();
   }, [
-    crewTotalUnread,
-    dmTotalUnread,
-    invitationsPendingCount,
+    totalBadgeCount,
     user,
     setBadgeCount,
   ]);
 
+  const value: BadgeCountContextType = {
+    totalBadgeCount,
+    crewTotalUnread,
+    dmTotalUnread,
+    invitationsPendingCount,
+    unansweredSignalCount,
+  };
+
   return (
-    <BadgeCountContext.Provider value={null}>
+    <BadgeCountContext.Provider value={value}>
       {children}
     </BadgeCountContext.Provider>
   );
@@ -53,7 +73,7 @@ export const BadgeCountProvider: React.FC<{ children: React.ReactNode }> = ({
 
 export const useBadgeCount = () => {
   const context = useContext(BadgeCountContext);
-  if (context === undefined) {
+  if (context === null) {
     throw new Error('useBadgeCount must be used within a BadgeCountProvider');
   }
   return context;
