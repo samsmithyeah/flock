@@ -641,13 +641,7 @@ const CrewCalendarScreen: React.FC = () => {
   const navigateToUserProfile = (selectedUser: User) => {
     if (!user) return;
     if (selectedUser.uid === user.uid) {
-      router.push(
-        {
-          pathname: '/profile',
-          params: { userId: user.uid },
-        },
-        { withAnchor: true },
-      );
+      router.push('/settings');
     } else {
       router.push(
         {

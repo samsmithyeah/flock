@@ -8,6 +8,7 @@ import {
   TextInput,
   TouchableOpacity,
   Dimensions,
+  Alert,
 } from 'react-native';
 import Toast from 'react-native-toast-message';
 import Colors from '@/styles/colors';
@@ -20,6 +21,10 @@ import {
 import { CountryPicker } from 'react-native-country-codes-picker';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import {
+  requestForegroundPermissionsAsync,
+  requestBackgroundPermissionsAsync,
+} from 'expo-location';
 import { db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
 import CustomButton from '@/components/CustomButton';
@@ -148,6 +153,64 @@ const PhoneVerificationScreen: React.FC = () => {
     }
   };
 
+  // ------------------ REQUEST LOCATION PERMISSIONS ------------------
+  const requestLocationPermissions = async () => {
+    try {
+      // Request foreground location permission first
+      const { status: foregroundStatus } =
+        await requestForegroundPermissionsAsync();
+
+      if (foregroundStatus === 'granted') {
+        // Then request background location permission
+        Alert.alert(
+          'Location Access',
+          'To receive signals from friends even when the app is closed, we need background location access. This helps you stay connected with your friends.',
+          [
+            {
+              text: 'Skip for now',
+              style: 'cancel',
+            },
+            {
+              text: 'Enable',
+              onPress: async () => {
+                try {
+                  const { status: backgroundStatus } =
+                    await requestBackgroundPermissionsAsync();
+
+                  if (backgroundStatus === 'granted') {
+                    Toast.show({
+                      type: 'success',
+                      text1: 'Location Enabled',
+                      text2: 'You can now receive signals from friends!',
+                    });
+                  } else {
+                    Toast.show({
+                      type: 'info',
+                      text1: 'Background Location Denied',
+                      text2:
+                        'You can enable this later in Settings to receive signals when the app is closed.',
+                    });
+                  }
+                } catch (error) {
+                  console.error('Error requesting background location:', error);
+                }
+              },
+            },
+          ],
+        );
+      } else {
+        Toast.show({
+          type: 'info',
+          text1: 'Location Permission',
+          text2:
+            'You can enable location access later in Settings to use all features.',
+        });
+      }
+    } catch (error) {
+      console.error('Error requesting location permissions:', error);
+    }
+  };
+
   // ------------------ VERIFY THE CODE ------------------
   const handleVerifyCode = async () => {
     setFormError('');
@@ -189,6 +252,10 @@ const PhoneVerificationScreen: React.FC = () => {
           if (updatedUserDoc.exists()) {
             setUser(updatedUserDoc.data() as User);
           }
+
+          // Request location permissions after successful verification
+          await requestLocationPermissions();
+
           Toast.show({
             type: 'success',
             text1: 'Success',

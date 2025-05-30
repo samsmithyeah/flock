@@ -128,6 +128,11 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
   const [isUpdatingTrackingMode, setIsUpdatingTrackingMode] =
     useState<boolean>(false);
 
+  // Track user's manual preference for background location tracking
+  // This prevents auto-restart when user manually disables tracking
+  const [userDisabledBackgroundTracking, setUserDisabledBackgroundTracking] =
+    useState<boolean>(false);
+
   useEffect(() => {
     if (user) {
       subscribeToActiveSignals();
@@ -135,8 +140,60 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
       subscribeToSharedLocations();
       checkLocationPermissions();
       checkBackgroundLocationTrackingStatus();
+    } else {
+      // Reset user preference when user logs out or changes
+      setUserDisabledBackgroundTracking(false);
     }
   }, [user]);
+
+  // Auto-start background tracking if permission is granted but tracking is not active
+  useEffect(() => {
+    const autoStartTracking = async () => {
+      // Only auto-start if:
+      // 1. User is logged in
+      // 2. Background permission is granted
+      // 3. Tracking is not currently active
+      // 4. Not currently updating tracking mode (to avoid conflicts)
+      // 5. User has not manually disabled background tracking
+      if (
+        user &&
+        backgroundLocationPermissionGranted &&
+        !backgroundLocationTrackingActive &&
+        !isUpdatingTrackingMode &&
+        !userDisabledBackgroundTracking
+      ) {
+        console.log('Auto-starting background location tracking...');
+        try {
+          const success = await startBackgroundLocationTrackingHandler();
+          if (success) {
+            console.log(
+              'Auto-started background location tracking successfully',
+            );
+          } else {
+            console.log('Failed to auto-start background location tracking');
+          }
+        } catch (error) {
+          console.error(
+            'Error auto-starting background location tracking:',
+            error,
+          );
+        }
+      }
+    };
+
+    // Add a small delay to ensure all permissions have been checked
+    const timeoutId = setTimeout(() => {
+      autoStartTracking();
+    }, 1000);
+
+    return () => clearTimeout(timeoutId);
+  }, [
+    user,
+    backgroundLocationPermissionGranted,
+    backgroundLocationTrackingActive,
+    isUpdatingTrackingMode,
+    userDisabledBackgroundTracking,
+  ]);
 
   const checkLocationPermissions = async () => {
     try {
@@ -190,11 +247,23 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
       setBackgroundLocationPermissionGranted(granted);
 
       if (granted) {
-        Toast.show({
-          type: 'success',
-          text1: 'Background Location Enabled',
-          text2: 'Friends can now send you signals even when the app is closed',
-        });
+        // Automatically start background tracking when permission is granted
+        const success = await startBackgroundLocationTrackingHandler();
+
+        if (success) {
+          Toast.show({
+            type: 'success',
+            text1: 'Background Location Enabled',
+            text2:
+              'Location tracking started - friends can now send you signals even when the app is closed',
+          });
+        } else {
+          Toast.show({
+            type: 'success',
+            text1: 'Background Location Enabled',
+            text2: 'Permission granted - you can enable tracking in Settings',
+          });
+        }
       } else {
         Toast.show({
           type: 'error',
@@ -219,6 +288,9 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
           return false;
         }
       }
+
+      // Clear the user disabled flag since user is manually enabling
+      setUserDisabledBackgroundTracking(false);
 
       // Determine appropriate mode based on current shared locations
       const hasActiveSharedLocations = sharedLocations.length > 0;
@@ -256,6 +328,9 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
 
   const stopBackgroundLocationTrackingHandler = async (): Promise<void> => {
     try {
+      // Set the user disabled flag to prevent auto-restart
+      setUserDisabledBackgroundTracking(true);
+
       await stopBackgroundLocationTracking();
       setBackgroundLocationTrackingActive(false);
       Toast.show({

@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { View, ScrollView, Text, StyleSheet, Alert } from 'react-native';
 import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useSignal } from '@/context/SignalContext';
 import { useUser } from '@/context/UserContext';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import Toast from 'react-native-toast-message';
 import ScreenTitle from '@/components/ScreenTitle';
 import LocationSharingModal from '@/components/LocationSharingModal';
-import BackgroundLocationCard from '@/components/BackgroundLocationCard';
 import CustomButton from '@/components/CustomButton';
 import SignalCard from '@/components/SignalCard';
 import OutgoingSignalCard from '@/components/OutgoingSignalCard';
@@ -28,15 +28,11 @@ const SignalScreen: React.FC = () => {
     backgroundLocationPermissionGranted,
     backgroundLocationTrackingActive,
     requestLocationPermission,
-    requestBackgroundLocationPermission,
     getCurrentLocation,
-    startBackgroundLocationTracking,
-    stopBackgroundLocationTracking,
     respondToSignal: respondToSignalContext,
     modifySignalResponse,
     cancelSignal,
     cancelSharedLocation,
-    hasActiveLocationSharing,
   } = useSignal();
   const { user } = useUser();
   const globalStyles = useGlobalStyles();
@@ -288,23 +284,33 @@ const SignalScreen: React.FC = () => {
             </Text>
           </View>
 
-          {/* Background Location Card */}
-          <BackgroundLocationCard
-            isPermissionGranted={backgroundLocationPermissionGranted}
-            isTrackingActive={backgroundLocationTrackingActive}
-            onRequestPermission={async () => {
-              await requestBackgroundLocationPermission();
-            }}
-            onToggleTracking={async (enabled: boolean) => {
-              if (enabled) {
-                await startBackgroundLocationTracking();
-              } else {
-                await stopBackgroundLocationTracking();
-              }
-            }}
-            isLoading={isLoading}
-            hasActiveLocationSharing={hasActiveLocationSharing()}
-          />
+          {/* Location Tracking Warning */}
+          {(!backgroundLocationPermissionGranted ||
+            !backgroundLocationTrackingActive) && (
+            <View style={styles.warningContainer}>
+              <View style={styles.warningHeader}>
+                <Ionicons name="warning" size={20} color="#FF9500" />
+                <Text style={styles.warningTitle}>
+                  Location tracking disabled
+                </Text>
+              </View>
+              <Text style={styles.warningText}>
+                {!backgroundLocationPermissionGranted
+                  ? "Background location permission not granted. You won't receive signals when the app is closed."
+                  : 'Location tracking is turned off. Enable it in your profile settings to receive signals when the app is closed.'}
+              </Text>
+              <CustomButton
+                title="Go to Settings"
+                onPress={() => router.push('/settings')}
+                variant="secondary"
+                style={styles.warningButton}
+                icon={{
+                  name: 'settings-outline',
+                  size: 18,
+                }}
+              />
+            </View>
+          )}
 
           <View>
             {!currentLocation && (
@@ -485,6 +491,34 @@ const styles = StyleSheet.create({
   },
   retryButton: {
     marginTop: 0,
+  },
+  warningContainer: {
+    backgroundColor: '#FFF8E1',
+    padding: 16,
+    borderRadius: 12,
+    marginVertical: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF9500',
+  },
+  warningHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  warningTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#E65100',
+    marginLeft: 8,
+  },
+  warningText: {
+    fontSize: 14,
+    color: '#F57C00',
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  warningButton: {
+    marginTop: 4,
   },
 });
 
