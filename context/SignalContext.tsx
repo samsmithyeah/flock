@@ -56,6 +56,7 @@ interface SignalContextType {
   locationPermissionGranted: boolean;
   backgroundLocationPermissionGranted: boolean;
   backgroundLocationTrackingActive: boolean;
+  unansweredSignalCount: number;
 
   // Actions
   requestLocationPermission: () => Promise<boolean>;
@@ -121,6 +122,7 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     backgroundLocationTrackingActive,
     setBackgroundLocationTrackingActive,
   ] = useState<boolean>(false);
+  const [unansweredSignalCount, setUnansweredSignalCount] = useState<number>(0);
 
   // Flag to prevent recursive calls to updateLocationTrackingMode
   const [isUpdatingTrackingMode, setIsUpdatingTrackingMode] =
@@ -502,7 +504,16 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
       });
 
       await Promise.all(promises);
-      setReceivedSignals(signals);
+
+      // Filter out expired signals before setting state
+      const now = new Date();
+      const validSignals = signals.filter((signal) => {
+        if (!signal.expiresAt) return true; // Keep signals without expiration
+        const expiresAt = signal.expiresAt.toDate();
+        return expiresAt > now;
+      });
+
+      setReceivedSignals(validSignals);
     });
   };
 
@@ -559,11 +570,9 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
 
       // Check if location has expired
       const now = new Date();
-      const expiresAt = data.expiresAt?.toDate
-        ? data.expiresAt.toDate()
-        : new Date(data.expiresAt);
+      const expiresAt = data.expiresAt?.toDate();
 
-      if (expiresAt <= now) {
+      if (expiresAt && expiresAt <= now) {
         console.log(`Location sharing expired: ${doc.id}, updating status...`);
         // Update the status to expired in the database
         try {
@@ -738,11 +747,11 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
 
       Toast.show({
         type: 'success',
-        text1: response === 'accept' ? 'Accepted!' : 'Ignored',
+        text1: response === 'accept' ? 'Accepted!' : 'Declined',
         text2:
           response === 'accept'
             ? 'Your location has been shared'
-            : 'Signal ignored',
+            : 'Signal declined successfully',
       });
     } catch (error) {
       console.error('Error responding to signal:', error);
@@ -987,6 +996,35 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     return () => clearTimeout(timeoutId);
   }, [sharedLocations.length, backgroundLocationTrackingActive]); // Only depend on length, not the full array
 
+  // Effect to calculate unanswered signal count (only truly unanswered signals)
+  useEffect(() => {
+    if (!user?.uid) {
+      setUnansweredSignalCount(0);
+      return;
+    }
+
+    // Filter received signals to only include non-expired ones (same logic as UI)
+    const now = new Date();
+    const validReceivedSignals = receivedSignals.filter((signal) => {
+      if (!signal.expiresAt) return true;
+      const expiresAt = signal.expiresAt.toDate();
+      return expiresAt > now;
+    });
+
+    // Check which signals the user has already responded to by looking at the signal's responses array
+    const unansweredSignals = validReceivedSignals.filter((signal) => {
+      // Check if user has already responded to this signal
+      const hasResponded = signal.responses?.some(
+        (response: SignalResponse) => response.responderId === user.uid,
+      );
+      return !hasResponded;
+    });
+
+    // Only count truly unanswered signals for badge count
+    // Shared locations are ongoing connections, not new notifications
+    setUnansweredSignalCount(unansweredSignals.length);
+  }, [receivedSignals, user?.uid]);
+
   const value: SignalContextType = {
     currentLocation,
     activeSignals,
@@ -996,6 +1034,7 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     locationPermissionGranted,
     backgroundLocationPermissionGranted,
     backgroundLocationTrackingActive,
+    unansweredSignalCount,
     requestLocationPermission,
     requestBackgroundLocationPermission,
     getCurrentLocation,

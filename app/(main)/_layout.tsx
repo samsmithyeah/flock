@@ -4,11 +4,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useInvitations } from '@/context/InvitationsContext';
 import { useDirectMessages } from '@/context/DirectMessagesContext';
 import { useCrewDateChat } from '@/context/CrewDateChatContext';
+import { useSignal } from '@/context/SignalContext';
 
 export default function MainLayout() {
   const { pendingCount } = useInvitations();
   const { totalUnread: totalDMUnread } = useDirectMessages();
   const { totalUnread: totalGroupUnread } = useCrewDateChat();
+  const { unansweredSignalCount } = useSignal();
 
   const getTotalUnread = () => totalDMUnread + totalGroupUnread;
 
@@ -39,6 +41,12 @@ export default function MainLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="radio-outline" size={size} color={color} />
           ),
+          tabBarBadge:
+            unansweredSignalCount > 0
+              ? unansweredSignalCount > 99
+                ? '99+'
+                : unansweredSignalCount
+              : undefined,
         }}
       />
       <Tabs.Screen
