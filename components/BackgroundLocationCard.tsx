@@ -126,7 +126,9 @@ const BackgroundLocationCard: React.FC<BackgroundLocationCardProps> = ({
               true: AppColors.primaryLight,
             }}
             thumbColor={isTrackingActive ? AppColors.primary : AppColors.gray}
-            disabled={isLoading || (isTrackingActive && hasActiveLocationSharing)}
+            disabled={
+              isLoading || (isTrackingActive && hasActiveLocationSharing)
+            }
           />
         </View>
       </View>
