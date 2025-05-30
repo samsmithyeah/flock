@@ -27,6 +27,7 @@ interface BackgroundLocationCardProps {
   onRequestPermission: () => Promise<void>;
   onToggleTracking: (enabled: boolean) => Promise<void>;
   isLoading?: boolean;
+  hasActiveLocationSharing?: boolean;
 }
 
 const BackgroundLocationCard: React.FC<BackgroundLocationCardProps> = ({
@@ -35,6 +36,7 @@ const BackgroundLocationCard: React.FC<BackgroundLocationCardProps> = ({
   onRequestPermission,
   onToggleTracking,
   isLoading = false,
+  hasActiveLocationSharing = false,
 }) => {
   const handleToggleTracking = async (value: boolean) => {
     if (!isPermissionGranted && value) {
@@ -45,6 +47,16 @@ const BackgroundLocationCard: React.FC<BackgroundLocationCardProps> = ({
           { text: 'Cancel', style: 'cancel' },
           { text: 'Grant Permission', onPress: onRequestPermission },
         ],
+      );
+      return;
+    }
+
+    // Prevent disabling tracking when actively sharing location
+    if (!value && hasActiveLocationSharing) {
+      Alert.alert(
+        'Cannot Disable Tracking',
+        'Location tracking cannot be disabled while you have active location sharing sessions. Please end all location sharing first.',
+        [{ text: 'OK', style: 'default' }],
       );
       return;
     }
@@ -79,6 +91,9 @@ const BackgroundLocationCard: React.FC<BackgroundLocationCardProps> = ({
     }
 
     if (isTrackingActive) {
+      if (hasActiveLocationSharing) {
+        return 'Smart location tracking is active. Cannot be disabled while actively sharing location with others. High-frequency updates during location sharing sessions.';
+      }
       return 'Smart location tracking is active. Battery-optimized updates when idle, high-frequency updates during location sharing sessions.';
     }
 
@@ -111,7 +126,7 @@ const BackgroundLocationCard: React.FC<BackgroundLocationCardProps> = ({
               true: AppColors.primaryLight,
             }}
             thumbColor={isTrackingActive ? AppColors.primary : AppColors.gray}
-            disabled={isLoading}
+            disabled={isLoading || (isTrackingActive && hasActiveLocationSharing)}
           />
         </View>
       </View>

@@ -36,6 +36,7 @@ const SignalScreen: React.FC = () => {
     modifySignalResponse,
     cancelSignal,
     cancelSharedLocation,
+    hasActiveLocationSharing,
   } = useSignal();
   const { user } = useUser();
   const globalStyles = useGlobalStyles();
@@ -302,6 +303,7 @@ const SignalScreen: React.FC = () => {
               }
             }}
             isLoading={isLoading}
+            hasActiveLocationSharing={hasActiveLocationSharing()}
           />
 
           <View>
