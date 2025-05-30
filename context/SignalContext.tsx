@@ -462,7 +462,6 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
             // Check if user is within the signal's radius using multiple location sources
             if (signalData.location) {
               let isWithinRadius = false;
-              let usedStoredLocation = false;
 
               // Primary check: Use stored location (same as server-side for consistency)
               if (storedLocation) {
@@ -473,7 +472,6 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
                   signalData.location.longitude,
                 );
                 isWithinRadius = storedDistance <= signalData.radius;
-                usedStoredLocation = true;
               }
 
               // Fallback check: Use current GPS location if stored location unavailable

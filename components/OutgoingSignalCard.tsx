@@ -4,6 +4,7 @@ import Icon from '@expo/vector-icons/MaterialIcons';
 import { router } from 'expo-router';
 import CustomButton from './CustomButton';
 import ActionButton from './ActionButton';
+import Badge from './Badge';
 import { Signal } from '@/types/Signal';
 import { getTimeAgo, getTimeRemaining } from '@/utils/timeUtils';
 
@@ -83,14 +84,20 @@ const OutgoingSignalCard: React.FC<OutgoingSignalCardProps> = ({
         signal.targetCrewNames &&
         signal.targetCrewNames.length > 0 && (
           <View style={styles.crewTargetContainer}>
-            <Text style={styles.crewTargetLabel}>Sent to:</Text>
-            <Text style={styles.crewTargetText}>
-              {signal.targetCrewNames.length === 1
-                ? `${signal.targetCrewNames[0]} crew`
-                : signal.targetCrewNames.length === 2
-                  ? `${signal.targetCrewNames[0]} and ${signal.targetCrewNames[1]} crews`
-                  : `${signal.targetCrewNames[0]} and ${signal.targetCrewNames.length - 1} other crew${signal.targetCrewNames.length - 1 > 1 ? 's' : ''}`}
-            </Text>
+            <View style={styles.crewBadgesContainer}>
+              {signal.targetCrewNames.map((crewName, index) => (
+                <Badge
+                  key={index}
+                  text={crewName}
+                  variant="info"
+                  icon={{
+                    name: 'people',
+                    size: 12,
+                  }}
+                  style={styles.crewBadge}
+                />
+              ))}
+            </View>
           </View>
         )}
 
@@ -249,21 +256,15 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   crewTargetContainer: {
-    backgroundColor: '#F3F4F6',
-    padding: 10,
-    borderRadius: 8,
     marginBottom: 12,
   },
-  crewTargetLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '600',
-    marginBottom: 2,
+  crewBadgesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
   },
-  crewTargetText: {
-    fontSize: 13,
-    color: '#374151',
-    fontWeight: '500',
+  crewBadge: {
+    marginBottom: 4,
   },
   responsesList: {
     borderTopWidth: 1,
