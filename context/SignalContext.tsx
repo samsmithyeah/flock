@@ -433,6 +433,7 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
           );
           if (userLocationDoc.exists()) {
             const locationData = userLocationDoc.data();
+            // Use simplified coordinates to match server-side logic (maintains privacy)
             if (locationData?.latitude && locationData?.longitude) {
               return {
                 latitude: locationData.latitude,

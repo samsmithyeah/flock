@@ -23,11 +23,8 @@ interface SignalResponse {
   responderId: string;
   responderName?: string;
   response: 'accept' | 'ignore';
-  location?: {
-    latitude: number;
-    longitude: number;
-  };
   respondedAt: admin.firestore.Timestamp;
+  // Note: location field removed for privacy - coordinates are stored separately in locationSharing collection
 }
 
 interface ModifyResponseData {
@@ -122,6 +119,7 @@ export const respondToSignal = functions.https.onCall(
       const responderName = responderData?.displayName || 'Someone';
 
       // Create response object with actual timestamp (not serverTimestamp in array)
+      // NOTE: No longer storing exact coordinates in the response for privacy
       const responseData: {
         id: string;
         signalId: string;
@@ -129,10 +127,6 @@ export const respondToSignal = functions.https.onCall(
         responderName: string;
         response: 'accept' | 'ignore';
         respondedAt: admin.firestore.Timestamp;
-        location?: {
-          latitude: number;
-          longitude: number;
-        };
       } = {
         id: db.collection('signalResponses').doc().id,
         signalId,
@@ -142,12 +136,9 @@ export const respondToSignal = functions.https.onCall(
         respondedAt: admin.firestore.Timestamp.now(),
       };
 
-      // Only add location if accepting the signal and location is valid
-      if (response === 'accept' && location &&
-          typeof location.latitude === 'number' &&
-          typeof location.longitude === 'number') {
-        responseData.location = location;
-      }
+      // Location is no longer stored in the response for privacy protection
+      // Exact coordinates are only stored in the locationSharing collection
+      // with proper hashing and rounding for privacy
 
       // Update signal with new response
       await signalRef.update({
@@ -156,26 +147,18 @@ export const respondToSignal = functions.https.onCall(
 
       // If accepting, create a mutual location sharing session
       if (response === 'accept' && location) {
-        // Hash the location coordinates for privacy protection
-        const { hashLocation, createLocationAreaHash } = await import('../utils/locationHash');
-
-        const hashedSenderLocation = hashLocation(signalData.location.latitude, signalData.location.longitude);
-        const hashedResponderLocation = hashLocation(location.latitude, location.longitude);
-        const senderAreaHash = createLocationAreaHash(signalData.location.latitude, signalData.location.longitude);
-        const responderAreaHash = createLocationAreaHash(location.latitude, location.longitude);
-
         const locationSharingData = {
           signalId,
           senderId: signalData.senderId,
           responderId: auth.uid,
-          // Store hashed coordinates for privacy
-          hashedSenderLocation,
-          hashedResponderLocation,
-          senderAreaHash,
-          responderAreaHash,
-          // Store original coordinates for server-side calculations only
-          senderLocation: signalData.location,
-          responderLocation: location,
+          senderLocation: {
+            latitude: signalData.location.latitude,
+            longitude: signalData.location.longitude,
+          },
+          responderLocation: {
+            latitude: location.latitude,
+            longitude: location.longitude,
+          },
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           expiresAt: signalData.expiresAt, // Use signal's expiry time
           status: 'active',
