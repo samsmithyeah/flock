@@ -5,6 +5,7 @@ import { View, Text, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ActionButton from './ActionButton';
 import { Signal } from '@/types/Signal';
+import { useCrews } from '@/context/CrewsContext';
 
 interface SignalCardProps {
   signal: Signal;
@@ -22,6 +23,19 @@ const SignalCard: React.FC<SignalCardProps> = ({
   isLoading = false,
 }) => {
   const [timeRemaining, setTimeRemaining] = useState<string>('');
+  const { crews } = useCrews();
+
+  // Filter crew names to only show crews the user is a member of
+  const getFilteredCrewNames = (): string[] => {
+    if (!signal.targetCrewNames || signal.targetType !== 'crews') {
+      return [];
+    }
+
+    const userCrewNames = crews.map((crew) => crew.name);
+    return signal.targetCrewNames.filter((crewName) =>
+      userCrewNames.includes(crewName),
+    );
+  };
 
   const getTimeAgo = (timestamp: Date) => {
     const now = new Date();
@@ -160,6 +174,26 @@ const SignalCard: React.FC<SignalCardProps> = ({
         </View>
       </View>
 
+      {/* Crew context for crew-specific signals */}
+      {signal.targetType === 'crews' &&
+        (() => {
+          const filteredCrewNames = getFilteredCrewNames();
+          return (
+            filteredCrewNames.length > 0 && (
+              <View style={styles.crewContainer}>
+                <Ionicons name="people-outline" size={14} color="#6B7280" />
+                <Text style={styles.crewText}>
+                  {filteredCrewNames.length === 1
+                    ? `For ${filteredCrewNames[0]} crew`
+                    : filteredCrewNames.length === 2
+                      ? `For ${filteredCrewNames[0]} and ${filteredCrewNames[1]} crews`
+                      : `For ${filteredCrewNames[0]} and ${filteredCrewNames.length - 1} other crew${filteredCrewNames.length - 1 > 1 ? 's' : ''}`}
+                </Text>
+              </View>
+            )
+          );
+        })()}
+
       {/* Message */}
       {signal.message && (
         <View style={styles.messageContainer}>
@@ -267,6 +301,20 @@ const styles = StyleSheet.create({
     color: '#EF4444',
     fontWeight: '600',
     marginTop: 2,
+  },
+  crewContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    padding: 8,
+    borderRadius: 6,
+    marginBottom: 12,
+  },
+  crewText: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginLeft: 6,
+    fontWeight: '500',
   },
   messageContainer: {
     flexDirection: 'row',

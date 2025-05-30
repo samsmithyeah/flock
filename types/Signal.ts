@@ -24,6 +24,7 @@ export interface Signal {
   location: Location;
   targetType: 'all' | 'crews' | 'contacts';
   targetIds: string[]; // crew IDs or contact IDs depending on targetType
+  targetCrewNames?: string[]; // Crew names for display purposes when targetType is 'crews'
   createdAt: Timestamp;
   expiresAt: Timestamp;
   durationMinutes?: number; // Duration in minutes, defaults to 120 (2 hours)

@@ -78,6 +78,22 @@ const OutgoingSignalCard: React.FC<OutgoingSignalCardProps> = ({
         </View>
       )}
 
+      {/* Target crews display */}
+      {signal.targetType === 'crews' &&
+        signal.targetCrewNames &&
+        signal.targetCrewNames.length > 0 && (
+          <View style={styles.crewTargetContainer}>
+            <Text style={styles.crewTargetLabel}>Sent to:</Text>
+            <Text style={styles.crewTargetText}>
+              {signal.targetCrewNames.length === 1
+                ? `${signal.targetCrewNames[0]} crew`
+                : signal.targetCrewNames.length === 2
+                  ? `${signal.targetCrewNames[0]} and ${signal.targetCrewNames[1]} crews`
+                  : `${signal.targetCrewNames[0]} and ${signal.targetCrewNames.length - 1} other crew${signal.targetCrewNames.length - 1 > 1 ? 's' : ''}`}
+            </Text>
+          </View>
+        )}
+
       {/* Responses List */}
       {signal.responses.length > 0 ? (
         <View style={styles.responsesList}>
@@ -231,6 +247,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#495057',
     fontStyle: 'italic',
+  },
+  crewTargetContainer: {
+    backgroundColor: '#F3F4F6',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  crewTargetLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  crewTargetText: {
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '500',
   },
   responsesList: {
     borderTopWidth: 1,

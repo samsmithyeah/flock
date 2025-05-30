@@ -26,6 +26,7 @@ interface Signal {
   location: Location;
   targetType: 'all' | 'crews' | 'contacts';
   targetIds: string[];
+  targetCrewNames?: string[];
   createdAt: admin.firestore.Timestamp;
   expiresAt: admin.firestore.Timestamp;
   durationMinutes?: number;
@@ -92,15 +93,20 @@ export const processSignal = functions.firestore.onDocumentCreated(
           .map((doc) => doc.id)
           .filter((uid) => uid !== signalData.senderId);
       } else if (signalData.targetType === 'crews') {
-        // Get members from specified crews
+        // Get members from specified crews and collect crew names
         const crewPromises = signalData.targetIds.map((crewId) =>
           db.collection('crews').doc(crewId).get(),
         );
         const crewDocs = await Promise.all(crewPromises);
         const memberIds = new Set<string>();
+        const crewNames: string[] = [];
+
         crewDocs.forEach((doc) => {
           if (doc.exists) {
             const crewData = doc.data();
+            if (crewData?.name) {
+              crewNames.push(crewData.name);
+            }
             if (crewData?.memberIds) {
               crewData.memberIds.forEach((memberId: string) => {
                 if (memberId !== signalData.senderId) {
@@ -110,7 +116,15 @@ export const processSignal = functions.firestore.onDocumentCreated(
             }
           }
         });
+
         targetUserIds = Array.from(memberIds);
+
+        // Update the signal document with crew names for display purposes
+        if (crewNames.length > 0) {
+          await db.collection('signals').doc(signalId).update({
+            targetCrewNames: crewNames,
+          });
+        }
       }
 
       if (targetUserIds.length === 0) {
@@ -182,23 +196,76 @@ export const processSignal = functions.firestore.onDocumentCreated(
 
       // Prepare notification messages
       const durationMinutes = signalData.durationMinutes || 120; // Default 2 hours
+
+      // Get crew names from updated signal document for notifications
+      const updatedSignalDoc = await db.collection('signals').doc(signalId).get();
+      const updatedSignalData = updatedSignalDoc.data() as Signal;
+      const allCrewNames = updatedSignalData?.targetCrewNames || [];
+
+      // Create a map of user IDs to their crew names for filtering
+      const userCrewNamesMap = new Map<string, string[]>();
+
+      if (signalData.targetType === 'crews' && allCrewNames.length > 0) {
+        // For crew signals, we need to determine which crews each user belongs to
+        for (const userId of targetUserIds) {
+          // Get user's crews by checking which crews they are a member of
+          const userCrewsQuery = await db.collection('crews')
+            .where('memberIds', 'array-contains', userId)
+            .get();
+
+          const userCrewNames: string[] = [];
+          userCrewsQuery.docs.forEach((doc) => {
+            const crewData = doc.data();
+            if (crewData?.name && allCrewNames.includes(crewData.name)) {
+              userCrewNames.push(crewData.name);
+            }
+          });
+
+          userCrewNamesMap.set(userId, userCrewNames);
+        }
+      }
+
       const messages: ExpoPushMessage[] = eligibleUsers.map((user) => {
         const distanceText = user.distance < 1000 ?
           `${Math.round(user.distance)}m away` :
           `${(user.distance / 1000).toFixed(1)}km away`;
 
+        // Create crew-specific title and body, filtered for this user
+        let title = `📍 ${senderName} wants to meet up!`;
+        let body = signalData.message || 'Someone nearby wants to meet up right now!';
+        let userCrewNames: string[] = [];
+
+        if (signalData.targetType === 'crews') {
+          userCrewNames = userCrewNamesMap.get(user.uid) || [];
+
+          if (userCrewNames.length > 0) {
+            const crewText = userCrewNames.length === 1 ?
+              `${userCrewNames[0]}` :
+              userCrewNames.length === 2 ?
+                `${userCrewNames[0]} and ${userCrewNames[1]}` :
+                `${userCrewNames[0]} and ${userCrewNames.length - 1} other crew${userCrewNames.length - 1 > 1 ? 's' : ''}`;
+
+            title = `📍 ${senderName} wants ${crewText} to meet up!`;
+
+            if (!signalData.message) {
+              body = `${senderName} is signaling ${crewText} to meet up right now!`;
+            }
+          }
+        }
+
         return {
           to: user.token,
           sound: 'default',
-          title: '📍 Someone wants to meet up!',
-          subtitle: `${senderName} • ${distanceText}`,
-          body: signalData.message || 'Someone nearby wants to meet up right now!',
+          title,
+          subtitle: distanceText,
+          body,
           data: {
             type: 'signal',
             signalId,
             senderId: signalData.senderId,
             senderName,
             distance: user.distance,
+            targetCrewNames: userCrewNames, // Only include crews this user belongs to
             screen: 'Signal',
           },
           priority: 'high',
