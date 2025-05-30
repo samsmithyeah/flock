@@ -132,6 +132,7 @@ const DashboardScreen: React.FC = () => {
       {isLoading && <LoadingOverlay />}
       <View style={globalStyles.container}>
         <ScreenTitle title="Your week" />
+
         {crewIds.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Icon name="group-add" size={64} color="#888" />

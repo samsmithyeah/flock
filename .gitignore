@@ -49,6 +49,7 @@ original_old.json
 truncated.json
 converter.py
 .env.local
+.env
 
 # yarn
 yarn-error.log

@@ -17,7 +17,11 @@ import { InvitationsProvider } from '@/context/InvitationsContext';
 import { CrewDateChatProvider } from '@/context/CrewDateChatContext';
 import { DirectMessagesProvider } from '@/context/DirectMessagesContext';
 import { BadgeCountProvider } from '@/context/BadgeCountContext';
+import { SignalProvider } from '@/context/SignalContext';
 import GlobalSetup from './GlobalSetup';
+
+// Import background location task to register it
+import '@/services/BackgroundLocationTask';
 
 LogBox.ignoreLogs([
   'Sending `onAnimatedValueUpdate` with no listeners registered.',
@@ -67,13 +71,15 @@ function Providers({ children }: { children: ReactNode }) {
     <UserProvider>
       <ContactsProvider>
         <CrewsProvider>
-          <InvitationsProvider>
-            <CrewDateChatProvider>
-              <DirectMessagesProvider>
-                <BadgeCountProvider>{children}</BadgeCountProvider>
-              </DirectMessagesProvider>
-            </CrewDateChatProvider>
-          </InvitationsProvider>
+          <SignalProvider>
+            <InvitationsProvider>
+              <CrewDateChatProvider>
+                <DirectMessagesProvider>
+                  <BadgeCountProvider>{children}</BadgeCountProvider>
+                </DirectMessagesProvider>
+              </CrewDateChatProvider>
+            </InvitationsProvider>
+          </SignalProvider>
         </CrewsProvider>
       </ContactsProvider>
     </UserProvider>

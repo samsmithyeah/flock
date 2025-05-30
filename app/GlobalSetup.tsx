@@ -155,6 +155,9 @@ export default function GlobalSetup() {
           );
         }
         break;
+      case 'Signal':
+        router.push('/(main)/signal');
+        break;
       default:
         console.warn(`Unknown screen "${screen}" received in notification.`);
     }
