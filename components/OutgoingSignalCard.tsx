@@ -4,6 +4,7 @@ import Icon from '@expo/vector-icons/MaterialIcons';
 import { router } from 'expo-router';
 import CustomButton from './CustomButton';
 import ActionButton from './ActionButton';
+import Badge from './Badge';
 import { Signal } from '@/types/Signal';
 import { getTimeAgo, getTimeRemaining } from '@/utils/timeUtils';
 
@@ -77,6 +78,28 @@ const OutgoingSignalCard: React.FC<OutgoingSignalCardProps> = ({
           <Text style={styles.messageText}>"{signal.message}"</Text>
         </View>
       )}
+
+      {/* Target crews display */}
+      {signal.targetType === 'crews' &&
+        signal.targetCrewNames &&
+        signal.targetCrewNames.length > 0 && (
+          <View style={styles.crewTargetContainer}>
+            <View style={styles.crewBadgesContainer}>
+              {signal.targetCrewNames.map((crewName, index) => (
+                <Badge
+                  key={index}
+                  text={crewName}
+                  variant="info"
+                  icon={{
+                    name: 'people',
+                    size: 12,
+                  }}
+                  style={styles.crewBadge}
+                />
+              ))}
+            </View>
+          </View>
+        )}
 
       {/* Responses List */}
       {signal.responses.length > 0 ? (
@@ -231,6 +254,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#495057',
     fontStyle: 'italic',
+  },
+  crewTargetContainer: {
+    marginBottom: 12,
+  },
+  crewBadgesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  crewBadge: {
+    marginBottom: 4,
   },
   responsesList: {
     borderTopWidth: 1,

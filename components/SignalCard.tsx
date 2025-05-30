@@ -1,10 +1,10 @@
-// components/SignalCard.tsx
-
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ActionButton from './ActionButton';
+import Badge from './Badge';
 import { Signal } from '@/types/Signal';
+import { useCrews } from '@/context/CrewsContext';
 
 interface SignalCardProps {
   signal: Signal;
@@ -22,6 +22,19 @@ const SignalCard: React.FC<SignalCardProps> = ({
   isLoading = false,
 }) => {
   const [timeRemaining, setTimeRemaining] = useState<string>('');
+  const { crews } = useCrews();
+
+  // Filter crew names to only show crews the user is a member of
+  const getFilteredCrewNames = (): string[] => {
+    if (!signal.targetCrewNames || signal.targetType !== 'crews') {
+      return [];
+    }
+
+    const userCrewNames = crews.map((crew) => crew.name);
+    return signal.targetCrewNames.filter((crewName) =>
+      userCrewNames.includes(crewName),
+    );
+  };
 
   const getTimeAgo = (timestamp: Date) => {
     const now = new Date();
@@ -160,6 +173,32 @@ const SignalCard: React.FC<SignalCardProps> = ({
         </View>
       </View>
 
+      {/* Crew context for crew-specific signals */}
+      {signal.targetType === 'crews' &&
+        (() => {
+          const filteredCrewNames = getFilteredCrewNames();
+          return (
+            filteredCrewNames.length > 0 && (
+              <View style={styles.crewContainer}>
+                <View style={styles.crewBadgesContainer}>
+                  {filteredCrewNames.map((crewName, index) => (
+                    <Badge
+                      key={index}
+                      text={crewName}
+                      variant="info"
+                      icon={{
+                        name: 'people',
+                        size: 12,
+                      }}
+                      style={styles.crewBadge}
+                    />
+                  ))}
+                </View>
+              </View>
+            )
+          );
+        })()}
+
       {/* Message */}
       {signal.message && (
         <View style={styles.messageContainer}>
@@ -267,6 +306,19 @@ const styles = StyleSheet.create({
     color: '#EF4444',
     fontWeight: '600',
     marginTop: 2,
+  },
+  crewContainer: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  crewBadgesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  crewBadge: {
+    marginBottom: 4,
   },
   messageContainer: {
     flexDirection: 'row',
