@@ -15,6 +15,45 @@ import * as Notifications from 'expo-notifications';
 import { getIdTokenResult } from 'firebase/auth';
 import { User } from '@/types/User';
 import { router } from 'expo-router';
+import { storage } from '@/storage';
+
+// MMKV keys for persisting user preferences
+const STORAGE_KEYS = {
+  BACKGROUND_TRACKING_DISABLED: 'userDisabledBackgroundTracking',
+};
+
+// Helper functions for persisting background tracking preferences using MMKV
+const persistBackgroundTrackingPreference = (disabled: boolean): void => {
+  try {
+    storage.set(STORAGE_KEYS.BACKGROUND_TRACKING_DISABLED, disabled);
+    console.log(
+      `Persisted background tracking preference: disabled=${disabled}`,
+    );
+  } catch (error) {
+    console.error('Error persisting background tracking preference:', error);
+  }
+};
+
+const loadBackgroundTrackingPreference = (): boolean => {
+  try {
+    const disabled =
+      storage.getBoolean(STORAGE_KEYS.BACKGROUND_TRACKING_DISABLED) ?? false;
+    console.log(`Loaded background tracking preference: disabled=${disabled}`);
+    return disabled;
+  } catch (error) {
+    console.error('Error loading background tracking preference:', error);
+    return false; // Default to not disabled
+  }
+};
+
+const clearBackgroundTrackingPreference = (): void => {
+  try {
+    storage.delete(STORAGE_KEYS.BACKGROUND_TRACKING_DISABLED);
+    console.log('Cleared background tracking preference');
+  } catch (error) {
+    console.error('Error clearing background tracking preference:', error);
+  }
+};
 
 interface UserContextType {
   user: User | null;
@@ -26,6 +65,12 @@ interface UserContextType {
   setBadgeCount: (count: number) => Promise<void>;
   isAdmin: boolean;
   updateCrewOrder: (crewIds: string[]) => Promise<void>;
+  // Background tracking preference methods
+  userDisabledBackgroundTracking: boolean;
+  setUserDisabledBackgroundTracking: (disabled: boolean) => void;
+  persistBackgroundTrackingPreference: (disabled: boolean) => void;
+  loadBackgroundTrackingPreference: () => boolean;
+  clearUserPreferences: () => void;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -38,6 +83,11 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [activeChats, setActiveChats] = useState<Set<string>>(new Set());
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
+
+  // Track user's manual preference for background location tracking
+  // This prevents auto-restart when user manually disables tracking
+  const [userDisabledBackgroundTracking, setUserDisabledBackgroundTracking] =
+    useState<boolean>(false);
 
   const memoizedActiveChats = useMemo(() => activeChats, [activeChats]);
 
@@ -57,6 +107,10 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
               userData.activeChats || [],
             );
             setActiveChats(activeChatsFromDB);
+
+            // Load user's preference for background tracking when logging in
+            const disabled = loadBackgroundTrackingPreference();
+            setUserDisabledBackgroundTracking(disabled);
           } else {
             console.log('User document does not exist in Firestore.');
             setUser(null);
@@ -220,6 +274,22 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     [user?.uid],
   );
 
+  // Background tracking preference management methods
+  const persistUserBackgroundTrackingPreference = useCallback(
+    (disabled: boolean) => {
+      persistBackgroundTrackingPreference(disabled);
+    },
+    [],
+  );
+
+  const loadUserBackgroundTrackingPreference = useCallback(() => {
+    return loadBackgroundTrackingPreference();
+  }, []);
+
+  const clearUserPreferences = useCallback(() => {
+    clearBackgroundTrackingPreference();
+  }, []);
+
   const logout = async () => {
     try {
       setUser(null);
@@ -254,6 +324,12 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         setBadgeCount,
         isAdmin,
         updateCrewOrder,
+        userDisabledBackgroundTracking,
+        setUserDisabledBackgroundTracking,
+        persistBackgroundTrackingPreference:
+          persistUserBackgroundTrackingPreference,
+        loadBackgroundTrackingPreference: loadUserBackgroundTrackingPreference,
+        clearUserPreferences,
       }}
     >
       {children}

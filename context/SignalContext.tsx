@@ -86,6 +86,9 @@ interface SignalContextType {
   // Location tracking mode management
   getCurrentLocationTrackingMode: () => LocationTrackingMode;
   hasActiveLocationSharing: () => boolean;
+
+  // Settings management
+  clearUserPreferences: () => void;
 }
 
 const SignalContext = createContext<SignalContextType | undefined>(undefined);
@@ -103,7 +106,13 @@ interface SignalProviderProps {
 }
 
 export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
-  const { user } = useUser();
+  const {
+    user,
+    userDisabledBackgroundTracking,
+    setUserDisabledBackgroundTracking,
+    persistBackgroundTrackingPreference,
+    clearUserPreferences: clearUserPreferencesFromUserContext,
+  } = useUser();
 
   const [currentLocation, setCurrentLocation] = useState<LocationType | null>(
     null,
@@ -128,11 +137,6 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
   const [isUpdatingTrackingMode, setIsUpdatingTrackingMode] =
     useState<boolean>(false);
 
-  // Track user's manual preference for background location tracking
-  // This prevents auto-restart when user manually disables tracking
-  const [userDisabledBackgroundTracking, setUserDisabledBackgroundTracking] =
-    useState<boolean>(false);
-
   useEffect(() => {
     if (user) {
       subscribeToActiveSignals();
@@ -140,9 +144,12 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
       subscribeToSharedLocations();
       checkLocationPermissions();
       checkBackgroundLocationTrackingStatus();
+
+      // The user preference is already loaded in UserContext
+      // No need to load it here as it's handled by UserContext
     } else {
-      // Reset user preference when user logs out or changes
-      setUserDisabledBackgroundTracking(false);
+      // Don't reset the preference when user logs out - it's handled by UserContext
+      // setUserDisabledBackgroundTracking(false);
     }
   }, [user]);
 
@@ -163,6 +170,9 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
         !userDisabledBackgroundTracking
       ) {
         console.log('Auto-starting background location tracking...');
+        console.log(
+          `User preference - disabled: ${userDisabledBackgroundTracking}`,
+        );
         try {
           const success = await startBackgroundLocationTrackingHandler();
           if (success) {
@@ -177,6 +187,17 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
             'Error auto-starting background location tracking:',
             error,
           );
+        }
+      } else {
+        if (
+          user &&
+          backgroundLocationPermissionGranted &&
+          !backgroundLocationTrackingActive
+        ) {
+          console.log('Skipping auto-start:', {
+            isUpdatingTrackingMode,
+            userDisabledBackgroundTracking,
+          });
         }
       }
     };
@@ -291,6 +312,8 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
 
       // Clear the user disabled flag since user is manually enabling
       setUserDisabledBackgroundTracking(false);
+      // Persist this preference
+      persistBackgroundTrackingPreference(false);
 
       // Determine appropriate mode based on current shared locations
       const hasActiveSharedLocations = sharedLocations.length > 0;
@@ -330,6 +353,8 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     try {
       // Set the user disabled flag to prevent auto-restart
       setUserDisabledBackgroundTracking(true);
+      // Persist this preference
+      persistBackgroundTrackingPreference(true);
 
       await stopBackgroundLocationTracking();
       setBackgroundLocationTrackingActive(false);
@@ -1071,6 +1096,17 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     return () => clearTimeout(timeoutId);
   }, [sharedLocations.length, backgroundLocationTrackingActive]); // Only depend on length, not the full array
 
+  // Clear user preferences function
+  const clearUserPreferences = (): void => {
+    try {
+      clearUserPreferencesFromUserContext();
+      console.log('Successfully cleared all user preferences');
+    } catch (error) {
+      console.error('Error clearing user preferences:', error);
+      throw error;
+    }
+  };
+
   // Effect to calculate unanswered signal count (only truly unanswered signals)
   useEffect(() => {
     if (!user?.uid) {
@@ -1123,6 +1159,7 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     cancelSharedLocation,
     getCurrentLocationTrackingMode,
     hasActiveLocationSharing,
+    clearUserPreferences,
   };
 
   return (
