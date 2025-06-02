@@ -29,7 +29,7 @@ const LocationPermissionsCard: React.FC<LocationPermissionsCardProps> = ({
     // Check for foreground permission first
     if (!foregroundPermissionGranted && value) {
       Alert.alert(
-        'Foreground Permission Required',
+        'Foreground permission required',
         'Basic location permission is required before enabling location tracking.',
         [
           { text: 'Cancel', style: 'cancel' },
@@ -42,8 +42,8 @@ const LocationPermissionsCard: React.FC<LocationPermissionsCardProps> = ({
     // Show warning if enabling without background permission
     if (!backgroundPermissionGranted && value) {
       Alert.alert(
-        'Limited Functionality',
-        "Without background permission, you can send signals and share location, but won't receive accurate signals when the app is closed. Continue with foreground-only mode?",
+        'Limited functionality',
+        "Without background permission, you can send signals and share your location, but you won't receive accurate signals from your friends when the app is closed. Continue with foreground-only mode?",
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -59,7 +59,7 @@ const LocationPermissionsCard: React.FC<LocationPermissionsCardProps> = ({
     // Prevent disabling tracking when actively sharing location
     if (!value && hasActiveLocationSharing) {
       Alert.alert(
-        'Cannot Disable Tracking',
+        'Cannot disable tracking',
         'Location tracking cannot be disabled while you have active location sharing sessions. Please end all location sharing first.',
         [{ text: 'OK', style: 'default' }],
       );
@@ -112,7 +112,7 @@ const LocationPermissionsCard: React.FC<LocationPermissionsCardProps> = ({
     }
 
     if (!backgroundPermissionGranted && isTrackingActive) {
-      return "⚠️ Location tracking is active but limited to foreground only. You can send signals and share location, but won't receive signals when the app is closed. Grant background permission for full functionality.";
+      return "⚠️ Location tracking is active but limited to foreground only. You can send signals and share your location, but you won't receive accurate signals from your friends when the app is closed. Grant background permission for full functionality.";
     }
 
     if (isTrackingActive) {
@@ -206,26 +206,6 @@ const LocationPermissionsCard: React.FC<LocationPermissionsCardProps> = ({
           </View>
         </View>
       )}
-
-      {/* Limited Mode Warning */}
-      {foregroundPermissionGranted &&
-        !backgroundPermissionGranted &&
-        isTrackingActive && (
-          <View style={styles.warningSection}>
-            <View style={styles.warningHeader}>
-              <Ionicons
-                name="warning-outline"
-                size={16}
-                color={Colors.warning}
-              />
-              <Text style={styles.warningTitle}>Limited Mode Active</Text>
-            </View>
-            <Text style={styles.warningText}>
-              You won't receive signals when the app is closed. Enable
-              background permission for full functionality.
-            </Text>
-          </View>
-        )}
 
       {/* Permission Status Indicators */}
       {(foregroundPermissionGranted || backgroundPermissionGranted) && (
@@ -372,30 +352,6 @@ const styles = StyleSheet.create({
   },
   permissionButton: {
     marginTop: 0,
-  },
-  warningSection: {
-    backgroundColor: '#FFF8E1',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#FFE082',
-  },
-  warningHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  warningTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.warning,
-    marginLeft: 6,
-  },
-  warningText: {
-    fontSize: 12,
-    color: '#F57C00',
-    lineHeight: 16,
   },
   permissionStatusSection: {
     backgroundColor: Colors.background,
