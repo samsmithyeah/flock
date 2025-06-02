@@ -17,7 +17,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { Platform } from 'react-native';
+import { Platform, Linking } from 'react-native';
 import {
   requestForegroundPermissionsAsync,
   getCurrentPositionAsync,
@@ -56,7 +56,10 @@ interface SignalContextType {
   locationPermissionGranted: boolean;
   backgroundLocationPermissionGranted: boolean;
   backgroundLocationTrackingActive: boolean;
+  locationTrackingEnabled: boolean; // New: tracks if location tracking is enabled (background or foreground-only)
   unansweredSignalCount: number;
+  userDisabledForegroundLocation: boolean;
+  userDisabledBackgroundTracking: boolean;
 
   // Actions
   requestLocationPermission: () => Promise<boolean>;
@@ -108,6 +111,9 @@ interface SignalProviderProps {
 export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
   const {
     user,
+    userDisabledForegroundLocation,
+    setUserDisabledForegroundLocation,
+    persistForegroundLocationPreference,
     userDisabledBackgroundTracking,
     setUserDisabledBackgroundTracking,
     persistBackgroundTrackingPreference,
@@ -202,10 +208,11 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
       }
     };
 
-    // Add a small delay to ensure all permissions have been checked
+    // Add a longer delay to ensure the user's manual action is respected
+    // This prevents auto-restart when user manually toggles off
     const timeoutId = setTimeout(() => {
       autoStartTracking();
-    }, 1000);
+    }, 3000); // Increased from 1000ms to 3000ms
 
     return () => clearTimeout(timeoutId);
   }, [
@@ -247,6 +254,13 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
       const { status } = await requestForegroundPermissionsAsync();
       const granted = status === 'granted';
       setLocationPermissionGranted(granted);
+
+      if (granted) {
+        // Clear the user disabled flag since user is manually granting permission
+        setUserDisabledForegroundLocation(false);
+        persistForegroundLocationPreference(false);
+      }
+
       return granted;
     } catch (error) {
       console.error('Error requesting location permission:', error);
@@ -256,14 +270,38 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
 
   const requestBackgroundLocationPermission = async (): Promise<boolean> => {
     try {
-      // First ensure we have foreground permissions
-      const foregroundGranted = await requestLocationPermission();
-      if (!foregroundGranted) {
-        return false;
+      // First check current permissions
+      const { status: currentForegroundStatus } =
+        await getForegroundPermissionsAsync();
+      const { status: currentBackgroundStatus } =
+        await getBackgroundPermissionsAsync();
+
+      // If no foreground permission at all, request it first
+      if (currentForegroundStatus !== 'granted') {
+        const foregroundGranted = await requestLocationPermission();
+        if (!foregroundGranted) {
+          return false;
+        }
       }
 
-      // Then request background permissions
-      const { status } = await requestBackgroundPermissionsAsync();
+      // Check if we already have background permission
+      if (currentBackgroundStatus === 'granted') {
+        setBackgroundLocationPermissionGranted(true);
+        const success = await startBackgroundLocationTrackingHandler();
+
+        if (success) {
+          Toast.show({
+            type: 'success',
+            text1: 'Background location tracking enabled',
+            text2:
+              'Location tracking started - friends can now send you signals even when the app is closed.',
+          });
+        }
+        return true;
+      }
+
+      // Try to request background permissions
+      const { status, canAskAgain } = await requestBackgroundPermissionsAsync();
       const granted = status === 'granted';
       setBackgroundLocationPermissionGranted(granted);
 
@@ -274,23 +312,60 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
         if (success) {
           Toast.show({
             type: 'success',
-            text1: 'Background Location Enabled',
+            text1: 'Background location tracking enabled',
             text2:
-              'Location tracking started - friends can now send you signals even when the app is closed',
+              'Location tracking started - friends can now send you signals even when the app is closed.',
           });
         } else {
           Toast.show({
             type: 'success',
-            text1: 'Background Location Enabled',
-            text2: 'Permission granted - you can enable tracking in Settings',
+            text1: 'Background location permission granted',
+            text2:
+              'Permission granted but tracking not yet started. Go to settings to enable it.',
           });
         }
       } else {
-        Toast.show({
-          type: 'error',
-          text1: 'Background Location Denied',
-          text2: "You won't receive signals when the app is closed",
-        });
+        // Background permission not granted - provide guidance instead of showing button
+        if (Platform.OS === 'ios' && currentForegroundStatus === 'granted') {
+          // iOS specific: User has "When In Use" but not "Always"
+          Toast.show({
+            type: 'info',
+            text1: 'Background location needed',
+            text2:
+              'Go to Settings → Privacy & Security → Location Services → Flock and change to "Always"',
+            onPress: () => {
+              Linking.openURL('app-settings:');
+            },
+          });
+        } else if (canAskAgain === false) {
+          // Permission permanently denied
+          Toast.show({
+            type: 'error',
+            text1: 'Background location permission required',
+            text2: 'Please enable "Always" location access in system settings.',
+            onPress: () => {
+              if (Platform.OS === 'ios') {
+                Linking.openURL('app-settings:');
+              } else {
+                Linking.openURL('package:' + 'com.samlovesit.GoingOutApp');
+              }
+            },
+          });
+        } else {
+          // Generic case
+          Toast.show({
+            type: 'error',
+            text1: 'Background permission needed',
+            text2: 'Please enable background location access in Settings.',
+            onPress: () => {
+              if (Platform.OS === 'ios') {
+                Linking.openURL('app-settings:');
+              } else {
+                Linking.openURL('package:' + 'com.samlovesit.GoingOutApp');
+              }
+            },
+          });
+        }
       }
 
       return granted;
@@ -375,6 +450,13 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
 
   const getCurrentLocation = async (): Promise<LocationType | null> => {
     try {
+      // Check if user has disabled foreground location
+      if (userDisabledForegroundLocation) {
+        console.log('User has disabled foreground location');
+        return null;
+      }
+
+      // Check for permission first
       if (!locationPermissionGranted) {
         const granted = await requestLocationPermission();
         if (!granted) {
@@ -1136,6 +1218,11 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     setUnansweredSignalCount(unansweredSignals.length);
   }, [receivedSignals, user?.uid]);
 
+  // Compute whether location tracking is conceptually "enabled" (background or foreground-only)
+  const locationTrackingEnabled =
+    backgroundLocationTrackingActive ||
+    (locationPermissionGranted && !userDisabledForegroundLocation);
+
   const value: SignalContextType = {
     currentLocation,
     activeSignals,
@@ -1145,7 +1232,10 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     locationPermissionGranted,
     backgroundLocationPermissionGranted,
     backgroundLocationTrackingActive,
+    locationTrackingEnabled,
     unansweredSignalCount,
+    userDisabledForegroundLocation,
+    userDisabledBackgroundTracking,
     requestLocationPermission,
     requestBackgroundLocationPermission,
     getCurrentLocation,

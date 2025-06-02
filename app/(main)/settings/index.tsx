@@ -1,134 +1,89 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  Switch,
   Alert,
   ScrollView,
   TouchableOpacity,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import Toast from 'react-native-toast-message';
 import { useUser } from '@/context/UserContext';
 import { useSignal } from '@/context/SignalContext';
 import { useGlobalStyles } from '@/styles/globalStyles';
 import ScreenTitle from '@/components/ScreenTitle';
 import ProfilePicturePicker from '@/components/ProfilePicturePicker';
+import LocationPermissionsCard from '@/components/LocationPermissionsCard';
 import Colors from '@/styles/colors';
-import Toast from 'react-native-toast-message';
 
 const SettingsScreen: React.FC = () => {
-  const { user, logout } = useUser();
   const {
+    user,
+    logout,
+    setUserDisabledForegroundLocation,
+    persistForegroundLocationPreference,
+  } = useUser();
+  const {
+    locationPermissionGranted,
     backgroundLocationPermissionGranted,
-    backgroundLocationTrackingActive,
+    requestLocationPermission,
     requestBackgroundLocationPermission,
     startBackgroundLocationTracking,
     stopBackgroundLocationTracking,
     hasActiveLocationSharing,
+    userDisabledForegroundLocation,
   } = useSignal();
-
   const globalStyles = useGlobalStyles();
-  const [isToggling, setIsToggling] = useState(false);
 
-  const handleToggleBackgroundTracking = async (value: boolean) => {
-    if (isToggling) return;
+  // Calculate if location tracking is active - either foreground or background
+  const isLocationTrackingActive =
+    locationPermissionGranted && !userDisabledForegroundLocation;
 
-    if (!backgroundLocationPermissionGranted && value) {
-      Alert.alert(
-        'Permission Required',
-        'Background location permission is required to enable location tracking. Would you like to grant permission?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Grant Permission',
-            onPress: async () => {
-              const granted = await requestBackgroundLocationPermission();
-              if (granted) {
-                // Auto-start tracking after permission is granted
-                setIsToggling(true);
-                try {
-                  await startBackgroundLocationTracking();
-                } catch (error) {
-                  console.error(
-                    'Error starting tracking after permission:',
-                    error,
-                  );
-                } finally {
-                  setIsToggling(false);
-                }
-              }
-            },
-          },
-        ],
-      );
-      return;
-    }
+  // Handler functions for LocationPermissionsCard
+  const handleRequestForegroundPermission = async () => {
+    await requestLocationPermission();
+  };
 
-    // Prevent disabling tracking when actively sharing location
-    if (!value && hasActiveLocationSharing()) {
-      Alert.alert(
-        'Cannot Disable Tracking',
-        'Location tracking cannot be disabled while you have active location sharing sessions. Please end all location sharing first.',
-        [{ text: 'OK', style: 'default' }],
-      );
-      return;
-    }
+  const handleRequestBackgroundPermission = async () => {
+    await requestBackgroundLocationPermission();
+  };
 
-    setIsToggling(true);
-    try {
-      if (value) {
+  const handleToggleTracking = async (enabled: boolean) => {
+    if (enabled) {
+      // For foreground-only mode, just clear the disabled flags
+      // This enables location features without background tracking
+      setUserDisabledForegroundLocation(false);
+      persistForegroundLocationPreference(false);
+
+      // If background permission is available, also start background tracking
+      if (backgroundLocationPermissionGranted) {
         await startBackgroundLocationTracking();
       } else {
-        await stopBackgroundLocationTracking();
+        // Don't start background tracking since user doesn't have permission
+        // or explicitly chose foreground-only mode
+        console.log('Enabled foreground-only location tracking');
+
+        Toast.show({
+          type: 'success',
+          text1: 'Foreground tracking enabled',
+          text2:
+            'Location features enabled. Grant background permission for full functionality.',
+        });
       }
-    } catch (error) {
-      console.error('Error toggling background tracking:', error);
+    } else {
+      // When disabling, stop background tracking and set disabled flags
+      await stopBackgroundLocationTracking();
+      setUserDisabledForegroundLocation(true);
+      persistForegroundLocationPreference(true);
+
       Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Failed to update location tracking setting',
+        type: 'success',
+        text1: 'Location tracking disabled',
+        text2: 'All location features have been disabled.',
       });
-    } finally {
-      setIsToggling(false);
     }
-  };
-
-  const getLocationStatusIcon = () => {
-    if (!backgroundLocationPermissionGranted) {
-      return 'location-outline';
-    }
-    return backgroundLocationTrackingActive ? 'location' : 'location-outline';
-  };
-
-  const getLocationStatusColor = () => {
-    if (!backgroundLocationPermissionGranted) {
-      return Colors.warning;
-    }
-    return backgroundLocationTrackingActive ? Colors.success : Colors.gray;
-  };
-
-  const getLocationStatusText = () => {
-    if (!backgroundLocationPermissionGranted) {
-      return 'Permission Required';
-    }
-    return backgroundLocationTrackingActive ? 'Active' : 'Inactive';
-  };
-
-  const getLocationDescriptionText = () => {
-    if (!backgroundLocationPermissionGranted) {
-      return 'Grant background location permission to receive signals and automatically update your location, even when the app is closed.';
-    }
-
-    if (backgroundLocationTrackingActive) {
-      if (hasActiveLocationSharing()) {
-        return 'Smart location tracking is active. Cannot be disabled while actively sharing location with others. High-frequency updates during location sharing sessions.';
-      }
-      return 'Smart location tracking is active. Battery-optimized updates when idle, high-frequency updates during location sharing sessions.';
-    }
-
-    return 'Enable smart background tracking to receive signals when the app is closed. Automatically switches between battery-saving and high-precision modes.';
   };
 
   const handleLogout = () => {
@@ -187,55 +142,15 @@ const SettingsScreen: React.FC = () => {
       {/* Location Settings Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Location</Text>
-
-        <View style={styles.locationCard}>
-          <View style={styles.locationHeader}>
-            <View style={styles.locationTitleContainer}>
-              <Ionicons
-                name={getLocationStatusIcon()}
-                size={20}
-                color={getLocationStatusColor()}
-                style={styles.locationIcon}
-              />
-              <Text style={styles.locationTitle}>
-                Background Location Tracking
-              </Text>
-            </View>
-
-            <View style={styles.locationStatusContainer}>
-              <Text
-                style={[
-                  styles.locationStatus,
-                  { color: getLocationStatusColor() },
-                ]}
-              >
-                {getLocationStatusText()}
-              </Text>
-              <Switch
-                value={backgroundLocationTrackingActive}
-                onValueChange={handleToggleBackgroundTracking}
-                trackColor={{
-                  false: Colors.lightGray,
-                  true: Colors.primaryLight,
-                }}
-                thumbColor={
-                  backgroundLocationTrackingActive
-                    ? Colors.primary
-                    : Colors.gray
-                }
-                disabled={
-                  isToggling ||
-                  (backgroundLocationTrackingActive &&
-                    hasActiveLocationSharing())
-                }
-              />
-            </View>
-          </View>
-
-          <Text style={styles.locationDescription}>
-            {getLocationDescriptionText()}
-          </Text>
-        </View>
+        <LocationPermissionsCard
+          foregroundPermissionGranted={locationPermissionGranted}
+          backgroundPermissionGranted={backgroundLocationPermissionGranted}
+          isTrackingActive={isLocationTrackingActive}
+          onRequestForegroundPermission={handleRequestForegroundPermission}
+          onRequestBackgroundPermission={handleRequestBackgroundPermission}
+          onToggleTracking={handleToggleTracking}
+          hasActiveLocationSharing={hasActiveLocationSharing()}
+        />
       </View>
 
       {/* Account Section */}
@@ -316,43 +231,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.text,
     marginLeft: 12,
-  },
-  locationCard: {
-    backgroundColor: Colors.white,
-    padding: 20,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.lightGray,
-  },
-  locationHeader: {
-    marginBottom: 12,
-  },
-  locationTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  locationIcon: {
-    marginRight: 8,
-  },
-  locationTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.text,
-    flex: 1,
-  },
-  locationStatusContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  locationStatus: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  locationDescription: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    lineHeight: 20,
   },
 });

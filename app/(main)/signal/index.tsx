@@ -27,6 +27,7 @@ const SignalScreen: React.FC = () => {
     locationPermissionGranted,
     backgroundLocationPermissionGranted,
     backgroundLocationTrackingActive,
+    locationTrackingEnabled,
     requestLocationPermission,
     getCurrentLocation,
     respondToSignal: respondToSignalContext,
@@ -284,31 +285,84 @@ const SignalScreen: React.FC = () => {
             </Text>
           </View>
 
-          {/* Location Tracking Warning */}
-          {(!backgroundLocationPermissionGranted ||
-            !backgroundLocationTrackingActive) && (
-            <View style={styles.warningContainer}>
+          {/* Location Permission Warning */}
+          {!(
+            locationPermissionGranted &&
+            backgroundLocationPermissionGranted &&
+            backgroundLocationTrackingActive
+          ) && (
+            <View
+              style={[
+                styles.warningContainer,
+                // ERROR styling for scenarios 1, 3, 5 (no foreground permission OR tracking disabled)
+                // INFO styling for scenario 4 (foreground-only mode with tracking enabled)
+                !locationPermissionGranted || !locationTrackingEnabled
+                  ? styles.warningContainerError
+                  : styles.warningContainerInfo,
+              ]}
+            >
               <View style={styles.warningHeader}>
-                <Ionicons name="warning" size={20} color="#FF9500" />
-                <Text style={styles.warningTitle}>
-                  Location tracking disabled
+                <Ionicons
+                  name={
+                    !locationPermissionGranted || !locationTrackingEnabled
+                      ? 'warning-outline'
+                      : 'information-circle-outline'
+                  }
+                  size={20}
+                  color={
+                    !locationPermissionGranted || !locationTrackingEnabled
+                      ? '#FF9500'
+                      : '#2196F3'
+                  }
+                />
+                <Text
+                  style={[
+                    styles.warningTitle,
+                    {
+                      color:
+                        !locationPermissionGranted || !locationTrackingEnabled
+                          ? '#FF9500'
+                          : '#2196F3',
+                    },
+                  ]}
+                >
+                  {!locationPermissionGranted
+                    ? 'Location permission required'
+                    : !locationTrackingEnabled
+                      ? 'Location tracking disabled'
+                      : 'Limited mode active'}
                 </Text>
               </View>
-              <Text style={styles.warningText}>
-                {!backgroundLocationPermissionGranted
-                  ? "Background location permission not granted. You won't receive signals when the app is closed."
-                  : 'Location tracking is turned off. Enable it in your profile settings to receive signals when the app is closed.'}
+              <Text
+                style={[
+                  styles.warningText,
+                  {
+                    color:
+                      !locationPermissionGranted || !locationTrackingEnabled
+                        ? '#F57C00'
+                        : '#1976D2',
+                  },
+                ]}
+              >
+                {!locationPermissionGranted
+                  ? 'Foreground location permission not granted. You need location access to use location features.'
+                  : !locationTrackingEnabled
+                    ? 'Location tracking is turned off. Enable it in your profile settings to send and receive signals.'
+                    : "You can send signals and share location, but won't receive signals when the app is closed. Enable background location access in your phone settings for full functionality."}
               </Text>
-              <CustomButton
-                title="Go to Settings"
-                onPress={() => router.push('/settings')}
-                variant="secondary"
-                style={styles.warningButton}
-                icon={{
-                  name: 'settings-outline',
-                  size: 18,
-                }}
-              />
+              {/* Show settings button for scenarios 1, 3, 5 - not for scenario 4 (foreground-only mode) */}
+              {(!locationPermissionGranted || !locationTrackingEnabled) && (
+                <CustomButton
+                  title="Settings"
+                  onPress={() => router.push('/settings')}
+                  variant="secondary"
+                  style={styles.warningButton}
+                  icon={{
+                    name: 'settings-outline',
+                    size: 18,
+                  }}
+                />
+              )}
             </View>
           )}
 
@@ -352,11 +406,16 @@ const SignalScreen: React.FC = () => {
               </View>
             )}
 
-            {currentLocation && (
-              <View style={styles.locationSection}>
-                <SendSignalButton onPress={() => router.push('/signal/send')} />
-              </View>
-            )}
+            {/* Show Send Signal button for scenarios 2 and 4 - when location is available, foreground permission granted, and tracking is enabled (background or foreground-only) */}
+            {currentLocation &&
+              locationPermissionGranted &&
+              locationTrackingEnabled && (
+                <View style={styles.locationSection}>
+                  <SendSignalButton
+                    onPress={() => router.push('/signal/send')}
+                  />
+                </View>
+              )}
           </View>
 
           {/* Outgoing Signals */}
@@ -499,6 +558,14 @@ const styles = StyleSheet.create({
     marginVertical: 16,
     borderLeftWidth: 4,
     borderLeftColor: '#FF9500',
+  },
+  warningContainerError: {
+    backgroundColor: '#FFF8E1',
+    borderLeftColor: '#FF9500',
+  },
+  warningContainerInfo: {
+    backgroundColor: '#E3F2FD',
+    borderLeftColor: '#2196F3',
   },
   warningHeader: {
     flexDirection: 'row',

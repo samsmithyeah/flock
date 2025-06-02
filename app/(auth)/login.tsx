@@ -24,6 +24,7 @@ import { User } from '@/types/User';
 import { FirebaseError } from 'firebase/app';
 import { registerForPushNotificationsAsync } from '@/utils/AddUserToFirestore';
 import { router } from 'expo-router';
+import { useSignal } from '@/context/SignalContext';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -37,6 +38,8 @@ const LoginScreen: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [formError, setFormError] = useState<string>('');
   const { setUser } = useUser();
+  const { requestLocationPermission, requestBackgroundLocationPermission } =
+    useSignal();
 
   const handleEmailLogin = async () => {
     setFormError('');
@@ -68,6 +71,8 @@ const LoginScreen: React.FC = () => {
       if (userDoc.exists()) {
         const userData = userDoc.data() as User;
         await registerForPushNotificationsAsync(userData);
+        await requestLocationPermission();
+        await requestBackgroundLocationPermission();
 
         if (!userData.phoneNumber) {
           // Redirect to PhoneVerificationScreen

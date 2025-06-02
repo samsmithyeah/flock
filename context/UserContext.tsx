@@ -19,10 +19,34 @@ import { storage } from '@/storage';
 
 // MMKV keys for persisting user preferences
 const STORAGE_KEYS = {
+  FOREGROUND_LOCATION_DISABLED: 'userDisabledForegroundLocation',
   BACKGROUND_TRACKING_DISABLED: 'userDisabledBackgroundTracking',
 };
 
-// Helper functions for persisting background tracking preferences using MMKV
+// Helper functions for persisting location preferences using MMKV
+const persistForegroundLocationPreference = (disabled: boolean): void => {
+  try {
+    storage.set(STORAGE_KEYS.FOREGROUND_LOCATION_DISABLED, disabled);
+    console.log(
+      `Persisted foreground location preference: disabled=${disabled}`,
+    );
+  } catch (error) {
+    console.error('Error persisting foreground location preference:', error);
+  }
+};
+
+const loadForegroundLocationPreference = (): boolean => {
+  try {
+    const disabled =
+      storage.getBoolean(STORAGE_KEYS.FOREGROUND_LOCATION_DISABLED) ?? false;
+    console.log(`Loaded foreground location preference: disabled=${disabled}`);
+    return disabled;
+  } catch (error) {
+    console.error('Error loading foreground location preference:', error);
+    return false; // Default to not disabled
+  }
+};
+
 const persistBackgroundTrackingPreference = (disabled: boolean): void => {
   try {
     storage.set(STORAGE_KEYS.BACKGROUND_TRACKING_DISABLED, disabled);
@@ -46,12 +70,13 @@ const loadBackgroundTrackingPreference = (): boolean => {
   }
 };
 
-const clearBackgroundTrackingPreference = (): void => {
+const clearLocationPreferences = (): void => {
   try {
+    storage.delete(STORAGE_KEYS.FOREGROUND_LOCATION_DISABLED);
     storage.delete(STORAGE_KEYS.BACKGROUND_TRACKING_DISABLED);
-    console.log('Cleared background tracking preference');
+    console.log('Cleared all location preferences');
   } catch (error) {
-    console.error('Error clearing background tracking preference:', error);
+    console.error('Error clearing location preferences:', error);
   }
 };
 
@@ -65,7 +90,11 @@ interface UserContextType {
   setBadgeCount: (count: number) => Promise<void>;
   isAdmin: boolean;
   updateCrewOrder: (crewIds: string[]) => Promise<void>;
-  // Background tracking preference methods
+  // Location preference methods
+  userDisabledForegroundLocation: boolean;
+  setUserDisabledForegroundLocation: (disabled: boolean) => void;
+  persistForegroundLocationPreference: (disabled: boolean) => void;
+  loadForegroundLocationPreference: () => boolean;
   userDisabledBackgroundTracking: boolean;
   setUserDisabledBackgroundTracking: (disabled: boolean) => void;
   persistBackgroundTrackingPreference: (disabled: boolean) => void;
@@ -84,8 +113,10 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   const [activeChats, setActiveChats] = useState<Set<string>>(new Set());
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
-  // Track user's manual preference for background location tracking
-  // This prevents auto-restart when user manually disables tracking
+  // Track user's manual preferences for location permissions
+  // This prevents auto-restart when user manually disables permissions
+  const [userDisabledForegroundLocation, setUserDisabledForegroundLocation] =
+    useState<boolean>(false);
   const [userDisabledBackgroundTracking, setUserDisabledBackgroundTracking] =
     useState<boolean>(false);
 
@@ -108,9 +139,11 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
             );
             setActiveChats(activeChatsFromDB);
 
-            // Load user's preference for background tracking when logging in
-            const disabled = loadBackgroundTrackingPreference();
-            setUserDisabledBackgroundTracking(disabled);
+            // Load user's preferences for location tracking when logging in
+            const foregroundDisabled = loadForegroundLocationPreference();
+            setUserDisabledForegroundLocation(foregroundDisabled);
+            const backgroundDisabled = loadBackgroundTrackingPreference();
+            setUserDisabledBackgroundTracking(backgroundDisabled);
           } else {
             console.log('User document does not exist in Firestore.');
             setUser(null);
@@ -274,7 +307,18 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     [user?.uid],
   );
 
-  // Background tracking preference management methods
+  // Location preference management methods
+  const persistUserForegroundLocationPreference = useCallback(
+    (disabled: boolean) => {
+      persistForegroundLocationPreference(disabled);
+    },
+    [],
+  );
+
+  const loadUserForegroundLocationPreference = useCallback(() => {
+    return loadForegroundLocationPreference();
+  }, []);
+
   const persistUserBackgroundTrackingPreference = useCallback(
     (disabled: boolean) => {
       persistBackgroundTrackingPreference(disabled);
@@ -287,7 +331,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   }, []);
 
   const clearUserPreferences = useCallback(() => {
-    clearBackgroundTrackingPreference();
+    clearLocationPreferences();
   }, []);
 
   const logout = async () => {
@@ -324,6 +368,11 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         setBadgeCount,
         isAdmin,
         updateCrewOrder,
+        userDisabledForegroundLocation,
+        setUserDisabledForegroundLocation,
+        persistForegroundLocationPreference:
+          persistUserForegroundLocationPreference,
+        loadForegroundLocationPreference: loadUserForegroundLocationPreference,
         userDisabledBackgroundTracking,
         setUserDisabledBackgroundTracking,
         persistBackgroundTrackingPreference:
