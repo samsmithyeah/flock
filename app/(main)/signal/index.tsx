@@ -328,7 +328,8 @@ const SignalScreen: React.FC = () => {
                     styles.warningTitle,
                     {
                       color:
-                        !locationPermissionGranted || !userLocationTrackingEnabled
+                        !locationPermissionGranted ||
+                        !userLocationTrackingEnabled
                           ? '#FF9500'
                           : '#2196F3',
                     },
@@ -389,7 +390,9 @@ const SignalScreen: React.FC = () => {
 
                     <CustomButton
                       title={
-                        locationLoading ? 'Getting location...' : 'Enable location'
+                        locationLoading
+                          ? 'Getting location...'
+                          : 'Enable location'
                       }
                       onPress={handleLocationRequest}
                       variant="primary"
@@ -473,8 +476,12 @@ const SignalScreen: React.FC = () => {
                       <SignalCard
                         key={signal.id}
                         signal={signal}
-                        onAccept={() => handleRespondToSignal(signal.id, 'accept')}
-                        onIgnore={() => handleRespondToSignal(signal.id, 'ignore')}
+                        onAccept={() =>
+                          handleRespondToSignal(signal.id, 'accept')
+                        }
+                        onIgnore={() =>
+                          handleRespondToSignal(signal.id, 'ignore')
+                        }
                         onSendMessage={() =>
                           router.push({
                             pathname: '/chats/dm-chat',
