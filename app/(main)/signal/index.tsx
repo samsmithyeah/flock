@@ -86,16 +86,22 @@ const SignalScreen: React.FC = () => {
     }
   };
 
-  // Auto-enable location when background location is already granted
+  // Auto-enable location when location permission is already granted
   useEffect(() => {
     if (
-      backgroundLocationPermissionGranted &&
+      locationPermissionGranted &&
+      locationTrackingEnabled &&
       !currentLocation &&
       !locationLoading
     ) {
       handleLocationRequest();
     }
-  }, [backgroundLocationPermissionGranted, currentLocation, locationLoading]);
+  }, [
+    locationPermissionGranted,
+    locationTrackingEnabled,
+    currentLocation,
+    locationLoading,
+  ]);
 
   // Cache signal addresses when signals change
   useEffect(() => {
@@ -348,7 +354,7 @@ const SignalScreen: React.FC = () => {
                   ? 'Foreground location permission not granted. You need location access to use location features.'
                   : !locationTrackingEnabled
                     ? 'Location tracking is turned off. Enable it in your profile settings to send and receive signals.'
-                    : "You can send signals and share location, but you won't receive accurate signals from your friends when the app is closed. Enable background location access in your phone settings for full functionality."}
+                    : 'You can send signals and share location, but the signals you receive may be out of sync with your true location when the app is closed. Change location access from "While Using the App" to "Always" in your phone settings for full functionality.'}
               </Text>
               {/* Show settings button for scenarios 1, 3, 5 - not for scenario 4 (foreground-only mode) */}
               {(!locationPermissionGranted || !locationTrackingEnabled) && (

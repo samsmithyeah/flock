@@ -181,7 +181,10 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
           stopForegroundLocationTracking();
           console.log('Stopped foreground tracking on context unmount');
         } catch (error) {
-          console.error('Error stopping foreground tracking on unmount:', error);
+          console.error(
+            'Error stopping foreground tracking on unmount:',
+            error,
+          );
         }
       }
     };
@@ -267,21 +270,33 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
         !userDisabledForegroundLocation &&
         !foregroundLocationTrackingActive
       ) {
-        console.log('Auto-starting foreground location tracking (foreground-only mode)...');
+        console.log(
+          'Auto-starting foreground location tracking (foreground-only mode)...',
+        );
         try {
           const success = await startForegroundLocationTracking();
           if (success) {
             setForegroundLocationTrackingActive(true);
-            console.log('Auto-started foreground location tracking successfully');
+            console.log(
+              'Auto-started foreground location tracking successfully',
+            );
           } else {
             console.log('Failed to auto-start foreground location tracking');
           }
         } catch (error) {
-          console.error('Error auto-starting foreground location tracking:', error);
+          console.error(
+            'Error auto-starting foreground location tracking:',
+            error,
+          );
         }
-      } else if (foregroundLocationTrackingActive && backgroundLocationTrackingActive) {
+      } else if (
+        foregroundLocationTrackingActive &&
+        backgroundLocationTrackingActive
+      ) {
         // Stop foreground tracking if background tracking becomes active
-        console.log('Stopping foreground tracking (background tracking is now active)...');
+        console.log(
+          'Stopping foreground tracking (background tracking is now active)...',
+        );
         try {
           stopForegroundLocationTracking();
           setForegroundLocationTrackingActive(false);

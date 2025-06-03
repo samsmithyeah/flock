@@ -43,7 +43,7 @@ const LocationPermissionsCard: React.FC<LocationPermissionsCardProps> = ({
     if (!backgroundPermissionGranted && value) {
       Alert.alert(
         'Limited functionality',
-        "Without background permission, you can send signals and share your location, but you won't receive accurate signals from your friends when the app is closed. Continue with foreground-only mode?",
+        'Without background permission, you can send signals and share your location, but the signals you receive may be out of sync with your true location when the app is not open. Continue with foreground-only mode?',
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -112,7 +112,7 @@ const LocationPermissionsCard: React.FC<LocationPermissionsCardProps> = ({
     }
 
     if (!backgroundPermissionGranted && isTrackingActive) {
-      return "⚠️ Location tracking is active but limited to foreground only. You can send signals and share your location, but you won't receive accurate signals from your friends when the app is closed. Grant background permission for full functionality.";
+      return 'Location tracking is active but limited to foreground only. You can send signals and share your location, bbut the signals you receive may be out of sync with your true location when the app is not open. Grant background permission for full functionality.';
     }
 
     if (isTrackingActive) {
@@ -200,7 +200,7 @@ const LocationPermissionsCard: React.FC<LocationPermissionsCardProps> = ({
               color={Colors.primary}
             />
             <Text style={styles.guidanceText}>
-              Change location access from "While Using App" to "Always" in
+              Change location access from "While Using the App" to "Always" in
               device settings
             </Text>
           </View>
