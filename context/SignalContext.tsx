@@ -866,7 +866,11 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
               // Fallback check: Use current GPS location if stored location unavailable
               // or if stored location says we're outside but current location might be inside
               // BUT only if location tracking is enabled for this user
-              if (!isWithinRadius && currentLocation && locationTrackingEnabled) {
+              if (
+                !isWithinRadius &&
+                currentLocation &&
+                locationTrackingEnabled
+              ) {
                 const currentDistance = calculateDistance(
                   currentLocation.latitude,
                   currentLocation.longitude,
