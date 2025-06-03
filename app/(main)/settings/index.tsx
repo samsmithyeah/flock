@@ -102,76 +102,86 @@ const SettingsScreen: React.FC = () => {
   }
 
   return (
-    <ScrollView style={globalStyles.container}>
+    <View style={globalStyles.container}>
       <ScreenTitle title="Settings" />
 
-      {/* Profile Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Profile</Text>
+      <ScrollView>
+        {/* Profile Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Profile</Text>
 
-        <View style={styles.profileContainer}>
-          <ProfilePicturePicker
-            imageUrl={user.photoURL || null}
-            onImageUpdate={() => {}} // Read-only for now
-            editable={false}
-            size={80}
-          />
+          <View style={styles.profileContainer}>
+            <ProfilePicturePicker
+              imageUrl={user.photoURL || null}
+              onImageUpdate={() => {}} // Read-only for now
+              editable={false}
+              size={80}
+            />
 
-          <View style={styles.profileInfo}>
-            <Text style={styles.displayName}>
-              {user.displayName || 'Unknown User'}
-            </Text>
-            <Text style={styles.email}>{user.email}</Text>
+            <View style={styles.profileInfo}>
+              <Text style={styles.displayName}>
+                {user.displayName || 'Unknown User'}
+              </Text>
+              <Text style={styles.email}>{user.email}</Text>
+            </View>
           </View>
+
+          <TouchableOpacity
+            style={styles.settingsItem}
+            onPress={() => router.push('/settings/edit-profile')}
+            accessibilityLabel="Edit Profile"
+            accessibilityHint="Edit your profile information"
+          >
+            <View style={styles.settingsItemLeft}>
+              <Ionicons
+                name="person-outline"
+                size={24}
+                color={Colors.primary}
+              />
+              <Text style={styles.settingsItemText}>Edit Profile</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={Colors.gray} />
+          </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={styles.settingsItem}
-          onPress={() => router.push('/settings/edit-profile')}
-          accessibilityLabel="Edit Profile"
-          accessibilityHint="Edit your profile information"
-        >
-          <View style={styles.settingsItemLeft}>
-            <Ionicons name="person-outline" size={24} color={Colors.primary} />
-            <Text style={styles.settingsItemText}>Edit Profile</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={Colors.gray} />
-        </TouchableOpacity>
-      </View>
+        {/* Location Settings Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Location</Text>
+          <LocationPermissionsCard
+            foregroundPermissionGranted={locationPermissionGranted}
+            backgroundPermissionGranted={backgroundLocationPermissionGranted}
+            isTrackingActive={isLocationTrackingActive}
+            onRequestForegroundPermission={handleRequestForegroundPermission}
+            onRequestBackgroundPermission={handleRequestBackgroundPermission}
+            onToggleTracking={handleToggleTracking}
+            hasActiveLocationSharing={hasActiveLocationSharing()}
+          />
+        </View>
 
-      {/* Location Settings Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Location</Text>
-        <LocationPermissionsCard
-          foregroundPermissionGranted={locationPermissionGranted}
-          backgroundPermissionGranted={backgroundLocationPermissionGranted}
-          isTrackingActive={isLocationTrackingActive}
-          onRequestForegroundPermission={handleRequestForegroundPermission}
-          onRequestBackgroundPermission={handleRequestBackgroundPermission}
-          onToggleTracking={handleToggleTracking}
-          hasActiveLocationSharing={hasActiveLocationSharing()}
-        />
-      </View>
+        {/* Account Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Account</Text>
 
-      {/* Account Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Account</Text>
-
-        <TouchableOpacity
-          style={styles.settingsItem}
-          onPress={handleLogout}
-          accessibilityLabel="Log Out"
-          accessibilityHint="Sign out of your account"
-        >
-          <View style={styles.settingsItemLeft}>
-            <Ionicons name="log-out-outline" size={24} color={Colors.danger} />
-            <Text style={[styles.settingsItemText, { color: Colors.danger }]}>
-              Log out
-            </Text>
-          </View>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+          <TouchableOpacity
+            style={styles.settingsItem}
+            onPress={handleLogout}
+            accessibilityLabel="Log Out"
+            accessibilityHint="Sign out of your account"
+          >
+            <View style={styles.settingsItemLeft}>
+              <Ionicons
+                name="log-out-outline"
+                size={24}
+                color={Colors.danger}
+              />
+              <Text style={[styles.settingsItemText, { color: Colors.danger }]}>
+                Log out
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </View>
   );
 };
 

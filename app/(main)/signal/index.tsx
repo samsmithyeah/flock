@@ -281,9 +281,9 @@ const SignalScreen: React.FC = () => {
     <>
       {isLoading && <LoadingOverlay />}
       <View style={globalStyles.container}>
-        <ScrollView>
-          <ScreenTitle title="Signal" />
+        <ScreenTitle title="Signal" />
 
+        <ScrollView>
           {/* Send Signal Section */}
           <View>
             <Text style={styles.description}>
@@ -507,14 +507,14 @@ const SignalScreen: React.FC = () => {
               />
             )}
           </View>
-
-          <LocationSharingModal
-            visible={selectedSignalForSharing !== null}
-            onClose={() => setSelectedSignalForSharing(null)}
-            signalId={selectedSignalForSharing || ''}
-            currentUserLocation={currentLocation || undefined}
-          />
         </ScrollView>
+
+        <LocationSharingModal
+          visible={selectedSignalForSharing !== null}
+          onClose={() => setSelectedSignalForSharing(null)}
+          signalId={selectedSignalForSharing || ''}
+          currentUserLocation={currentLocation || undefined}
+        />
       </View>
     </>
   );
