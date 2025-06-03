@@ -356,6 +356,26 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         setUser((prev) =>
           prev ? { ...prev, locationTrackingEnabled: enabled } : null,
         );
+
+        // When location tracking is disabled, delete their saved location
+        // This prevents them from being matched by signals geographically
+        if (!enabled) {
+          const userLocationRef = doc(db, 'userLocations', user.uid);
+          try {
+            await updateDoc(userLocationRef, {
+              latitude: null,
+              longitude: null,
+              updatedAt: serverTimestamp(),
+            });
+            console.log('Cleared user location data when disabling tracking');
+          } catch (locationError) {
+            // If the document doesn't exist, that's fine - no location to clear
+            console.log(
+              'No existing location to clear or error clearing location:',
+              locationError,
+            );
+          }
+        }
       } catch (error) {
         console.error('Error updating location tracking enabled:', error);
         Toast.show({

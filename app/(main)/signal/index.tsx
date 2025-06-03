@@ -145,7 +145,7 @@ const SignalScreen: React.FC = () => {
         }
       }
 
-      const location = await getCurrentLocation();
+      const location = await getCurrentLocation(true);
       if (!location) {
         setLocationError(
           'Unable to get location. Try again or check simulator settings.',

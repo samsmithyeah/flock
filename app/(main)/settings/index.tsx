@@ -35,6 +35,7 @@ const SettingsScreen: React.FC = () => {
     stopBackgroundLocationTracking,
     hasActiveLocationSharing,
     userDisabledForegroundLocation,
+    getCurrentLocation,
   } = useSignal();
   const globalStyles = useGlobalStyles();
 
@@ -60,6 +61,27 @@ const SettingsScreen: React.FC = () => {
 
       // Update the database preference
       await updateLocationTrackingEnabled(true);
+
+      // Immediately get and update user's current location when re-enabling tracking
+      // This ensures they can receive signals right away
+      try {
+        console.log('Getting current location after re-enabling tracking...');
+
+        const currentLocation = await getCurrentLocation(true);
+        if (currentLocation) {
+          console.log(
+            'Successfully updated location after re-enabling tracking:',
+            currentLocation,
+          );
+        } else {
+          console.log('Could not get location after re-enabling tracking');
+        }
+      } catch (locationError) {
+        console.error(
+          'Error getting location after re-enabling tracking:',
+          locationError,
+        );
+      }
 
       // If background permission is available, also start background tracking
       if (backgroundLocationPermissionGranted) {

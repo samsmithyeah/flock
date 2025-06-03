@@ -282,7 +282,7 @@ export const processSignal = functions.firestore.onDocumentCreated(
       // Send notifications
       await sendExpoNotifications(messages);
 
-      console.log(`Sent ${messages.length} signal notifications for signal ${signalId}`);
+      console.log(`Sent ${messages.length} signal notifications for signal ${signalId} to users:`, eligibleUsers.map((u) => u.uid));
 
       // Update signal with notification count
       await db.collection('signals').doc(signalId).update({

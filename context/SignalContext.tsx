@@ -646,12 +646,16 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
         }
       }
 
-      // Try high accuracy first
+      // Try high accuracy first with timeout
       let location;
       try {
+        console.log('Attempting to get location with high accuracy...');
         location = await getCurrentPositionAsync({
           accuracy: Accuracy.High,
+          timeInterval: 10000, // 10 second timeout
+          distanceInterval: 1, // Accept any movement
         });
+        console.log('High accuracy location obtained successfully');
       } catch (highAccuracyError) {
         console.log(
           'High accuracy failed, trying balanced accuracy...',
@@ -660,9 +664,13 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
 
         // Fallback to balanced accuracy for simulator/problematic devices
         try {
+          console.log('Attempting to get location with balanced accuracy...');
           location = await getCurrentPositionAsync({
             accuracy: Accuracy.Balanced,
+            timeInterval: 15000, // 15 second timeout
+            distanceInterval: 1, // Accept any movement
           });
+          console.log('Balanced accuracy location obtained successfully');
         } catch (balancedError) {
           console.log(
             'Balanced accuracy failed, trying low accuracy...',
@@ -670,9 +678,18 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
           );
 
           // Final fallback to low accuracy
-          location = await getCurrentPositionAsync({
-            accuracy: Accuracy.Low,
-          });
+          try {
+            console.log('Attempting to get location with low accuracy...');
+            location = await getCurrentPositionAsync({
+              accuracy: Accuracy.Low,
+              timeInterval: 20000, // 20 second timeout
+              distanceInterval: 1, // Accept any movement
+            });
+            console.log('Low accuracy location obtained successfully');
+          } catch (lowAccuracyError) {
+            console.log('All accuracy levels failed:', lowAccuracyError);
+            throw lowAccuracyError;
+          }
         }
       }
 
@@ -758,6 +775,12 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
   const subscribeToReceivedSignals = () => {
     if (!user) return;
 
+    // Check if user has location tracking disabled
+    if (user.locationTrackingEnabled === false) {
+      setReceivedSignals([]);
+      return;
+    }
+
     // For received signals, we'd need a more complex query or cloud function
     // For now, we'll get all active signals and filter client-side
     const q = query(collection(db, 'signals'), where('status', '==', 'active'));
@@ -842,7 +865,8 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
 
               // Fallback check: Use current GPS location if stored location unavailable
               // or if stored location says we're outside but current location might be inside
-              if (!isWithinRadius && currentLocation) {
+              // BUT only if location tracking is enabled for this user
+              if (!isWithinRadius && currentLocation && locationTrackingEnabled) {
                 const currentDistance = calculateDistance(
                   currentLocation.latitude,
                   currentLocation.longitude,
