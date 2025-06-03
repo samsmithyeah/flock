@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialIcons';
 import { router } from 'expo-router';
@@ -23,8 +23,43 @@ const OutgoingSignalCard: React.FC<OutgoingSignalCardProps> = ({
   onLocationShare,
   formatDistance,
 }) => {
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Update current time every 5 seconds to trigger re-renders for the timeout check
+  // but only until we've shown the "no notifications" message or there are responses
+  useEffect(() => {
+    const createdAt = signal.createdAt?.toDate
+      ? signal.createdAt.toDate()
+      : signal.createdAt instanceof Date
+        ? signal.createdAt
+        : signal.createdAt
+          ? new Date(signal.createdAt as any)
+          : new Date();
+
+    const notificationCount = (signal as any).notificationsSent || 0;
+    const hasResponses = signal.responses.length > 0;
+    const timeElapsed = currentTime.getTime() - createdAt.getTime();
+    const alreadyShowingNoNotifications =
+      timeElapsed > 10000 && notificationCount === 0;
+
+    // Stop the timer if we already have responses, notifications, or are showing the warning
+    if (
+      hasResponses ||
+      notificationCount > 0 ||
+      alreadyShowingNoNotifications
+    ) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [signal.responses.length, (signal as any).notificationsSent, currentTime]);
+
   // Don't render expired signals
-  const now = new Date();
+  const now = currentTime;
   const expiresAt = signal.expiresAt.toDate
     ? signal.expiresAt.toDate()
     : signal.expiresAt instanceof Date
@@ -37,6 +72,19 @@ const OutgoingSignalCard: React.FC<OutgoingSignalCardProps> = ({
 
   // Get notification count (defaults to 0 if not available)
   const notificationCount = (signal as any).notificationsSent || 0;
+
+  // Check if signal is old enough to show "no notifications" message
+  const createdAt = signal.createdAt?.toDate
+    ? signal.createdAt.toDate()
+    : signal.createdAt instanceof Date
+      ? signal.createdAt
+      : signal.createdAt
+        ? new Date(signal.createdAt as any)
+        : now; // fallback to current time if createdAt is null/undefined
+
+  const timeElapsed = now.getTime() - createdAt.getTime();
+  const showNoNotificationsMessage =
+    timeElapsed > 10000 && notificationCount === 0; // 10 seconds
 
   return (
     <View style={styles.signalCard}>
@@ -168,8 +216,16 @@ const OutgoingSignalCard: React.FC<OutgoingSignalCardProps> = ({
         </View>
       ) : (
         <View style={styles.emptyResponsesContainer}>
-          <Icon name="schedule" size={24} color="#ccc" />
-          <Text style={styles.noResponsesText}>Waiting for responses...</Text>
+          <Icon
+            name={showNoNotificationsMessage ? 'error-outline' : 'schedule'}
+            size={24}
+            color={showNoNotificationsMessage ? '#ff9800' : '#ccc'}
+          />
+          <Text style={styles.noResponsesText}>
+            {showNoNotificationsMessage
+              ? 'Nobody was notified - try increasing the radius or adding more crews'
+              : 'Waiting for responses...'}
+          </Text>
         </View>
       )}
 
