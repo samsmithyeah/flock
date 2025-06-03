@@ -112,7 +112,7 @@ const LocationPermissionsCard: React.FC<LocationPermissionsCardProps> = ({
     }
 
     if (!backgroundPermissionGranted && isTrackingActive) {
-      return 'Location tracking is active but limited to foreground only. You can send signals and share your location, bbut the signals you receive may be out of sync with your true location when the app is not open. Grant background permission for full functionality.';
+      return 'Location tracking is active but limited to foreground only. You can send signals and share your location, but the signals you receive may be out of sync with your true location when the app is not open. Grant background permission for full functionality.';
     }
 
     if (isTrackingActive) {
