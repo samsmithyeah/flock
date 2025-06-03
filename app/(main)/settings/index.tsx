@@ -179,7 +179,7 @@ export default SettingsScreen;
 
 const styles = StyleSheet.create({
   section: {
-    marginBottom: 32,
+    marginBottom: 24,
   },
   sectionTitle: {
     fontSize: 18,

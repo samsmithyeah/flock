@@ -44,6 +44,11 @@ import {
   getCurrentTrackingMode,
   LocationTrackingMode,
 } from '@/services/BackgroundLocationTask';
+import {
+  startForegroundLocationTracking,
+  stopForegroundLocationTracking,
+  isForegroundLocationTrackingActive,
+} from '@/services/ForegroundLocationTask';
 import { calculateDistance } from '@/utils/locationUtils';
 
 interface SignalContextType {
@@ -56,6 +61,7 @@ interface SignalContextType {
   locationPermissionGranted: boolean;
   backgroundLocationPermissionGranted: boolean;
   backgroundLocationTrackingActive: boolean;
+  foregroundLocationTrackingActive: boolean;
   locationTrackingEnabled: boolean; // New: tracks if location tracking is enabled (background or foreground-only)
   unansweredSignalCount: number;
   userDisabledForegroundLocation: boolean;
@@ -67,6 +73,8 @@ interface SignalContextType {
   getCurrentLocation: () => Promise<LocationType | null>;
   startBackgroundLocationTracking: () => Promise<boolean>;
   stopBackgroundLocationTracking: () => Promise<void>;
+  startForegroundLocationTracking: () => Promise<boolean>;
+  stopForegroundLocationTracking: () => Promise<void>;
   sendSignal: (signalData: {
     message?: string;
     radius: number;
@@ -137,6 +145,10 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     backgroundLocationTrackingActive,
     setBackgroundLocationTrackingActive,
   ] = useState<boolean>(false);
+  const [
+    foregroundLocationTrackingActive,
+    setForegroundLocationTrackingActive,
+  ] = useState<boolean>(false);
   const [unansweredSignalCount, setUnansweredSignalCount] = useState<number>(0);
 
   // Flag to prevent recursive calls to updateLocationTrackingMode
@@ -150,6 +162,7 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
       subscribeToSharedLocations();
       checkLocationPermissions();
       checkBackgroundLocationTrackingStatus();
+      checkForegroundLocationTrackingStatus();
 
       // The user preference is already loaded in UserContext
       // No need to load it here as it's handled by UserContext
@@ -158,6 +171,21 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
       // setUserDisabledBackgroundTracking(false);
     }
   }, [user]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Stop foreground tracking when context unmounts
+      if (foregroundLocationTrackingActive) {
+        try {
+          stopForegroundLocationTracking();
+          console.log('Stopped foreground tracking on context unmount');
+        } catch (error) {
+          console.error('Error stopping foreground tracking on unmount:', error);
+        }
+      }
+    };
+  }, []);
 
   // Auto-start background tracking if permission is granted but tracking is not active
   useEffect(() => {
@@ -223,6 +251,60 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     userDisabledBackgroundTracking,
   ]);
 
+  // Auto-start foreground tracking if in foreground-only mode
+  useEffect(() => {
+    const autoStartForegroundTracking = async () => {
+      // Only start foreground tracking if:
+      // 1. User is logged in
+      // 2. Has foreground permission
+      // 3. Background tracking is NOT active (foreground-only mode)
+      // 4. User has not disabled foreground location
+      // 5. Foreground tracking is not already active
+      if (
+        user &&
+        locationPermissionGranted &&
+        !backgroundLocationTrackingActive &&
+        !userDisabledForegroundLocation &&
+        !foregroundLocationTrackingActive
+      ) {
+        console.log('Auto-starting foreground location tracking (foreground-only mode)...');
+        try {
+          const success = await startForegroundLocationTracking();
+          if (success) {
+            setForegroundLocationTrackingActive(true);
+            console.log('Auto-started foreground location tracking successfully');
+          } else {
+            console.log('Failed to auto-start foreground location tracking');
+          }
+        } catch (error) {
+          console.error('Error auto-starting foreground location tracking:', error);
+        }
+      } else if (foregroundLocationTrackingActive && backgroundLocationTrackingActive) {
+        // Stop foreground tracking if background tracking becomes active
+        console.log('Stopping foreground tracking (background tracking is now active)...');
+        try {
+          stopForegroundLocationTracking();
+          setForegroundLocationTrackingActive(false);
+        } catch (error) {
+          console.error('Error stopping foreground location tracking:', error);
+        }
+      }
+    };
+
+    // Add a small delay to avoid race conditions
+    const timeoutId = setTimeout(() => {
+      autoStartForegroundTracking();
+    }, 1000);
+
+    return () => clearTimeout(timeoutId);
+  }, [
+    user,
+    locationPermissionGranted,
+    backgroundLocationTrackingActive,
+    userDisabledForegroundLocation,
+    foregroundLocationTrackingActive,
+  ]);
+
   const checkLocationPermissions = async () => {
     try {
       const { status: foregroundStatus } =
@@ -244,6 +326,18 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     } catch (error) {
       console.error(
         'Error checking background location tracking status:',
+        error,
+      );
+    }
+  };
+
+  const checkForegroundLocationTrackingStatus = () => {
+    try {
+      const isActive = isForegroundLocationTrackingActive();
+      setForegroundLocationTrackingActive(isActive);
+    } catch (error) {
+      console.error(
+        'Error checking foreground location tracking status:',
         error,
       );
     }
@@ -421,6 +515,68 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
         text2: 'Failed to start background location tracking',
       });
       return false;
+    }
+  };
+
+  const startForegroundLocationTrackingHandler = async (): Promise<boolean> => {
+    try {
+      // Check if we have foreground permissions
+      if (!locationPermissionGranted) {
+        const granted = await requestLocationPermission();
+        if (!granted) {
+          return false;
+        }
+      }
+
+      // Clear the user disabled flag since user is manually enabling
+      setUserDisabledForegroundLocation(false);
+      // Persist this preference
+      persistForegroundLocationPreference(false);
+
+      // Start foreground location tracking
+      const success = await startForegroundLocationTracking();
+      if (success) {
+        setForegroundLocationTrackingActive(true);
+        Toast.show({
+          type: 'success',
+          text1: 'Foreground tracking started',
+          text2: 'Location updates enabled while app is open',
+        });
+      }
+
+      return success;
+    } catch (error) {
+      console.error('Error starting foreground location tracking:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to start foreground location tracking',
+      });
+      return false;
+    }
+  };
+
+  const stopForegroundLocationTrackingHandler = async (): Promise<void> => {
+    try {
+      // Set the user disabled flag to prevent auto-restart
+      setUserDisabledForegroundLocation(true);
+      // Persist this preference
+      persistForegroundLocationPreference(true);
+
+      stopForegroundLocationTracking();
+      setForegroundLocationTrackingActive(false);
+      Toast.show({
+        type: 'success',
+        text1: 'Foreground tracking stopped',
+        text2: 'Location updates paused',
+      });
+    } catch (error) {
+      console.error('Error stopping foreground location tracking:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to stop foreground location tracking',
+      });
     }
   };
 
@@ -1232,6 +1388,7 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     locationPermissionGranted,
     backgroundLocationPermissionGranted,
     backgroundLocationTrackingActive,
+    foregroundLocationTrackingActive,
     locationTrackingEnabled,
     unansweredSignalCount,
     userDisabledForegroundLocation,
@@ -1241,6 +1398,8 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     getCurrentLocation,
     startBackgroundLocationTracking: startBackgroundLocationTrackingHandler,
     stopBackgroundLocationTracking: stopBackgroundLocationTrackingHandler,
+    startForegroundLocationTracking: startForegroundLocationTrackingHandler,
+    stopForegroundLocationTracking: stopForegroundLocationTrackingHandler,
     sendSignal,
     respondToSignal,
     modifySignalResponse,
