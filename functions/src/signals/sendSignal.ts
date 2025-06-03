@@ -145,6 +145,12 @@ export const processSignal = functions.firestore.onDocumentCreated(
         for (const userDoc of usersSnapshot.docs) {
           const userData = userDoc.data();
 
+          // First check if user has location tracking enabled
+          if (userData.locationTrackingEnabled === false) {
+            console.log(`User ${userDoc.id} has location tracking disabled, skipping`);
+            continue;
+          }
+
           // Check if user has valid push tokens
           const tokens: string[] = [];
           if (userData.expoPushToken && Expo.isExpoPushToken(userData.expoPushToken)) {
@@ -276,7 +282,7 @@ export const processSignal = functions.firestore.onDocumentCreated(
       // Send notifications
       await sendExpoNotifications(messages);
 
-      console.log(`Sent ${messages.length} signal notifications for signal ${signalId}`);
+      console.log(`Sent ${messages.length} signal notifications for signal ${signalId} to users:`, eligibleUsers.map((u) => u.uid));
 
       // Update signal with notification count
       await db.collection('signals').doc(signalId).update({

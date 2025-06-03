@@ -99,6 +99,7 @@ export const addUserToFirestore = async (user: User, phoneNumber?: string) => {
       photoURL: user.photoURL,
       badgeCount: 0,
       phoneNumber: phoneNumber || '', // Add this line
+      locationTrackingEnabled: true, // Default to enabled for new users
     };
     const userExists = (await getDoc(userDocRef)).exists();
     if (userExists) {

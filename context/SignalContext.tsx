@@ -70,7 +70,9 @@ interface SignalContextType {
   // Actions
   requestLocationPermission: () => Promise<boolean>;
   requestBackgroundLocationPermission: () => Promise<boolean>;
-  getCurrentLocation: () => Promise<LocationType | null>;
+  getCurrentLocation: (
+    forSignalAcceptance?: boolean,
+  ) => Promise<LocationType | null>;
   startBackgroundLocationTracking: () => Promise<boolean>;
   stopBackgroundLocationTracking: () => Promise<void>;
   startForegroundLocationTracking: () => Promise<boolean>;
@@ -619,12 +621,21 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
     }
   };
 
-  const getCurrentLocation = async (): Promise<LocationType | null> => {
+  const getCurrentLocation = async (
+    forSignalAcceptance: boolean = false,
+  ): Promise<LocationType | null> => {
     try {
       // Check if user has disabled foreground location
-      if (userDisabledForegroundLocation) {
+      // But allow location access for signal acceptance even if tracking is disabled
+      if (userDisabledForegroundLocation && !forSignalAcceptance) {
         console.log('User has disabled foreground location');
         return null;
+      }
+
+      if (forSignalAcceptance) {
+        console.log(
+          'Getting location for signal acceptance (bypassing user disabled flag)',
+        );
       }
 
       // Check for permission first
@@ -635,12 +646,16 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
         }
       }
 
-      // Try high accuracy first
+      // Try high accuracy first with timeout
       let location;
       try {
+        console.log('Attempting to get location with high accuracy...');
         location = await getCurrentPositionAsync({
           accuracy: Accuracy.High,
+          timeInterval: 10000, // 10 second timeout
+          distanceInterval: 1, // Accept any movement
         });
+        console.log('High accuracy location obtained successfully');
       } catch (highAccuracyError) {
         console.log(
           'High accuracy failed, trying balanced accuracy...',
@@ -649,9 +664,13 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
 
         // Fallback to balanced accuracy for simulator/problematic devices
         try {
+          console.log('Attempting to get location with balanced accuracy...');
           location = await getCurrentPositionAsync({
             accuracy: Accuracy.Balanced,
+            timeInterval: 15000, // 15 second timeout
+            distanceInterval: 1, // Accept any movement
           });
+          console.log('Balanced accuracy location obtained successfully');
         } catch (balancedError) {
           console.log(
             'Balanced accuracy failed, trying low accuracy...',
@@ -659,9 +678,18 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
           );
 
           // Final fallback to low accuracy
-          location = await getCurrentPositionAsync({
-            accuracy: Accuracy.Low,
-          });
+          try {
+            console.log('Attempting to get location with low accuracy...');
+            location = await getCurrentPositionAsync({
+              accuracy: Accuracy.Low,
+              timeInterval: 20000, // 20 second timeout
+              distanceInterval: 1, // Accept any movement
+            });
+            console.log('Low accuracy location obtained successfully');
+          } catch (lowAccuracyError) {
+            console.log('All accuracy levels failed:', lowAccuracyError);
+            throw lowAccuracyError;
+          }
         }
       }
 
@@ -747,6 +775,12 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
   const subscribeToReceivedSignals = () => {
     if (!user) return;
 
+    // Check if user has location tracking disabled
+    if (user.locationTrackingEnabled === false) {
+      setReceivedSignals([]);
+      return;
+    }
+
     // For received signals, we'd need a more complex query or cloud function
     // For now, we'll get all active signals and filter client-side
     const q = query(collection(db, 'signals'), where('status', '==', 'active'));
@@ -831,7 +865,12 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
 
               // Fallback check: Use current GPS location if stored location unavailable
               // or if stored location says we're outside but current location might be inside
-              if (!isWithinRadius && currentLocation) {
+              // BUT only if location tracking is enabled for this user
+              if (
+                !isWithinRadius &&
+                currentLocation &&
+                locationTrackingEnabled
+              ) {
                 const currentDistance = calculateDistance(
                   currentLocation.latitude,
                   currentLocation.longitude,
@@ -1081,9 +1120,18 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
       let location: LocationType | undefined;
 
       if (response === 'accept') {
-        const userLocation = await getCurrentLocation();
+        const userLocation = await getCurrentLocation(true); // forSignalAcceptance = true
         if (!userLocation) {
-          throw new Error('Location required to accept signal');
+          // Provide more specific error messaging
+          if (!locationPermissionGranted) {
+            throw new Error(
+              'Location permission is required to accept signals. Please enable location access in your device settings.',
+            );
+          } else {
+            throw new Error(
+              'Unable to get current location. Please check your location settings and try again.',
+            );
+          }
         }
         location = userLocation;
       }
@@ -1239,35 +1287,66 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
       if (!backgroundLocationTrackingActive) {
         // If not tracking but we have shared locations, start tracking with appropriate mode
         if (hasActiveSharedLocations) {
-          console.log(
-            `Starting background tracking in ${requiredMode} mode for location sharing`,
-          );
-          try {
-            const success = await startBackgroundLocationTrackingHandler();
-            if (!success) {
+          // Check if user has background permission
+          if (backgroundLocationPermissionGranted) {
+            console.log(
+              `Starting background tracking in ${requiredMode} mode for location sharing`,
+            );
+            try {
+              const success = await startBackgroundLocationTrackingHandler();
+              if (!success) {
+                console.error(
+                  'Failed to start background tracking for location sharing',
+                );
+                // Show user-friendly error
+                Toast.show({
+                  type: 'error',
+                  text1: 'Location tracking issue',
+                  text2:
+                    'Could not start background tracking. Please try enabling it manually.',
+                });
+              }
+            } catch (error) {
               console.error(
-                'Failed to start background tracking for location sharing',
+                'Error starting background tracking for location sharing:',
+                error,
               );
               // Show user-friendly error
               Toast.show({
                 type: 'error',
-                text1: 'Location tracking issue',
+                text1: 'Location tracking error',
                 text2:
-                  'Could not start background tracking. Please try enabling it manually.',
+                  'Please try restarting the app or enabling location tracking manually.',
               });
             }
-          } catch (error) {
-            console.error(
-              'Error starting background tracking for location sharing:',
-              error,
+          } else {
+            // User only has foreground permission, start foreground tracking instead
+            console.log(
+              'Starting foreground tracking for location sharing (no background permission)',
             );
-            // Show user-friendly error
-            Toast.show({
-              type: 'error',
-              text1: 'Location tracking error',
-              text2:
-                'Please try restarting the app or enabling location tracking manually.',
-            });
+            try {
+              if (!foregroundLocationTrackingActive) {
+                const success = await startForegroundLocationTrackingHandler();
+                if (success) {
+                  console.log(
+                    'Started foreground tracking for location sharing successfully',
+                  );
+                } else {
+                  console.error(
+                    'Failed to start foreground tracking for location sharing',
+                  );
+                }
+              } else {
+                console.log(
+                  'Foreground tracking already active for location sharing',
+                );
+              }
+            } catch (error) {
+              console.error(
+                'Error starting foreground tracking for location sharing:',
+                error,
+              );
+            }
           }
         }
         return;
