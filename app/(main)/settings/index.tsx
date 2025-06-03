@@ -129,7 +129,7 @@ const SettingsScreen: React.FC = () => {
           <TouchableOpacity
             style={styles.settingsItem}
             onPress={() => router.push('/settings/edit-profile')}
-            accessibilityLabel="Edit Profile"
+            accessibilityLabel="Edit profile"
             accessibilityHint="Edit your profile information"
           >
             <View style={styles.settingsItemLeft}>
@@ -138,7 +138,7 @@ const SettingsScreen: React.FC = () => {
                 size={24}
                 color={Colors.primary}
               />
-              <Text style={styles.settingsItemText}>Edit Profile</Text>
+              <Text style={styles.settingsItemText}>Edit profile</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={Colors.gray} />
           </TouchableOpacity>
