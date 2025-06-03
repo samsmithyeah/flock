@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect } from 'react';
 import {
   View,
+  ScrollView,
   Text,
   StyleSheet,
   TouchableOpacity,
@@ -12,6 +13,7 @@ import { useUser } from '@/context/UserContext';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { Crew } from '@/types/Crew';
 import CrewHeader from '@/components/CrewHeader';
+import NavigationCard from '@/components/NavigationCard';
 import { useCrews } from '@/context/CrewsContext';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import Toast from 'react-native-toast-message';
@@ -123,7 +125,7 @@ const CrewLandingScreen: React.FC = () => {
   }
 
   return (
-    <View style={globalStyles.containerWithHeader}>
+    <ScrollView style={globalStyles.containerWithHeader}>
       <View style={styles.crewInfo}>
         {crew.iconUrl ? (
           <Image source={{ uri: crew.iconUrl }} style={styles.crewImage} />
@@ -140,40 +142,46 @@ const CrewLandingScreen: React.FC = () => {
       </View>
 
       <View style={styles.navigationCards}>
-        <TouchableOpacity
-          style={styles.navCard}
+        <NavigationCard
+          icon="calendar-outline"
+          iconColor="#1e90ff"
+          title="Crew calendar"
+          description="Update your availability, see upcoming events, and meet up with your crew."
           onPress={() =>
             router.push({
               pathname: '/crews/[crewId]/calendar',
               params: { crewId },
             })
           }
-        >
-          <Ionicons name="calendar-outline" size={36} color="#1e90ff" />
-          <Text style={styles.navCardTitle}>Crew calendar</Text>
-          <Text style={styles.navCardDescription}>
-            Update your availability, see upcoming events, and meet up with your
-            crew.
-          </Text>
-        </TouchableOpacity>
+        />
 
-        <TouchableOpacity
-          style={styles.navCard}
+        <NavigationCard
+          icon="stats-chart-outline"
+          iconColor="#ff7043"
+          title="Event polls"
+          description="Create polls to find the best date for your next crew event"
           onPress={() =>
             router.push({
               pathname: '/crews/event-poll',
               params: { crewId },
             })
           }
-        >
-          <Ionicons name="stats-chart-outline" size={36} color="#ff7043" />
-          <Text style={styles.navCardTitle}>Event polls</Text>
-          <Text style={styles.navCardDescription}>
-            Create polls to find the best date for your next crew event
-          </Text>
-        </TouchableOpacity>
+        />
+
+        <NavigationCard
+          icon="radio-outline"
+          iconColor="#4caf50"
+          title="Signal"
+          description="Send a signal to your crew to meet up right now!"
+          onPress={() =>
+            router.push({
+              pathname: '/signal/send',
+              params: { crewId },
+            })
+          }
+        />
       </View>
-    </View>
+    </ScrollView>
   );
 };
 
@@ -211,26 +219,5 @@ const styles = StyleSheet.create({
   },
   navigationCards: {
     marginTop: vs(16),
-  },
-  navCard: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#E0E0E0',
-    padding: vs(20),
-    marginBottom: vs(16),
-    alignItems: 'center',
-  },
-  navCardTitle: {
-    fontSize: vs(18),
-    fontWeight: '600',
-    marginTop: vs(12),
-    marginBottom: vs(8),
-    color: '#333',
-  },
-  navCardDescription: {
-    fontSize: vs(14),
-    color: '#666',
-    textAlign: 'center',
   },
 });

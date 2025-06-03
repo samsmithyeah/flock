@@ -15,7 +15,7 @@ import Slider from '@react-native-community/slider';
 import { useUser } from '@/context/UserContext';
 import { useCrews } from '@/context/CrewsContext';
 import { useSignal } from '@/context/SignalContext';
-import { router, useNavigation } from 'expo-router';
+import { router, useNavigation, useLocalSearchParams } from 'expo-router';
 import RadioButtonGroup from '@/components/RadioButtonGroup';
 import CrewSelectorModal from '@/components/CrewSelectorModal';
 import LoadingOverlay from '@/components/LoadingOverlay';
@@ -38,6 +38,7 @@ const SendSignalScreen: React.FC = () => {
   const { crews } = useCrews();
   const { currentLocation, sendSignal: sendSignalContext } = useSignal();
   const navigation = useNavigation();
+  const { crewId } = useLocalSearchParams<{ crewId?: string }>();
 
   const [radius, setRadius] = useState<number>(2000);
   const [targetType, setTargetType] = useState<'all' | 'crews'>('all');
@@ -114,6 +115,18 @@ const SendSignalScreen: React.FC = () => {
       );
     }
   }, [currentLocation]);
+
+  // Pre-select crew if crewId is provided in route params
+  useEffect(() => {
+    if (crewId && crews.length > 0) {
+      // Check if the crew exists in the user's crews
+      const crew = crews.find((c) => c.id === crewId);
+      if (crew) {
+        setTargetType('crews');
+        setSelectedCrews([crewId]);
+      }
+    }
+  }, [crewId, crews]);
 
   const formatDistance = (meters: number): string => {
     if (meters < 1000) {
