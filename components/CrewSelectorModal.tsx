@@ -1,11 +1,7 @@
 // components/CrewSelectorModal.tsx
 
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-} from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Crew } from '@/types/Crew';
 import CustomModal from '@/components/CustomModal';
 import CrewSelector from '@/components/CrewSelector';
@@ -63,7 +59,7 @@ const CrewSelectorModal: React.FC<CrewSelectorModalProps> = ({
           Choose which crews should receive your signal
         </Text>
 
-        <CrewSelector 
+        <CrewSelector
           crews={crews}
           selectedCrewIds={selectedCrewIds}
           onToggleCrew={onToggleCrew}
