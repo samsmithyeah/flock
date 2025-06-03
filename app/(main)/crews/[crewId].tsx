@@ -2,7 +2,6 @@ import React, { useState, useEffect, useLayoutEffect } from 'react';
 import {
   View,
   ScrollView,
-  Text,
   StyleSheet,
   TouchableOpacity,
   Dimensions,
@@ -10,7 +9,7 @@ import {
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
-import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { MaterialIcons } from '@expo/vector-icons';
 import { Crew } from '@/types/Crew';
 import CrewHeader from '@/components/CrewHeader';
 import NavigationCard from '@/components/NavigationCard';
@@ -20,7 +19,6 @@ import Toast from 'react-native-toast-message';
 import useGlobalStyles from '@/styles/globalStyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
-import { Image } from 'expo-image';
 
 const { height } = Dimensions.get('window');
 const BASE_HEIGHT = 852;
@@ -126,21 +124,6 @@ const CrewLandingScreen: React.FC = () => {
 
   return (
     <ScrollView style={globalStyles.containerWithHeader}>
-      <View style={styles.crewInfo}>
-        {crew.iconUrl ? (
-          <Image source={{ uri: crew.iconUrl }} style={styles.crewImage} />
-        ) : (
-          <View style={styles.crewImagePlaceholder}>
-            <Ionicons name="people-outline" size={40} color="#888" />
-          </View>
-        )}
-        <Text style={styles.crewName}>{crew.name}</Text>
-        <Text style={styles.memberCount}>
-          {crew.memberIds.length}{' '}
-          {crew.memberIds.length === 1 ? 'member' : 'members'}
-        </Text>
-      </View>
-
       <View style={styles.navigationCards}>
         <NavigationCard
           icon="calendar-outline"
@@ -188,35 +171,6 @@ const CrewLandingScreen: React.FC = () => {
 export default CrewLandingScreen;
 
 const styles = StyleSheet.create({
-  crewInfo: {
-    alignItems: 'center',
-    marginVertical: vs(24),
-  },
-  crewImage: {
-    width: vs(100),
-    height: vs(100),
-    borderRadius: 50,
-    marginBottom: vs(16),
-  },
-  crewImagePlaceholder: {
-    width: vs(100),
-    height: vs(100),
-    borderRadius: 50,
-    backgroundColor: '#f0f0f0',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: vs(16),
-  },
-  crewName: {
-    fontSize: vs(24),
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: vs(4),
-  },
-  memberCount: {
-    fontSize: 16,
-    color: '#666',
-  },
   navigationCards: {
     marginTop: vs(16),
   },
