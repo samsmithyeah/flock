@@ -19,7 +19,7 @@ import { useUser } from '@/context/UserContext';
 import CustomButton from '@/components/CustomButton';
 import CustomTextInput from '@/components/CustomTextInput';
 import Colors from '@/styles/colors';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { User } from '@/types/User';
 import { FirebaseError } from 'firebase/app';
 import { registerForPushNotificationsAsync } from '@/utils/AddUserToFirestore';
@@ -70,6 +70,15 @@ const LoginScreen: React.FC = () => {
 
       if (userDoc.exists()) {
         const userData = userDoc.data() as User;
+
+        // Migration: Set default locationTrackingEnabled for existing users
+        if (userData.locationTrackingEnabled === undefined) {
+          await updateDoc(userDocRef, {
+            locationTrackingEnabled: true,
+          });
+          userData.locationTrackingEnabled = true;
+        }
+
         await registerForPushNotificationsAsync(userData);
         await requestLocationPermission();
         await requestBackgroundLocationPermission();

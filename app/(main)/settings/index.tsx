@@ -24,6 +24,7 @@ const SettingsScreen: React.FC = () => {
     logout,
     setUserDisabledForegroundLocation,
     persistForegroundLocationPreference,
+    updateLocationTrackingEnabled,
   } = useUser();
   const {
     locationPermissionGranted,
@@ -57,6 +58,9 @@ const SettingsScreen: React.FC = () => {
       setUserDisabledForegroundLocation(false);
       persistForegroundLocationPreference(false);
 
+      // Update the database preference
+      await updateLocationTrackingEnabled(true);
+
       // If background permission is available, also start background tracking
       if (backgroundLocationPermissionGranted) {
         await startBackgroundLocationTracking();
@@ -77,6 +81,9 @@ const SettingsScreen: React.FC = () => {
       await stopBackgroundLocationTracking();
       setUserDisabledForegroundLocation(true);
       persistForegroundLocationPreference(true);
+
+      // Update the database preference
+      await updateLocationTrackingEnabled(false);
 
       Toast.show({
         type: 'success',

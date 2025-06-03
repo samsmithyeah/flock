@@ -100,6 +100,8 @@ interface UserContextType {
   persistBackgroundTrackingPreference: (disabled: boolean) => void;
   loadBackgroundTrackingPreference: () => boolean;
   clearUserPreferences: () => void;
+  // Database location tracking preference
+  updateLocationTrackingEnabled: (enabled: boolean) => Promise<void>;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -130,6 +132,15 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
           const userDoc = await getDoc(userDocRef);
           if (userDoc.exists()) {
             const userData = userDoc.data() as User;
+
+            // Migration: Set default locationTrackingEnabled for existing users
+            if (userData.locationTrackingEnabled === undefined) {
+              await updateDoc(userDocRef, {
+                locationTrackingEnabled: true,
+              });
+              userData.locationTrackingEnabled = true;
+            }
+
             if (userData.phoneNumber) setUser(userData);
             const tokenResult = await getIdTokenResult(firebaseUser);
             const adminClaim = tokenResult.claims.admin ?? false;
@@ -334,6 +345,29 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     clearLocationPreferences();
   }, []);
 
+  const updateLocationTrackingEnabled = useCallback(
+    async (enabled: boolean) => {
+      if (!user?.uid) return;
+      const userDocRef = doc(db, 'users', user.uid);
+      try {
+        await updateDoc(userDocRef, {
+          locationTrackingEnabled: enabled,
+        });
+        setUser((prev) =>
+          prev ? { ...prev, locationTrackingEnabled: enabled } : null,
+        );
+      } catch (error) {
+        console.error('Error updating location tracking enabled:', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Could not update location tracking preference',
+        });
+      }
+    },
+    [user?.uid],
+  );
+
   const logout = async () => {
     try {
       setUser(null);
@@ -379,6 +413,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
           persistUserBackgroundTrackingPreference,
         loadBackgroundTrackingPreference: loadUserBackgroundTrackingPreference,
         clearUserPreferences,
+        updateLocationTrackingEnabled,
       }}
     >
       {children}

@@ -145,6 +145,12 @@ export const processSignal = functions.firestore.onDocumentCreated(
         for (const userDoc of usersSnapshot.docs) {
           const userData = userDoc.data();
 
+          // First check if user has location tracking enabled
+          if (userData.locationTrackingEnabled === false) {
+            console.log(`User ${userDoc.id} has location tracking disabled, skipping`);
+            continue;
+          }
+
           // Check if user has valid push tokens
           const tokens: string[] = [];
           if (userData.expoPushToken && Expo.isExpoPushToken(userData.expoPushToken)) {

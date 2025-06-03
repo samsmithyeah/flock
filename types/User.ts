@@ -15,4 +15,5 @@ export interface User {
   isOnline?: boolean;
   lastSeen?: Timestamp;
   crewOrder?: string[];
+  locationTrackingEnabled?: boolean;
 }
