@@ -10,13 +10,14 @@ import {
   TextInput,
   Alert,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import { useUser } from '@/context/UserContext';
 import { useCrews } from '@/context/CrewsContext';
 import { useSignal } from '@/context/SignalContext';
-import { router, useNavigation } from 'expo-router';
+import { router, useNavigation, useLocalSearchParams } from 'expo-router';
 import RadioButtonGroup from '@/components/RadioButtonGroup';
-import CrewSelector from '@/components/CrewSelector';
+import CrewSelectorModal from '@/components/CrewSelectorModal';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import Toast from 'react-native-toast-message';
 
@@ -37,6 +38,7 @@ const SendSignalScreen: React.FC = () => {
   const { crews } = useCrews();
   const { currentLocation, sendSignal: sendSignalContext } = useSignal();
   const navigation = useNavigation();
+  const { crewId } = useLocalSearchParams<{ crewId?: string }>();
 
   const [radius, setRadius] = useState<number>(2000);
   const [targetType, setTargetType] = useState<'all' | 'crews'>('all');
@@ -44,6 +46,7 @@ const SendSignalScreen: React.FC = () => {
   const [message, setMessage] = useState<string>('');
   const [durationMinutes, setDurationMinutes] = useState<number>(60); // Default 1 hour
   const [isLoading, setIsLoading] = useState(false);
+  const [isCrewModalVisible, setIsCrewModalVisible] = useState(false);
 
   useEffect(() => {
     navigation.setOptions({
@@ -112,6 +115,18 @@ const SendSignalScreen: React.FC = () => {
       );
     }
   }, [currentLocation]);
+
+  // Pre-select crew if crewId is provided in route params
+  useEffect(() => {
+    if (crewId && crews.length > 0) {
+      // Check if the crew exists in the user's crews
+      const crew = crews.find((c) => c.id === crewId);
+      if (crew) {
+        setTargetType('crews');
+        setSelectedCrews([crewId]);
+      }
+    }
+  }, [crewId, crews]);
 
   const formatDistance = (meters: number): string => {
     if (meters < 1000) {
@@ -291,17 +306,37 @@ const SendSignalScreen: React.FC = () => {
                 Choose which crews to signal to
               </Text>
 
-              <CrewSelector
-                crews={crews}
-                selectedCrewIds={selectedCrews}
-                onToggleCrew={(crewId) => {
-                  setSelectedCrews((prev) =>
-                    prev.includes(crewId)
-                      ? prev.filter((id) => id !== crewId)
-                      : [...prev, crewId],
-                  );
-                }}
-              />
+              <TouchableOpacity
+                style={styles.crewSelectorButton}
+                onPress={() => setIsCrewModalVisible(true)}
+                accessibilityLabel="Select crews"
+                accessibilityHint="Open crew selection modal"
+              >
+                <View style={styles.crewSelectorContent}>
+                  <Ionicons name="people-outline" size={20} color="#1e90ff" />
+                  <View style={styles.crewSelectorText}>
+                    {selectedCrews.length === 0 ? (
+                      <Text style={styles.crewSelectorPlaceholder}>
+                        Tap to select crews
+                      </Text>
+                    ) : (
+                      <>
+                        <Text style={styles.crewSelectorLabel}>
+                          {selectedCrews.length} crew
+                          {selectedCrews.length !== 1 ? 's' : ''} selected
+                        </Text>
+                        <Text style={styles.crewSelectorNames}>
+                          {crews
+                            .filter((crew) => selectedCrews.includes(crew.id))
+                            .map((crew) => crew.name)
+                            .join(', ')}
+                        </Text>
+                      </>
+                    )}
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#666" />
+                </View>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -326,6 +361,24 @@ const SendSignalScreen: React.FC = () => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Crew Selection Modal */}
+      <CrewSelectorModal
+        isVisible={isCrewModalVisible}
+        onClose={() => setIsCrewModalVisible(false)}
+        crews={crews}
+        selectedCrewIds={selectedCrews}
+        onToggleCrew={(crewId: string) => {
+          setSelectedCrews((prev) =>
+            prev.includes(crewId)
+              ? prev.filter((id) => id !== crewId)
+              : [...prev, crewId],
+          );
+        }}
+        onConfirm={() => {
+          // Modal will close automatically after confirm
+        }}
+      />
     </>
   );
 };
@@ -396,6 +449,35 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'right',
     marginTop: 8,
+  },
+  crewSelectorButton: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    padding: 16,
+  },
+  crewSelectorContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  crewSelectorText: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  crewSelectorPlaceholder: {
+    fontSize: 16,
+    color: '#999',
+  },
+  crewSelectorLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  crewSelectorNames: {
+    fontSize: 14,
+    color: '#666',
   },
 });
 

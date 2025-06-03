@@ -15,6 +15,70 @@ import * as Notifications from 'expo-notifications';
 import { getIdTokenResult } from 'firebase/auth';
 import { User } from '@/types/User';
 import { router } from 'expo-router';
+import { storage } from '@/storage';
+
+// MMKV keys for persisting user preferences
+const STORAGE_KEYS = {
+  FOREGROUND_LOCATION_DISABLED: 'userDisabledForegroundLocation',
+  BACKGROUND_TRACKING_DISABLED: 'userDisabledBackgroundTracking',
+};
+
+// Helper functions for persisting location preferences using MMKV
+const persistForegroundLocationPreference = (disabled: boolean): void => {
+  try {
+    storage.set(STORAGE_KEYS.FOREGROUND_LOCATION_DISABLED, disabled);
+    console.log(
+      `Persisted foreground location preference: disabled=${disabled}`,
+    );
+  } catch (error) {
+    console.error('Error persisting foreground location preference:', error);
+  }
+};
+
+const loadForegroundLocationPreference = (): boolean => {
+  try {
+    const disabled =
+      storage.getBoolean(STORAGE_KEYS.FOREGROUND_LOCATION_DISABLED) ?? false;
+    console.log(`Loaded foreground location preference: disabled=${disabled}`);
+    return disabled;
+  } catch (error) {
+    console.error('Error loading foreground location preference:', error);
+    return false; // Default to not disabled
+  }
+};
+
+const persistBackgroundTrackingPreference = (disabled: boolean): void => {
+  try {
+    storage.set(STORAGE_KEYS.BACKGROUND_TRACKING_DISABLED, disabled);
+    console.log(
+      `Persisted background tracking preference: disabled=${disabled}`,
+    );
+  } catch (error) {
+    console.error('Error persisting background tracking preference:', error);
+  }
+};
+
+const loadBackgroundTrackingPreference = (): boolean => {
+  try {
+    const disabled =
+      storage.getBoolean(STORAGE_KEYS.BACKGROUND_TRACKING_DISABLED) ?? false;
+    console.log(`Loaded background tracking preference: disabled=${disabled}`);
+    return disabled;
+  } catch (error) {
+    console.error('Error loading background tracking preference:', error);
+    return false; // Default to not disabled
+  }
+};
+
+const clearLocationPreferences = (): void => {
+  try {
+    storage.delete(STORAGE_KEYS.FOREGROUND_LOCATION_DISABLED);
+    storage.delete(STORAGE_KEYS.BACKGROUND_TRACKING_DISABLED);
+    console.log('Cleared all location preferences');
+  } catch (error) {
+    console.error('Error clearing location preferences:', error);
+  }
+};
 
 interface UserContextType {
   user: User | null;
@@ -26,6 +90,16 @@ interface UserContextType {
   setBadgeCount: (count: number) => Promise<void>;
   isAdmin: boolean;
   updateCrewOrder: (crewIds: string[]) => Promise<void>;
+  // Location preference methods
+  userDisabledForegroundLocation: boolean;
+  setUserDisabledForegroundLocation: (disabled: boolean) => void;
+  persistForegroundLocationPreference: (disabled: boolean) => void;
+  loadForegroundLocationPreference: () => boolean;
+  userDisabledBackgroundTracking: boolean;
+  setUserDisabledBackgroundTracking: (disabled: boolean) => void;
+  persistBackgroundTrackingPreference: (disabled: boolean) => void;
+  loadBackgroundTrackingPreference: () => boolean;
+  clearUserPreferences: () => void;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -38,6 +112,13 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [activeChats, setActiveChats] = useState<Set<string>>(new Set());
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
+
+  // Track user's manual preferences for location permissions
+  // This prevents auto-restart when user manually disables permissions
+  const [userDisabledForegroundLocation, setUserDisabledForegroundLocation] =
+    useState<boolean>(false);
+  const [userDisabledBackgroundTracking, setUserDisabledBackgroundTracking] =
+    useState<boolean>(false);
 
   const memoizedActiveChats = useMemo(() => activeChats, [activeChats]);
 
@@ -57,6 +138,12 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
               userData.activeChats || [],
             );
             setActiveChats(activeChatsFromDB);
+
+            // Load user's preferences for location tracking when logging in
+            const foregroundDisabled = loadForegroundLocationPreference();
+            setUserDisabledForegroundLocation(foregroundDisabled);
+            const backgroundDisabled = loadBackgroundTrackingPreference();
+            setUserDisabledBackgroundTracking(backgroundDisabled);
           } else {
             console.log('User document does not exist in Firestore.');
             setUser(null);
@@ -220,6 +307,33 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     [user?.uid],
   );
 
+  // Location preference management methods
+  const persistUserForegroundLocationPreference = useCallback(
+    (disabled: boolean) => {
+      persistForegroundLocationPreference(disabled);
+    },
+    [],
+  );
+
+  const loadUserForegroundLocationPreference = useCallback(() => {
+    return loadForegroundLocationPreference();
+  }, []);
+
+  const persistUserBackgroundTrackingPreference = useCallback(
+    (disabled: boolean) => {
+      persistBackgroundTrackingPreference(disabled);
+    },
+    [],
+  );
+
+  const loadUserBackgroundTrackingPreference = useCallback(() => {
+    return loadBackgroundTrackingPreference();
+  }, []);
+
+  const clearUserPreferences = useCallback(() => {
+    clearLocationPreferences();
+  }, []);
+
   const logout = async () => {
     try {
       setUser(null);
@@ -254,6 +368,17 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         setBadgeCount,
         isAdmin,
         updateCrewOrder,
+        userDisabledForegroundLocation,
+        setUserDisabledForegroundLocation,
+        persistForegroundLocationPreference:
+          persistUserForegroundLocationPreference,
+        loadForegroundLocationPreference: loadUserForegroundLocationPreference,
+        userDisabledBackgroundTracking,
+        setUserDisabledBackgroundTracking,
+        persistBackgroundTrackingPreference:
+          persistUserBackgroundTrackingPreference,
+        loadBackgroundTrackingPreference: loadUserBackgroundTrackingPreference,
+        clearUserPreferences,
       }}
     >
       {children}

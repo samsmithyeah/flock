@@ -25,6 +25,7 @@ import { useUser } from '@/context/UserContext';
 import CustomButton from '@/components/CustomButton';
 import { User } from '@/types/User';
 import { useLocalSearchParams } from 'expo-router';
+import { useSignal } from '@/context/SignalContext';
 
 const CELL_COUNT = 6;
 const { width } = Dimensions.get('window');
@@ -80,6 +81,8 @@ const PhoneVerificationScreen: React.FC = () => {
   const [fullPhoneNumber, setFullPhoneNumber] = useState<string>('');
 
   const { setUser } = useUser();
+  const { requestLocationPermission, requestBackgroundLocationPermission } =
+    useSignal();
 
   // CodeField hooks
   const codeRef = useBlurOnFulfill({
@@ -189,11 +192,15 @@ const PhoneVerificationScreen: React.FC = () => {
           if (updatedUserDoc.exists()) {
             setUser(updatedUserDoc.data() as User);
           }
+
           Toast.show({
             type: 'success',
             text1: 'Success',
             text2: 'Phone number verified',
           });
+
+          await requestLocationPermission();
+          await requestBackgroundLocationPermission();
         } else {
           setFormError('User not found.');
         }

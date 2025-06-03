@@ -98,7 +98,7 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
         );
       }
     } catch (error) {
-      console.log('Failed to geocode location:', error);
+      console.log('fetchLocationAddress: Failed to geocode location:', error);
       setLocationAddress(
         `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`,
       );

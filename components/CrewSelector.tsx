@@ -16,12 +16,14 @@ interface CrewSelectorProps {
   crews: Crew[];
   selectedCrewIds: string[];
   onToggleCrew: (crewId: string) => void;
+  maxHeight?: number;
 }
 
 const CrewSelector: React.FC<CrewSelectorProps> = ({
   crews,
   selectedCrewIds,
   onToggleCrew,
+  maxHeight = 200,
 }) => {
   if (crews.length === 0) {
     return (
@@ -33,7 +35,7 @@ const CrewSelector: React.FC<CrewSelectorProps> = ({
   }
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView style={[styles.container, { maxHeight }]}>
       {crews.map((crew) => {
         const isSelected = selectedCrewIds.includes(crew.id);
         return (
@@ -78,7 +80,7 @@ const CrewSelector: React.FC<CrewSelectorProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    maxHeight: 200,
+    // maxHeight will be set dynamically via props
   },
   crewItem: {
     flexDirection: 'row',

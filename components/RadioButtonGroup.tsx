@@ -25,7 +25,7 @@ const RadioButtonGroup: React.FC<RadioButtonGroupProps> = ({
   label,
 }) => {
   return (
-    <View style={styles.container}>
+    <View>
       {label && <Text style={styles.label}>{label}</Text>}
       {options.map((option) => {
         const isSelected = selectedValue === option.value;
@@ -81,9 +81,6 @@ const RadioButtonGroup: React.FC<RadioButtonGroupProps> = ({
 };
 
 const styles = StyleSheet.create({
-  container: {
-    marginBottom: 20,
-  },
   label: {
     fontSize: 16,
     fontWeight: '600',

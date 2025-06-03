@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { View, ScrollView, Text, StyleSheet, Alert } from 'react-native';
 import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useSignal } from '@/context/SignalContext';
 import { useUser } from '@/context/UserContext';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import Toast from 'react-native-toast-message';
 import ScreenTitle from '@/components/ScreenTitle';
 import LocationSharingModal from '@/components/LocationSharingModal';
-import BackgroundLocationCard from '@/components/BackgroundLocationCard';
 import CustomButton from '@/components/CustomButton';
 import SignalCard from '@/components/SignalCard';
 import OutgoingSignalCard from '@/components/OutgoingSignalCard';
@@ -27,16 +27,13 @@ const SignalScreen: React.FC = () => {
     locationPermissionGranted,
     backgroundLocationPermissionGranted,
     backgroundLocationTrackingActive,
+    locationTrackingEnabled,
     requestLocationPermission,
-    requestBackgroundLocationPermission,
     getCurrentLocation,
-    startBackgroundLocationTracking,
-    stopBackgroundLocationTracking,
     respondToSignal: respondToSignalContext,
     modifySignalResponse,
     cancelSignal,
     cancelSharedLocation,
-    hasActiveLocationSharing,
   } = useSignal();
   const { user } = useUser();
   const globalStyles = useGlobalStyles();
@@ -89,16 +86,22 @@ const SignalScreen: React.FC = () => {
     }
   };
 
-  // Auto-enable location when background location is already granted
+  // Auto-enable location when location permission is already granted
   useEffect(() => {
     if (
-      backgroundLocationPermissionGranted &&
+      locationPermissionGranted &&
+      locationTrackingEnabled &&
       !currentLocation &&
       !locationLoading
     ) {
       handleLocationRequest();
     }
-  }, [backgroundLocationPermissionGranted, currentLocation, locationLoading]);
+  }, [
+    locationPermissionGranted,
+    locationTrackingEnabled,
+    currentLocation,
+    locationLoading,
+  ]);
 
   // Cache signal addresses when signals change
   useEffect(() => {
@@ -278,9 +281,9 @@ const SignalScreen: React.FC = () => {
     <>
       {isLoading && <LoadingOverlay />}
       <View style={globalStyles.container}>
-        <ScrollView>
-          <ScreenTitle title="Signal" />
+        <ScreenTitle title="Signal" />
 
+        <ScrollView>
           {/* Send Signal Section */}
           <View>
             <Text style={styles.description}>
@@ -288,23 +291,86 @@ const SignalScreen: React.FC = () => {
             </Text>
           </View>
 
-          {/* Background Location Card */}
-          <BackgroundLocationCard
-            isPermissionGranted={backgroundLocationPermissionGranted}
-            isTrackingActive={backgroundLocationTrackingActive}
-            onRequestPermission={async () => {
-              await requestBackgroundLocationPermission();
-            }}
-            onToggleTracking={async (enabled: boolean) => {
-              if (enabled) {
-                await startBackgroundLocationTracking();
-              } else {
-                await stopBackgroundLocationTracking();
-              }
-            }}
-            isLoading={isLoading}
-            hasActiveLocationSharing={hasActiveLocationSharing()}
-          />
+          {/* Location Permission Warning */}
+          {!(
+            locationPermissionGranted &&
+            backgroundLocationPermissionGranted &&
+            backgroundLocationTrackingActive
+          ) && (
+            <View
+              style={[
+                styles.warningContainer,
+                // ERROR styling for scenarios 1, 3, 5 (no foreground permission OR tracking disabled)
+                // INFO styling for scenario 4 (foreground-only mode with tracking enabled)
+                !locationPermissionGranted || !locationTrackingEnabled
+                  ? styles.warningContainerError
+                  : styles.warningContainerInfo,
+              ]}
+            >
+              <View style={styles.warningHeader}>
+                <Ionicons
+                  name={
+                    !locationPermissionGranted || !locationTrackingEnabled
+                      ? 'warning-outline'
+                      : 'information-circle-outline'
+                  }
+                  size={20}
+                  color={
+                    !locationPermissionGranted || !locationTrackingEnabled
+                      ? '#FF9500'
+                      : '#2196F3'
+                  }
+                />
+                <Text
+                  style={[
+                    styles.warningTitle,
+                    {
+                      color:
+                        !locationPermissionGranted || !locationTrackingEnabled
+                          ? '#FF9500'
+                          : '#2196F3',
+                    },
+                  ]}
+                >
+                  {!locationPermissionGranted
+                    ? 'Location permission required'
+                    : !locationTrackingEnabled
+                      ? 'Location tracking disabled'
+                      : 'Limited mode active'}
+                </Text>
+              </View>
+              <Text
+                style={[
+                  styles.warningText,
+                  {
+                    color:
+                      !locationPermissionGranted || !locationTrackingEnabled
+                        ? '#F57C00'
+                        : '#1976D2',
+                  },
+                ]}
+              >
+                {!locationPermissionGranted
+                  ? 'Foreground location permission not granted. You need location access to use location features.'
+                  : !locationTrackingEnabled
+                    ? 'Location tracking is turned off. Enable it in your profile settings to send and receive signals.'
+                    : 'You can send signals and share location, but the signals you receive may be out of sync with your true location when the app is closed. Change location access from "While Using the App" to "Always" in your phone settings for full functionality.'}
+              </Text>
+              {/* Show settings button for scenarios 1, 3, 5 - not for scenario 4 (foreground-only mode) */}
+              {(!locationPermissionGranted || !locationTrackingEnabled) && (
+                <CustomButton
+                  title="Settings"
+                  onPress={() => router.push('/settings')}
+                  variant="secondary"
+                  style={styles.warningButton}
+                  icon={{
+                    name: 'settings-outline',
+                    size: 18,
+                  }}
+                />
+              )}
+            </View>
+          )}
 
           <View>
             {!currentLocation && (
@@ -346,11 +412,16 @@ const SignalScreen: React.FC = () => {
               </View>
             )}
 
-            {currentLocation && (
-              <View style={styles.locationSection}>
-                <SendSignalButton onPress={() => router.push('/signal/send')} />
-              </View>
-            )}
+            {/* Show Send Signal button for scenarios 2 and 4 - when location is available, foreground permission granted, and tracking is enabled (background or foreground-only) */}
+            {currentLocation &&
+              locationPermissionGranted &&
+              locationTrackingEnabled && (
+                <View style={styles.locationSection}>
+                  <SendSignalButton
+                    onPress={() => router.push('/signal/send')}
+                  />
+                </View>
+              )}
           </View>
 
           {/* Outgoing Signals */}
@@ -436,14 +507,14 @@ const SignalScreen: React.FC = () => {
               />
             )}
           </View>
-
-          <LocationSharingModal
-            visible={selectedSignalForSharing !== null}
-            onClose={() => setSelectedSignalForSharing(null)}
-            signalId={selectedSignalForSharing || ''}
-            currentUserLocation={currentLocation || undefined}
-          />
         </ScrollView>
+
+        <LocationSharingModal
+          visible={selectedSignalForSharing !== null}
+          onClose={() => setSelectedSignalForSharing(null)}
+          signalId={selectedSignalForSharing || ''}
+          currentUserLocation={currentLocation || undefined}
+        />
       </View>
     </>
   );
@@ -485,6 +556,42 @@ const styles = StyleSheet.create({
   },
   retryButton: {
     marginTop: 0,
+  },
+  warningContainer: {
+    backgroundColor: '#FFF8E1',
+    padding: 16,
+    borderRadius: 12,
+    marginVertical: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF9500',
+  },
+  warningContainerError: {
+    backgroundColor: '#FFF8E1',
+    borderLeftColor: '#FF9500',
+  },
+  warningContainerInfo: {
+    backgroundColor: '#E3F2FD',
+    borderLeftColor: '#2196F3',
+  },
+  warningHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  warningTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#E65100',
+    marginLeft: 8,
+  },
+  warningText: {
+    fontSize: 14,
+    color: '#F57C00',
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  warningButton: {
+    marginTop: 4,
   },
 });
 

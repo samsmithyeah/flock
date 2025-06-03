@@ -303,13 +303,7 @@ const CrewSettingsScreen: React.FC = () => {
 
   const navigateToUserProfile = (selectedUser: User) => {
     if (selectedUser.uid === user?.uid) {
-      router.push(
-        {
-          pathname: '/profile',
-          params: { userId: user.uid },
-        },
-        { withAnchor: true },
-      );
+      router.push('/settings');
       return;
     }
     router.push(

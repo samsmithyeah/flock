@@ -1,10 +1,13 @@
-// app/(main)/profile/_layout.tsx
+// app/(main)/settings/_layout.tsx
 import { Stack } from 'expo-router';
 
-export default function ProfileStackLayout() {
+export default function SettingsStackLayout() {
   return (
     <Stack>
-      <Stack.Screen name="index" options={{ title: 'Profile' }} />
+      <Stack.Screen
+        name="index"
+        options={{ title: 'Profile', headerShown: false }}
+      />
       <Stack.Screen
         name="edit"
         options={{ title: 'Edit profile', presentation: 'modal' }}
