@@ -326,8 +326,8 @@ export const modifySignalResponse = functions.https.onCall(
           }
           return r;
         });
-        notificationTitle = '❌ Signal declined';
-        notificationBody = `${userName} declined your signal.`;
+        notificationTitle = `${userName} declined your signal`;
+        notificationBody = 'Check the app to see how many others were notified.';
       }
 
       // Update signal with modified responses

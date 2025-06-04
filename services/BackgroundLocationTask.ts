@@ -157,7 +157,7 @@ export const startBackgroundLocationTracking = async (
             : 'This allows friends to send you signals based on your current location.',
         notificationColor: '#2596be',
       },
-      pausesUpdatesAutomatically: false,
+      pausesUpdatesAutomatically: mode === 'passive',
       deferredUpdatesInterval: config.deferredUpdatesInterval,
       showsBackgroundLocationIndicator: mode === 'active',
     });
@@ -211,7 +211,7 @@ export const startBackgroundLocationTracking = async (
                 : 'This allows friends to send you signals based on your current location.',
             notificationColor: '#2596be',
           },
-          pausesUpdatesAutomatically: false,
+          pausesUpdatesAutomatically: mode === 'passive',
           deferredUpdatesInterval: config.deferredUpdatesInterval,
           showsBackgroundLocationIndicator: mode === 'active',
         });
