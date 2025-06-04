@@ -124,7 +124,7 @@ const CrewLandingScreen: React.FC = () => {
 
   return (
     <ScrollView style={globalStyles.containerWithHeader}>
-      <View style={styles.navigationCards}>
+      <View>
         <NavigationCard
           icon="calendar-outline"
           iconColor="#1e90ff"
@@ -191,8 +191,4 @@ const CrewLandingScreen: React.FC = () => {
 
 export default CrewLandingScreen;
 
-const styles = StyleSheet.create({
-  navigationCards: {
-    marginTop: vs(16),
-  },
-});
+const styles = StyleSheet.create({});
