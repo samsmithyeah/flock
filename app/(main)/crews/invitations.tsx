@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import ScreenTitle from '@/components/ScreenTitle';
 import InvitationCard from '@/components/InvitationCard';
 import { useInvitations } from '@/context/InvitationsContext';
 import { InvitationWithDetails } from '@/types/Invitation';
@@ -38,7 +37,6 @@ const InvitationsScreen: React.FC = () => {
 
   return (
     <View style={globalStyles.containerWithHeader}>
-      <ScreenTitle title="Crew invitations" />
       {invitations.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="mail-open-outline" size={80} color="#ccc" />
