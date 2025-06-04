@@ -169,7 +169,7 @@ const CrewLandingScreen: React.FC = () => {
 
         <NavigationCard
           icon="chatbubbles-outline"
-          iconColor="#4CAF50"
+          iconColor="#673ab7"
           title="Crew chat"
           description="Chat with your crew members."
           onPress={() =>
