@@ -2,7 +2,13 @@
 
 import React, { useState } from 'react';
 import { useUser } from '@/context/UserContext';
-import { collection, addDoc } from 'firebase/firestore';
+import {
+  collection,
+  addDoc,
+  doc,
+  setDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
 import { db } from '@/firebase';
 import CustomModal from '@/components/CustomModal';
 import CustomTextInput from '@/components/CustomTextInput';
@@ -54,6 +60,14 @@ const CreateCrewModal: React.FC<CreateCrewModalProps> = ({
         memberIds: [user.uid],
       });
 
+      // Initialize crew chat metadata with lastRead for the creator
+      await setDoc(doc(db, 'crews', crewRef.id, 'messages', 'metadata'), {
+        hasMessages: false,
+        lastRead: {
+          [user.uid]: serverTimestamp(),
+        },
+      });
+
       // Update local state with the new crew
       setCrews((prevCrews) => [
         ...prevCrews,
@@ -74,6 +88,12 @@ const CreateCrewModal: React.FC<CreateCrewModalProps> = ({
 
       // Notify parent component of the new crew creation
       onCrewCreated(crewRef.id);
+
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: `Crew ${newCrewName.trim()} has been created!`,
+      });
     } catch (error) {
       console.error('Error creating crew:', error);
       Toast.show({

@@ -5,14 +5,16 @@ import { useInvitations } from '@/context/InvitationsContext';
 import { useDirectMessages } from '@/context/DirectMessagesContext';
 import { useCrewDateChat } from '@/context/CrewDateChatContext';
 import { useSignal } from '@/context/SignalContext';
+import { useCrewChat } from '@/context/CrewChatContext';
 
 export default function MainLayout() {
   const { pendingCount } = useInvitations();
   const { totalUnread: totalDMUnread } = useDirectMessages();
   const { totalUnread: totalGroupUnread } = useCrewDateChat();
   const { unansweredSignalCount } = useSignal();
+  const { totalUnread: totalCrewChatUnread } = useCrewChat();
 
-  const getTotalUnread = () => totalDMUnread + totalGroupUnread;
+  const getTotalUnread = totalDMUnread + totalGroupUnread + totalCrewChatUnread;
 
   return (
     <Tabs screenOptions={{ headerShown: false }}>
@@ -72,10 +74,10 @@ export default function MainLayout() {
             <Ionicons name="chatbubbles-outline" size={size} color={color} />
           ),
           tabBarBadge:
-            getTotalUnread() > 0
-              ? getTotalUnread() > 99
+            getTotalUnread > 0
+              ? getTotalUnread > 99
                 ? '99+'
-                : getTotalUnread()
+                : getTotalUnread
               : undefined,
         }}
       />

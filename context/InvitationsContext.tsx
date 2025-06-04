@@ -16,6 +16,8 @@ import {
   getDoc,
   updateDoc,
   arrayUnion,
+  setDoc,
+  serverTimestamp,
 } from 'firebase/firestore';
 import { Alert } from 'react-native';
 import { db } from '@/firebase';
@@ -227,6 +229,33 @@ export const InvitationsProvider: React.FC<InvitationsProviderProps> = ({
               await updateDoc(invitationRef, {
                 status: 'accepted',
               });
+
+              // Small delay to ensure Firestore recognizes the user as a crew member
+              await new Promise((resolve) => setTimeout(resolve, 500));
+
+              try {
+                // Initialize last read timestamp for user in crew chat
+                const chatMetadataRef = doc(
+                  db,
+                  'crews',
+                  invitation.crewId,
+                  'messages',
+                  'metadata',
+                );
+                await setDoc(
+                  chatMetadataRef,
+                  {
+                    lastRead: {
+                      [user.uid]: serverTimestamp(),
+                    },
+                  },
+                  { merge: true },
+                );
+              } catch (metadataError) {
+                // Don't fail the whole process if metadata update fails
+                console.error('Error updating chat metadata:', metadataError);
+                // Continue with the flow despite this error
+              }
 
               // Update local state
               setCrews((prevCrews) => [

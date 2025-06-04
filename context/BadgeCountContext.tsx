@@ -5,12 +5,14 @@ import { useCrewDateChat } from '@/context/CrewDateChatContext';
 import { useDirectMessages } from '@/context/DirectMessagesContext';
 import { useInvitations } from '@/context/InvitationsContext';
 import { useSignal } from '@/context/SignalContext';
+import { useCrewChat } from '@/context/CrewChatContext';
 import { useUser } from '@/context/UserContext';
 import Toast from 'react-native-toast-message';
 
 interface BadgeCountContextType {
   totalBadgeCount: number;
-  crewTotalUnread: number;
+  crewChatTotalUnread: number;
+  crewDateTotalUnread: number;
   dmTotalUnread: number;
   invitationsPendingCount: number;
   unansweredSignalCount: number;
@@ -21,14 +23,16 @@ const BadgeCountContext = createContext<BadgeCountContextType | null>(null);
 export const BadgeCountProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const { totalUnread: crewTotalUnread } = useCrewDateChat();
+  const { totalUnread: crewDateTotalUnread } = useCrewDateChat();
   const { totalUnread: dmTotalUnread } = useDirectMessages();
+  const { totalUnread: crewChatTotalUnread } = useCrewChat();
   const { pendingCount: invitationsPendingCount } = useInvitations();
   const { unansweredSignalCount } = useSignal();
   const { user, setBadgeCount } = useUser();
 
   const totalBadgeCount =
-    crewTotalUnread +
+    crewChatTotalUnread +
+    crewDateTotalUnread +
     dmTotalUnread +
     invitationsPendingCount +
     unansweredSignalCount;
@@ -54,8 +58,9 @@ export const BadgeCountProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const value: BadgeCountContextType = {
     totalBadgeCount,
-    crewTotalUnread,
+    crewDateTotalUnread,
     dmTotalUnread,
+    crewChatTotalUnread,
     invitationsPendingCount,
     unansweredSignalCount,
   };
