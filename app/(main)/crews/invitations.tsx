@@ -37,8 +37,8 @@ const InvitationsScreen: React.FC = () => {
   }
 
   return (
-    <View style={globalStyles.container}>
-      <ScreenTitle title="Invitations" />
+    <View style={globalStyles.containerWithHeader}>
+      <ScreenTitle title="Crew invitations" />
       {invitations.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="mail-open-outline" size={80} color="#ccc" />

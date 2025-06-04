@@ -314,7 +314,11 @@ const LocationSharingModal: React.FC<LocationSharingModalProps> = ({
       <View style={styles.overlay}>
         <View style={styles.modal}>
           <View style={styles.header}>
-            <Text style={styles.title}>Location shared</Text>
+            <Text style={styles.title}>
+              {locationData?.otherUserName
+                ? `${locationData.otherUserName}'s location`
+                : 'Shared location'}
+            </Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
               <Icon name="close" size={24} color="#666" />
             </TouchableOpacity>
