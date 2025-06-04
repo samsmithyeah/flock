@@ -17,6 +17,7 @@ import {
   updateDoc,
   arrayUnion,
 } from 'firebase/firestore';
+import { Alert } from 'react-native';
 import { db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
 import { Crew } from '@/types/Crew';
@@ -188,92 +189,126 @@ export const InvitationsProvider: React.FC<InvitationsProviderProps> = ({
       return;
     }
 
-    try {
-      // Reference to the crew document
-      const crewRef = doc(db, 'crews', invitation.crewId);
-      const crewSnap = await getDoc(crewRef);
-
-      if (!crewSnap.exists()) {
-        Toast.show({
-          type: 'error',
-          text1: 'Error',
-          text2: 'Crew not found',
-        });
-        return;
-      }
-
-      // Update the crew's memberIds and include the invitationId
-      await updateDoc(crewRef, {
-        memberIds: arrayUnion(user.uid),
-        invitationId: invitation.id,
-      });
-
-      // Update the invitation status
-      const invitationRef = doc(db, 'invitations', invitation.id);
-      await updateDoc(invitationRef, {
-        status: 'accepted',
-      });
-
-      // Update local state
-      setCrews((prevCrews) => [
-        ...prevCrews,
+    // Show confirmation alert
+    Alert.alert(
+      'Accept invitation',
+      `Are you sure you want to join ${invitation.crew?.name}?`,
+      [
         {
-          id: crewRef.id,
-          name: crewSnap.data()?.name || 'Unknown Crew',
-          ownerId: crewSnap.data()?.ownerId || '',
-          memberIds: crewSnap.data()?.memberIds || [],
-          activity: crewSnap.data()?.activity || '',
+          text: 'Cancel',
+          style: 'cancel',
         },
-      ]);
-      setCrewIds((prevIds: string[]) => [...prevIds, crewRef.id]);
-
-      // Refresh crew contacts to include members from the new crew
-      await refreshCrewContacts();
-
-      Toast.show({
-        type: 'success',
-        text1: 'Invitation accepted',
-        text2: `You have joined ${invitation.crew?.name}`,
-      });
-      router.push(
         {
-          pathname: '/crews/[crewId]',
-          params: { crewId: invitation.crewId },
+          text: 'Accept',
+          style: 'default',
+          onPress: async () => {
+            try {
+              // Reference to the crew document
+              const crewRef = doc(db, 'crews', invitation.crewId);
+              const crewSnap = await getDoc(crewRef);
+
+              if (!crewSnap.exists()) {
+                Toast.show({
+                  type: 'error',
+                  text1: 'Error',
+                  text2: 'Crew not found',
+                });
+                return;
+              }
+
+              // Update the crew's memberIds and include the invitationId
+              await updateDoc(crewRef, {
+                memberIds: arrayUnion(user.uid),
+                invitationId: invitation.id,
+              });
+
+              // Update the invitation status
+              const invitationRef = doc(db, 'invitations', invitation.id);
+              await updateDoc(invitationRef, {
+                status: 'accepted',
+              });
+
+              // Update local state
+              setCrews((prevCrews) => [
+                ...prevCrews,
+                {
+                  id: crewRef.id,
+                  name: crewSnap.data()?.name || 'Unknown Crew',
+                  ownerId: crewSnap.data()?.ownerId || '',
+                  memberIds: crewSnap.data()?.memberIds || [],
+                  activity: crewSnap.data()?.activity || '',
+                },
+              ]);
+              setCrewIds((prevIds: string[]) => [...prevIds, crewRef.id]);
+
+              // Refresh crew contacts to include members from the new crew
+              await refreshCrewContacts();
+
+              Toast.show({
+                type: 'success',
+                text1: 'Invitation accepted',
+                text2: `You have joined ${invitation.crew?.name}`,
+              });
+              router.push(
+                {
+                  pathname: '/crews/[crewId]',
+                  params: { crewId: invitation.crewId },
+                },
+                { withAnchor: true },
+              );
+            } catch (error) {
+              console.error('Error accepting invitation:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'Could not accept invitation',
+              });
+            }
+          },
         },
-        { withAnchor: true },
-      );
-    } catch (error) {
-      console.error('Error accepting invitation:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Could not accept invitation',
-      });
-    }
+      ],
+    );
   };
 
   // Function to decline an invitation
   const declineInvitation = async (invitation: InvitationWithDetails) => {
-    try {
-      // Update the invitation status
-      const invitationRef = doc(db, 'invitations', invitation.id);
-      await updateDoc(invitationRef, {
-        status: 'declined',
-      });
+    // Show confirmation alert
+    Alert.alert(
+      'Decline invitation',
+      `Are you sure you want to decline the invitation to join ${invitation.crew?.name}?`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Decline',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Update the invitation status
+              const invitationRef = doc(db, 'invitations', invitation.id);
+              await updateDoc(invitationRef, {
+                status: 'declined',
+              });
 
-      Toast.show({
-        type: 'info',
-        text1: 'Invitation declined',
-        text2: `You have declined the invitation to ${invitation.crew?.name}`,
-      });
-    } catch (error) {
-      console.error('Error declining invitation:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Could not decline invitation',
-      });
-    }
+              Toast.show({
+                type: 'info',
+                text1: 'Invitation declined',
+                text2: `You have declined the invitation to ${invitation.crew?.name}`,
+              });
+            } catch (error) {
+              console.error('Error declining invitation:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'Could not decline invitation',
+              });
+            }
+          },
+        },
+      ],
+    );
   };
 
   const pendingCount = invitations.length;
