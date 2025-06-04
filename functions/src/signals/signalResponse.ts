@@ -187,12 +187,12 @@ export const respondToSignal = functions.https.onCall(
 
         if (expoPushTokens.length > 0) {
           const notificationTitle = response === 'accept' ?
-            '🎉 Someone accepted your signal!' :
-            '📱 Someone saw your signal';
+            `${responderName} accepted your signal!` :
+            `${responderName} declined your signal`;
 
           const notificationBody = response === 'accept' ?
-            `${responderName} wants to meet up! Check the app to see their location.` :
-            `${responderName} saw your signal.`;
+            'Check the app to see their location.' :
+            'Check the app to see how many others were notified.';
 
           const messages: ExpoPushMessage[] = expoPushTokens.map((token) => ({
             to: token,

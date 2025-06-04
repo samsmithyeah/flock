@@ -32,6 +32,12 @@ export default function MainLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="people-outline" size={size} color={color} />
           ),
+          tabBarBadge:
+            pendingCount > 0
+              ? pendingCount > 99
+                ? '99+'
+                : pendingCount
+              : undefined,
         }}
       />
       <Tabs.Screen
@@ -56,21 +62,6 @@ export default function MainLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person-add-outline" size={size} color={color} />
           ),
-        }}
-      />
-      <Tabs.Screen
-        name="invitations"
-        options={{
-          title: 'Invitations',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="mail-outline" size={size} color={color} />
-          ),
-          tabBarBadge:
-            pendingCount > 0
-              ? pendingCount > 99
-                ? '99+'
-                : pendingCount
-              : undefined,
         }}
       />
       <Tabs.Screen

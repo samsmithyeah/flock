@@ -14,12 +14,14 @@ import Toast from 'react-native-toast-message';
 import Icon from '@expo/vector-icons/MaterialIcons';
 import useGlobalStyles from '@/styles/globalStyles';
 import { useUser } from '@/context/UserContext';
+import { useInvitations } from '@/context/InvitationsContext';
 import { router } from 'expo-router';
 
 const CrewsListScreen: React.FC = () => {
   const { crews, usersCache, loadingCrews, loadingStatuses, subscribeToUsers } =
     useCrews();
   const { user, updateCrewOrder } = useUser();
+  const { pendingCount } = useInvitations();
   const globalStyles = useGlobalStyles();
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string>(''); // State for search
@@ -131,13 +133,31 @@ const CrewsListScreen: React.FC = () => {
         <View style={styles.headerContainer}>
           <ScreenTitle title="Crews" />
 
-          <TouchableOpacity
-            onPress={() => setIsModalVisible(true)}
-            accessibilityLabel="Add crew"
-            accessibilityHint="Press to create a new crew"
-          >
-            <Ionicons name="add-circle" size={30} color="#1e90ff" />
-          </TouchableOpacity>
+          <View style={styles.headerButtons}>
+            {pendingCount > 0 && (
+              <TouchableOpacity
+                onPress={() => router.push('/crews/invitations')}
+                accessibilityLabel="View invitations"
+                accessibilityHint="Press to view pending invitations"
+                style={styles.invitationsButton}
+              >
+                <Ionicons name="mail-outline" size={28} color="#1e90ff" />
+                <View style={styles.badgeContainer}>
+                  <Text style={styles.badgeText}>
+                    {pendingCount > 99 ? '99+' : pendingCount}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              onPress={() => setIsModalVisible(true)}
+              accessibilityLabel="Add crew"
+              accessibilityHint="Press to create a new crew"
+            >
+              <Ionicons name="add-circle" size={30} color="#1e90ff" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <CustomSearchInput
@@ -176,6 +196,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  invitationsButton: {
+    position: 'relative',
+  },
+  badgeContainer: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: '#ff3b30',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   emptyContainer: {
     flex: 1,

@@ -9,6 +9,10 @@ export default function CrewsStackLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="invitations"
+        options={{ title: 'Crew invitations' }}
+      />
       <Stack.Screen name="crew-settings" options={{ title: 'Crew settings' }} />
       <Stack.Screen
         name="add-members"
