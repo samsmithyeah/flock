@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, ScrollView, Text, StyleSheet, Alert } from 'react-native';
 import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useSignal } from '@/context/SignalContext';
 import { useUser } from '@/context/UserContext';
 import LoadingOverlay from '@/components/LoadingOverlay';
@@ -14,6 +13,7 @@ import OutgoingSignalCard from '@/components/OutgoingSignalCard';
 import EmptyState from '@/components/EmptyState';
 import SharedLocationCard from '@/components/SharedLocationCard';
 import SendSignalButton from '@/components/SendSignalButton';
+import LocationPermissionWarning from '@/components/LocationPermissionWarning';
 import { useGlobalStyles } from '@/styles/globalStyles';
 import * as ExpoLocation from 'expo-location';
 
@@ -294,86 +294,14 @@ const SignalScreen: React.FC = () => {
           </View>
 
           {/* Location Permission Warning */}
-          {!(
-            locationPermissionGranted &&
-            backgroundLocationPermissionGranted &&
-            backgroundLocationTrackingActive
-          ) && (
-            <View
-              style={[
-                styles.warningContainer,
-                // ERROR styling for scenarios 1, 3, 5 (no foreground permission OR tracking disabled)
-                // INFO styling for scenario 4 (foreground-only mode with tracking enabled)
-                !locationPermissionGranted || !userLocationTrackingEnabled
-                  ? styles.warningContainerError
-                  : styles.warningContainerInfo,
-              ]}
-            >
-              <View style={styles.warningHeader}>
-                <Ionicons
-                  name={
-                    !locationPermissionGranted || !userLocationTrackingEnabled
-                      ? 'warning-outline'
-                      : 'information-circle-outline'
-                  }
-                  size={20}
-                  color={
-                    !locationPermissionGranted || !userLocationTrackingEnabled
-                      ? '#FF9500'
-                      : '#2196F3'
-                  }
-                />
-                <Text
-                  style={[
-                    styles.warningTitle,
-                    {
-                      color:
-                        !locationPermissionGranted ||
-                        !userLocationTrackingEnabled
-                          ? '#FF9500'
-                          : '#2196F3',
-                    },
-                  ]}
-                >
-                  {!locationPermissionGranted
-                    ? 'Location permission required'
-                    : !userLocationTrackingEnabled
-                      ? 'Location tracking disabled'
-                      : 'Limited mode active'}
-                </Text>
-              </View>
-              <Text
-                style={[
-                  styles.warningText,
-                  {
-                    color:
-                      !locationPermissionGranted || !userLocationTrackingEnabled
-                        ? '#F57C00'
-                        : '#1976D2',
-                  },
-                ]}
-              >
-                {!locationPermissionGranted
-                  ? 'Foreground location permission not granted. You need location access to use location features.'
-                  : !userLocationTrackingEnabled
-                    ? 'Location tracking is turned off. Enable it in your profile settings to send and receive signals.'
-                    : 'You can send signals and share location, but the signals you receive may be out of sync with your true location when the app is closed. Change location access from "While Using the App" to "Always" in your phone settings for full functionality.'}
-              </Text>
-              {/* Show settings button for scenarios 1, 3, 5 - not for scenario 4 (foreground-only mode) */}
-              {(!locationPermissionGranted || !userLocationTrackingEnabled) && (
-                <CustomButton
-                  title="Settings"
-                  onPress={() => router.push('/settings')}
-                  variant="secondary"
-                  style={styles.warningButton}
-                  icon={{
-                    name: 'settings-outline',
-                    size: 18,
-                  }}
-                />
-              )}
-            </View>
-          )}
+          <LocationPermissionWarning
+            locationPermissionGranted={locationPermissionGranted}
+            backgroundLocationPermissionGranted={
+              backgroundLocationPermissionGranted
+            }
+            backgroundLocationTrackingActive={backgroundLocationTrackingActive}
+            userLocationTrackingEnabled={userLocationTrackingEnabled}
+          />
 
           {/* Show all other UI only if location tracking is enabled */}
           {userLocationTrackingEnabled && (
@@ -570,42 +498,6 @@ const styles = StyleSheet.create({
   },
   retryButton: {
     marginTop: 0,
-  },
-  warningContainer: {
-    backgroundColor: '#FFF8E1',
-    padding: 16,
-    borderRadius: 12,
-    marginVertical: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#FF9500',
-  },
-  warningContainerError: {
-    backgroundColor: '#FFF8E1',
-    borderLeftColor: '#FF9500',
-  },
-  warningContainerInfo: {
-    backgroundColor: '#E3F2FD',
-    borderLeftColor: '#2196F3',
-  },
-  warningHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  warningTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#E65100',
-    marginLeft: 8,
-  },
-  warningText: {
-    fontSize: 14,
-    color: '#F57C00',
-    marginBottom: 12,
-    lineHeight: 20,
-  },
-  warningButton: {
-    marginTop: 4,
   },
 });
 
