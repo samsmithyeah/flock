@@ -131,7 +131,9 @@ export default function GlobalSetup() {
         }
         break;
       case 'Invitations':
-        router.push('/(main)/invitations');
+        router.push('/(main)/crews/invitations', {
+          withAnchor: true,
+        });
         break;
       case 'EventPollRespond':
         if (pollId) {
