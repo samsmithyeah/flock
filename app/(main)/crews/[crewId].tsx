@@ -157,10 +157,13 @@ const CrewLandingScreen: React.FC = () => {
           title="Signal"
           description="Send a signal to your crew to meet up right now!"
           onPress={() =>
-            router.push({
-              pathname: '/signal/send',
-              params: { crewId },
-            })
+            router.push(
+              {
+                pathname: '/signal/send',
+                params: { crewId },
+              },
+              { withAnchor: true },
+            )
           }
         />
 
@@ -170,10 +173,15 @@ const CrewLandingScreen: React.FC = () => {
           title="Crew chat"
           description="Chat with your crew members."
           onPress={() =>
-            router.push({
-              pathname: '/chats/crew-chat',
-              params: { crewId },
-            })
+            router.push(
+              {
+                pathname: '/chats/crew-chat',
+                params: { crewId },
+              },
+              {
+                withAnchor: true,
+              },
+            )
           }
         />
       </View>
