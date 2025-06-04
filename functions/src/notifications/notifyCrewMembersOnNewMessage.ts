@@ -105,24 +105,29 @@ export const notifyCrewMembersOnNewMessage = onDocumentCreated(
         if (!userData) continue; // Skip if no user data
 
         const userId = doc.id;
+        console.log(`Processing potential notification for user ${userId}`);
 
         // Skip if user doesn't have a pushToken
-        if (!userData.pushToken) {
+        if (!userData.expoPushToken) {
+          console.log(`User ${userId} does not have a pushToken. Skipping notification.`);
           continue;
         }
 
         // Skip if the user has read the chat after this message was sent
-        // or if they are currently viewing this chat (based on activeChats)
+        // or if they are currently viewing this chat (based on activeChats) AND are online
         const lastReadTimestamp = lastReadTimestamps[userId];
         const isActiveChat = userData.activeChats &&
                             Array.isArray(userData.activeChats) &&
                             userData.activeChats.includes(crewId);
+        const isOnline = userData.isOnline === true;
 
         if (lastReadTimestamp && lastReadTimestamp.toMillis() > messageTimestamp.toMillis()) {
           continue;
         }
 
-        if (isActiveChat) {
+        // Only skip if user is both actively viewing the chat AND online
+        if (isActiveChat && isOnline) {
+          console.log(`User ${userId} is actively viewing the chat and is online. No notification sent.`);
           continue;
         }
 
@@ -138,7 +143,7 @@ export const notifyCrewMembersOnNewMessage = onDocumentCreated(
         }
 
         notifications.push({
-          to: userData.pushToken,
+          to: userData.expoPushToken,
           sound: 'default',
           title: crewName,
           body: notificationBody,

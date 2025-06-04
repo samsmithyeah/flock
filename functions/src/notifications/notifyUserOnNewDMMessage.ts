@@ -73,10 +73,11 @@ export const notifyUserOnNewDMMessage = onDocumentCreated(
         }
 
         const activeChats: string[] = recipientData.activeChats || [];
+        const isOnline = recipientData.isOnline === true;
 
-        // Check if the recipient is actively viewing the DM chat
-        if (activeChats.includes(dmId)) {
-          console.log('Recipient is actively viewing the DM chat. No badge increment.');
+        // Check if the recipient is actively viewing the DM chat AND is online
+        if (activeChats.includes(dmId) && isOnline) {
+          console.log('Recipient is actively viewing the DM chat and is online. No badge increment.');
           return null; // Do not increment badgeCount
         }
 
