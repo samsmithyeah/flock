@@ -19,7 +19,6 @@ import {
 } from 'react-native';
 import {
   GiftedChat,
-  IMessage,
   Bubble,
   Send,
   SendProps,
@@ -59,39 +58,139 @@ import ChatImageViewer from '@/components/ChatImageViewer';
 import ImageOptionsMenu from '@/components/ImageOptionsMenu';
 import PollCreationModal from '@/components/PollCreationModal';
 import PollMessage from '@/components/PollMessage';
+import {
+  getCacheKey,
+  getCachedData,
+  setCachedData,
+  usePerformanceMonitoring,
+  useTypingHandler,
+  useOptimisticMessages,
+  ensureMessagesArray,
+  cleanupLegacyCache,
+  ExtendedMessage,
+  CachedMemberData,
+  TYPING_TIMEOUT,
+  READ_UPDATE_DEBOUNCE,
+} from '@/utils/chatUtils';
 
-// Types and interfaces
-interface Poll {
-  question: string;
-  options: string[];
-  votes: { [optionIndex: number]: string[] };
-  totalVotes: number;
+// ============================================================================
+// CREW-SPECIFIC CACHE INTERFACES
+// ============================================================================
+
+interface CachedCrewData {
+  name: string;
+  iconUrl?: string;
+  timestamp: number;
 }
 
-interface ExtendedMessage extends IMessage {
-  poll?: Poll;
+// ============================================================================
+// CREW-SPECIFIC CACHE INTERFACES
+// ============================================================================
+
+interface CachedCrewData {
+  name: string;
+  iconUrl?: string;
+  timestamp: number;
 }
 
-// Constants
-const TYPING_TIMEOUT = 1000;
-const READ_UPDATE_DEBOUNCE = 1000;
+// ============================================================================
+// CREW-SPECIFIC CACHE INTERFACES
+// ============================================================================
 
-// Custom hooks for state management
-const useChatState = (chatId: string | null, user: any) => {
-  const [otherMembers, setOtherMembers] = useState<User[]>([]);
+interface CachedCrewData {
+  name: string;
+  iconUrl?: string;
+  timestamp: number;
+}
+
+// Custom hooks for crew-specific state management with MMKV caching
+const useChatState = (
+  chatId: string | null,
+  user: any,
+  recordCacheLoad: (isHit: boolean) => void,
+) => {
+  // Initialize with cached data for instant loading using crew-specific cache keys
+  const [otherMembers, setOtherMembers] = useState<User[]>(() => {
+    if (!chatId) return [];
+    const cachedMembers = getCachedData<CachedMemberData>(
+      `crew_chat_members_${chatId}`, // Use crew-specific cache key
+    );
+    const hasCache = Boolean(
+      cachedMembers?.members && cachedMembers.members.length > 0,
+    );
+    recordCacheLoad(hasCache);
+    return cachedMembers?.members || [];
+  });
+
   const [crew, setCrew] = useState<{ name: string; iconUrl?: string } | null>(
-    null,
+    () => {
+      if (!chatId) return null;
+      const cachedCrew = getCachedData<CachedCrewData>(
+        `crew_chat_crew_${chatId}`, // Use crew-specific cache key
+      );
+      const hasCache = Boolean(cachedCrew && cachedCrew.name);
+      recordCacheLoad(hasCache);
+      return cachedCrew
+        ? { name: cachedCrew.name, iconUrl: cachedCrew.iconUrl }
+        : null;
+    },
   );
-  const [otherUsersTyping, setOtherUsersTyping] = useState<{
-    [key: string]: boolean;
-  }>({});
-  const [lastReadByUsers, setLastReadByUsers] = useState<{
-    [uid: string]: Date;
-  }>({});
+
+  const [otherUsersTyping, setOtherUsersTyping] = useState<
+    Record<string, boolean>
+  >(() => {
+    if (!chatId) return {};
+    const cachedState = getCachedData<any>(
+      `crew_chat_state_${chatId}`, // Use crew-specific cache key
+    );
+    const hasCache = Boolean(cachedState?.otherUsersTyping);
+    recordCacheLoad(hasCache);
+    return cachedState?.otherUsersTyping || {};
+  });
+
+  const [lastReadByUsers, setLastReadByUsers] = useState<Record<string, Date>>(
+    () => {
+      if (!chatId) return {};
+      const cachedState = getCachedData<any>(
+        `crew_chat_state_${chatId}`, // Use crew-specific cache key
+      );
+      const hasCache = Boolean(cachedState?.lastReadByUsers);
+      recordCacheLoad(hasCache);
+      return cachedState?.lastReadByUsers || {};
+    },
+  );
+
   const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isImageMenuVisible, setIsImageMenuVisible] = useState(false);
   const [isPollModalVisible, setIsPollModalVisible] = useState(false);
+
+  // Cache crew data when it changes
+  useEffect(() => {
+    if (chatId && crew) {
+      setCachedData(`crew_chat_crew_${chatId}`, {
+        name: crew.name,
+        iconUrl: crew.iconUrl,
+      });
+    }
+  }, [chatId, crew]);
+
+  // Cache members when they change
+  useEffect(() => {
+    if (chatId && otherMembers.length > 0) {
+      setCachedData(`crew_chat_members_${chatId}`, { members: otherMembers });
+    }
+  }, [chatId, otherMembers]);
+
+  // Cache chat state when it changes
+  useEffect(() => {
+    if (chatId) {
+      setCachedData(`crew_chat_state_${chatId}`, {
+        lastReadByUsers,
+        otherUsersTyping,
+      });
+    }
+  }, [chatId, lastReadByUsers, otherUsersTyping]);
 
   return {
     otherMembers,
@@ -110,154 +209,6 @@ const useChatState = (chatId: string | null, user: any) => {
     setIsImageMenuVisible,
     isPollModalVisible,
     setIsPollModalVisible,
-  };
-};
-
-const useTypingHandler = (
-  chatId: string | null,
-  user: any,
-  updateTypingStatusImmediately: any,
-) => {
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const prevTypingStateRef = useRef<boolean>(false);
-
-  const debouncedStopTyping = useMemo(
-    () =>
-      debounce(() => {
-        updateTypingStatusImmediately(false);
-        prevTypingStateRef.current = false;
-      }, 500),
-    [updateTypingStatusImmediately],
-  );
-
-  const handleInputTextChanged = useCallback(
-    (text: string) => {
-      const isTyping = text.length > 0;
-
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = null;
-      }
-
-      if (isTyping !== prevTypingStateRef.current) {
-        if (isTyping) {
-          updateTypingStatusImmediately(true);
-          prevTypingStateRef.current = true;
-        } else {
-          debouncedStopTyping();
-        }
-      }
-
-      if (isTyping) {
-        typingTimeoutRef.current = setTimeout(() => {
-          updateTypingStatusImmediately(false);
-          prevTypingStateRef.current = false;
-          typingTimeoutRef.current = null;
-        }, TYPING_TIMEOUT);
-      }
-    },
-    [updateTypingStatusImmediately, debouncedStopTyping],
-  );
-
-  useEffect(() => {
-    return () => {
-      debouncedStopTyping.cancel();
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-    };
-  }, [debouncedStopTyping]);
-
-  return { handleInputTextChanged };
-};
-
-const useOptimisticMessages = (
-  conversationMessages: any[],
-  user: any,
-  otherMembers: User[],
-  lastReadByUsers: any,
-) => {
-  const [optimisticMessages, setOptimisticMessages] = useState<
-    ExtendedMessage[]
-  >([]);
-
-  const isMessageReadByAll = useCallback(
-    (messageTimestamp: Date) => {
-      if (!otherMembers.length || !Object.keys(lastReadByUsers).length) {
-        return false;
-      }
-      return otherMembers.every((member) => {
-        const lastReadTime = lastReadByUsers[member.uid];
-        return lastReadTime && messageTimestamp < lastReadTime;
-      });
-    },
-    [otherMembers, lastReadByUsers],
-  );
-
-  const giftedChatMessages: ExtendedMessage[] = useMemo(() => {
-    const serverMessages = conversationMessages
-      .map((message) => {
-        const messageTime =
-          message.createdAt instanceof Date
-            ? message.createdAt
-            : new Date(message.createdAt);
-        const isReadByAll =
-          message.senderId === user?.uid && isMessageReadByAll(messageTime);
-
-        return {
-          _id: message.id,
-          text: message.text,
-          createdAt: messageTime,
-          user: {
-            _id: message.senderId,
-            name:
-              message.senderId === user?.uid
-                ? user?.displayName || 'You'
-                : otherMembers.find((m) => m.uid === message.senderId)
-                    ?.displayName || 'Unknown',
-            avatar:
-              message.senderId === user?.uid
-                ? user?.photoURL
-                : otherMembers.find((m) => m.uid === message.senderId)
-                    ?.photoURL,
-          },
-          sent: true,
-          received: isReadByAll || false,
-          image: message.imageUrl,
-          poll: message.poll,
-        };
-      })
-      .reverse();
-
-    const newOptimisticMessages = optimisticMessages.filter((optMsg) => {
-      return !serverMessages.some(
-        (serverMsg) =>
-          serverMsg.text === optMsg.text &&
-          Math.abs(
-            new Date(serverMsg.createdAt).getTime() -
-              new Date(optMsg.createdAt).getTime(),
-          ) < 5000,
-      );
-    });
-
-    if (newOptimisticMessages.length !== optimisticMessages.length) {
-      setOptimisticMessages(newOptimisticMessages);
-    }
-
-    return [...newOptimisticMessages, ...serverMessages];
-  }, [
-    conversationMessages,
-    user?.uid,
-    user?.displayName,
-    user?.photoURL,
-    otherMembers,
-    optimisticMessages,
-    isMessageReadByAll,
-  ]);
-
-  return {
-    giftedChatMessages,
-    setOptimisticMessages,
   };
 };
 
@@ -292,6 +243,9 @@ const CrewDateChatScreen: React.FC = () => {
     return null;
   }, [crewId, date, id]);
 
+  // Performance monitoring
+  const { recordCacheLoad, recordFullLoad } = usePerformanceMonitoring(chatId);
+
   const {
     otherMembers,
     setOtherMembers,
@@ -309,16 +263,58 @@ const CrewDateChatScreen: React.FC = () => {
     setIsImageMenuVisible,
     isPollModalVisible,
     setIsPollModalVisible,
-  } = useChatState(chatId, user);
+  } = useChatState(chatId, user, recordCacheLoad);
 
-  const conversationMessages = messages[chatId || ''] || [];
+  const conversationMessages = useMemo(() => {
+    if (!chatId || !messages || !messages[chatId]) return [];
+    return ensureMessagesArray(messages[chatId], chatId);
+  }, [chatId, messages]);
+
   const paginationInfo = chatId ? messagePaginationInfo[chatId] : undefined;
+
+  // ============================================================================
+  // ONE-TIME CACHE CLEANUP
+  // ============================================================================
+
+  // Clean up any legacy cache entries that might be causing conflicts
+  useEffect(() => {
+    if (!chatId) return;
+    cleanupLegacyCache(chatId);
+  }, [chatId]);
+
+  // ============================================================================
+  // INSTANT LOADING STATE MANAGEMENT
+  // ============================================================================
+
+  // Cache messages for instant loading on next visit
+  useEffect(() => {
+    if (chatId && conversationMessages.length > 0) {
+      const componentCacheKey = `component_messages_${chatId}`;
+      setCachedData(componentCacheKey, { messages: conversationMessages });
+      recordFullLoad();
+    }
+  }, [chatId, conversationMessages.length, recordFullLoad]);
 
   const { giftedChatMessages, setOptimisticMessages } = useOptimisticMessages(
     conversationMessages,
     user,
-    otherMembers,
-    lastReadByUsers,
+    (userId: string) => {
+      return (
+        otherMembers.find((m) => m.uid === userId)?.displayName || 'Unknown'
+      );
+    },
+    (userId: string) => {
+      return otherMembers.find((m) => m.uid === userId)?.photoURL;
+    },
+    (messageTimestamp: Date) => {
+      if (!otherMembers.length || !Object.keys(lastReadByUsers).length) {
+        return false;
+      }
+      return otherMembers.every((member) => {
+        const lastReadTime = lastReadByUsers[member.uid];
+        return lastReadTime && messageTimestamp < lastReadTime;
+      });
+    },
   );
 
   // Typing status management
@@ -355,12 +351,10 @@ const CrewDateChatScreen: React.FC = () => {
   );
 
   const { handleInputTextChanged } = useTypingHandler(
-    chatId,
-    user,
     updateTypingStatusImmediately,
   );
 
-  // Fetch crew details
+  // Fetch crew details with instant loading from cache
   useEffect(() => {
     if (!crewId || !user?.uid) {
       setCrew({ name: 'Unknown Crew', iconUrl: undefined });
@@ -368,47 +362,87 @@ const CrewDateChatScreen: React.FC = () => {
     }
 
     const fetchCrew = async () => {
+      // First check if we already have cached crew data (from useChatState initialization)
+      if (crew && crew.name !== 'Unknown Crew') {
+        return; // Already have valid cached data
+      }
+
+      // Check crews context
       const crewData = crews.find((c) => c.id === crewId);
       if (crewData) {
         setCrew({ name: crewData.name, iconUrl: crewData.iconUrl });
-      } else {
-        try {
-          const crewDoc = await getDoc(doc(db, 'crews', crewId));
-          if (crewDoc.exists()) {
-            const data = crewDoc.data();
-            setCrew({
-              name: data.name || 'Unknown Crew',
-              iconUrl: data.iconUrl,
-            });
-          } else {
-            setCrew({ name: 'Unknown Crew', iconUrl: undefined });
-          }
-        } catch (error) {
-          console.error('Error fetching crew details:', error);
+        return;
+      }
+
+      // If not in context, check cache for this specific crew
+      const cachedCrew = getCachedData<CachedCrewData>(
+        getCacheKey('crew', chatId!),
+      );
+      if (cachedCrew) {
+        setCrew({ name: cachedCrew.name, iconUrl: cachedCrew.iconUrl });
+        // Still fetch from Firestore in background to update cache
+      }
+
+      // Fetch from Firestore (either as fallback or to update cache)
+      try {
+        const crewDoc = await getDoc(doc(db, 'crews', crewId));
+        if (crewDoc.exists()) {
+          const data = crewDoc.data();
+          const crewInfo = {
+            name: data.name || 'Unknown Crew',
+            iconUrl: data.iconUrl,
+          };
+          setCrew(crewInfo);
+        } else {
+          setCrew({ name: 'Unknown Crew', iconUrl: undefined });
+        }
+      } catch (error) {
+        console.error('Error fetching crew details:', error);
+        // Only set error state if we don't have cached data
+        if (!cachedCrew) {
           setCrew({ name: 'Unknown Crew', iconUrl: undefined });
         }
       }
     };
 
     fetchCrew();
-  }, [crewId, crews, user?.uid, setCrew]);
+  }, [crewId, crews, user?.uid, setCrew, crew, chatId]);
 
-  // Fetch other members
+  // Fetch other members with instant loading from cache
   useEffect(() => {
     if (!chatId || !user?.uid) return;
 
     const fetchMembers = async () => {
+      // Return early if we already have cached members (from useChatState initialization)
+      if (otherMembers.length > 0) {
+        return; // Already have cached data
+      }
+
       try {
         const chatRef = doc(db, 'crew_date_chats', chatId);
         const chatSnap = await getDoc(chatRef);
+
         if (chatSnap.exists()) {
           const chatData = chatSnap.data();
           const memberIds: string[] = chatData.memberIds || [];
           const otherMemberIds = memberIds.filter((id) => id !== user?.uid);
 
+          // Check if we have all members in usersCache for instant loading
+          const cachedMembers = otherMemberIds
+            .map((uid) => usersCache[uid])
+            .filter(Boolean);
+
+          // If we have all members cached, use them immediately
+          if (cachedMembers.length === otherMemberIds.length) {
+            setOtherMembers(cachedMembers);
+            return;
+          }
+
+          // For missing members, fetch from Firestore
           const fetchedMembers = await Promise.all(
             otherMemberIds.map(async (uid) => {
               if (usersCache[uid]) return usersCache[uid];
+
               try {
                 const userDoc = await getDoc(doc(db, 'users', uid));
                 if (userDoc.exists()) {
@@ -434,6 +468,7 @@ const CrewDateChatScreen: React.FC = () => {
               }
             }),
           );
+
           setOtherMembers(fetchedMembers);
         } else {
           setOtherMembers([]);
@@ -445,7 +480,14 @@ const CrewDateChatScreen: React.FC = () => {
     };
 
     fetchMembers();
-  }, [chatId, user?.uid, usersCache, setUsersCache, setOtherMembers]);
+  }, [
+    chatId,
+    user?.uid,
+    usersCache,
+    setUsersCache,
+    setOtherMembers,
+    otherMembers.length,
+  ]);
 
   // Set navigation title
   useLayoutEffect(() => {
@@ -464,6 +506,49 @@ const CrewDateChatScreen: React.FC = () => {
     const unsubscribeMessages = listenToMessages(chatId);
     return () => unsubscribeMessages();
   }, [chatId]); // Remove listenToMessages from dependencies
+
+  // Cache warming & background prefetching
+  useEffect(() => {
+    if (!crewId || !date || !crew) return;
+
+    const warmupAdjacentChats = async () => {
+      try {
+        const currentDate = moment(date);
+        const prevDate = currentDate
+          .clone()
+          .subtract(1, 'day')
+          .format('YYYY-MM-DD');
+        const nextDate = currentDate.clone().add(1, 'day').format('YYYY-MM-DD');
+
+        const adjacentChatIds = [
+          generateChatId(crewId, prevDate),
+          generateChatId(crewId, nextDate),
+        ];
+
+        // Prefetch crew data for adjacent chats (they'll be the same crew)
+        const crewCacheKey = getCacheKey('crew', chatId!);
+        if (!getCachedData(crewCacheKey)) {
+          setCachedData(crewCacheKey, {
+            name: crew.name,
+            iconUrl: crew.iconUrl,
+          });
+        }
+
+        // Prefetch member data for adjacent chats (likely similar members)
+        for (const adjChatId of adjacentChatIds) {
+          const membersCacheKey = getCacheKey('members', adjChatId);
+          if (otherMembers.length > 0 && !getCachedData(membersCacheKey)) {
+            setCachedData(membersCacheKey, { members: otherMembers });
+          }
+        }
+      } catch (error) {
+        console.warn('Cache warming failed:', error);
+      }
+    };
+
+    // Warm cache after component has rendered
+    setTimeout(warmupAdjacentChats, 1000);
+  }, [crewId, date, chatId, crew, otherMembers]);
 
   // Listen for typing status and read receipts
   useEffect(() => {
@@ -836,7 +921,7 @@ const CrewDateChatScreen: React.FC = () => {
     <InputToolbar {...props} containerStyle={styles.inputToolbarContainer} />
   );
 
-  // Computed values
+  // Computed values with memoization for performance
   const typingUserIds = useMemo(
     () => Object.keys(otherUsersTyping).filter((uid) => otherUsersTyping[uid]),
     [otherUsersTyping],
@@ -848,6 +933,16 @@ const CrewDateChatScreen: React.FC = () => {
       return member ? member.displayName : 'Someone';
     });
   }, [typingUserIds, otherMembers]);
+
+  // Memoize GiftedChat user prop to prevent unnecessary re-renders
+  const giftedChatUser = useMemo(
+    () => ({
+      _id: user?.uid || '',
+      name: user?.displayName || 'You',
+      avatar: user?.photoURL || undefined,
+    }),
+    [user?.uid, user?.displayName, user?.photoURL],
+  );
 
   const renderFooter = useCallback(() => {
     if (typingDisplayNames.length > 0) {
@@ -929,18 +1024,20 @@ const CrewDateChatScreen: React.FC = () => {
     previousMessageCountRef.current = 0;
   }, [chatId]);
 
+  // ============================================================================
+  // INSTANT LOADING RENDER LOGIC - SIMPLIFIED FOR INSTANT DISPLAY
+  // ============================================================================
+
+  // Only show loading if we don't have a valid chatId
   if (!chatId) return <LoadingOverlay />;
 
+  // Always show the chat interface immediately - let data load in background
   return (
     <View style={styles.container}>
       <GiftedChat
         messages={giftedChatMessages}
         onSend={(messages) => onSend(messages)}
-        user={{
-          _id: user?.uid || '',
-          name: user?.displayName || 'You',
-          avatar: user?.photoURL || undefined,
-        }}
+        user={giftedChatUser}
         bottomOffset={tabBarHeight - insets.bottom}
         isTyping={false}
         onInputTextChanged={handleInputTextChanged}

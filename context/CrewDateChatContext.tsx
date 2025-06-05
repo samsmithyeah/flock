@@ -27,7 +27,6 @@ import {
   serverTimestamp,
   arrayUnion,
   arrayRemove,
-  getCountFromServer,
   limit,
   startAfter,
   DocumentData,
@@ -39,7 +38,15 @@ import { useUser } from '@/context/UserContext';
 import { User } from '@/types/User';
 import { useCrews } from '@/context/CrewsContext';
 import Toast from 'react-native-toast-message';
-import { storage } from '@/storage';
+import {
+  UserBatchFetcher,
+  fetchUnreadCount as fetchUnreadCountUtil,
+  computeTotalUnread as computeTotalUnreadUtil,
+  processMessagesBatch,
+  createMessageListener,
+  MessageListenerManager,
+  loadEarlierMessages as loadEarlierMessagesUtil,
+} from '@/utils/chatContextUtils';
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -113,8 +120,6 @@ interface CrewDateChatContextProps {
 // ============================================================================
 
 const MESSAGES_PER_LOAD = 20;
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000;
 
 // ============================================================================
 // CONTEXT CREATION
@@ -150,127 +155,19 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
   // ============================================================================
 
   const listenersRef = useRef<{ [chatId: string]: () => void }>({});
-  const pendingBatches = useRef(new Map<string, Promise<User[]>>());
 
   // ============================================================================
-  // USER FETCHING & CACHING OPTIMIZATIONS
+  // UTILITY INSTANCES
   // ============================================================================
 
-  // Optimized batch user fetching with deduplication and caching
-  const fetchUserDetailsBatch = useCallback(
-    async (uids: Set<string>): Promise<User[]> => {
-      const uncachedUids = [...uids].filter((uid) => !usersCache[uid]);
-
-      if (uncachedUids.length === 0) {
-        return [...uids].map((uid) => usersCache[uid]).filter(Boolean);
-      }
-
-      const batchKey = uncachedUids.sort().join(',');
-
-      // Return existing batch promise if in progress
-      if (pendingBatches.current.has(batchKey)) {
-        const results = await pendingBatches.current.get(batchKey)!;
-        return [...uids]
-          .map((uid) => usersCache[uid] || results.find((u) => u.uid === uid))
-          .filter(Boolean);
-      }
-
-      const batchPromise = (async () => {
-        try {
-          // Use more efficient query with where clause for small batches
-          if (uncachedUids.length <= 10) {
-            const userQuery = query(
-              collection(db, 'users'),
-              where('__name__', 'in', uncachedUids),
-            );
-            const userDocs = await getDocs(userQuery);
-
-            const results: User[] = userDocs.docs.map(
-              (doc) =>
-                ({
-                  uid: doc.id,
-                  displayName: doc.data().displayName || 'Unknown User',
-                  email: doc.data().email || '',
-                  photoURL: doc.data().photoURL,
-                  ...doc.data(),
-                }) as User,
-            );
-
-            // Batch update cache
-            const newUsers = Object.fromEntries(
-              results.map((user) => [user.uid, user]),
-            );
-            setUsersCache((prev) => ({ ...prev, ...newUsers }));
-
-            return results;
-          } else {
-            // For larger batches, fetch all and filter
-            const userDocs = await getDocs(collection(db, 'users'));
-            const results: User[] = userDocs.docs
-              .filter((doc) => uncachedUids.includes(doc.id))
-              .map(
-                (doc) =>
-                  ({
-                    uid: doc.id,
-                    displayName: doc.data().displayName || 'Unknown User',
-                    email: doc.data().email || '',
-                    photoURL: doc.data().photoURL,
-                    ...doc.data(),
-                  }) as User,
-              );
-
-            // Batch update cache
-            const newUsers = Object.fromEntries(
-              results.map((user) => [user.uid, user]),
-            );
-            setUsersCache((prev) => ({ ...prev, ...newUsers }));
-
-            return results;
-          }
-        } finally {
-          pendingBatches.current.delete(batchKey);
-        }
-      })();
-
-      pendingBatches.current.set(batchKey, batchPromise);
-      const results = await batchPromise;
-
-      // Return all requested users (cached + fetched)
-      return [...uids]
-        .map((uid) => usersCache[uid] || results.find((u) => u.uid === uid))
-        .filter(Boolean);
-    },
+  // Initialize UserBatchFetcher for optimized user fetching
+  const userFetcher = useMemo(
+    () => new UserBatchFetcher(usersCache, setUsersCache),
     [usersCache, setUsersCache],
   );
 
-  // Single user fetch with retry logic
-  const fetchUserDetailsWithRetry = useCallback(
-    async (uid: string, retries = 0): Promise<User> => {
-      try {
-        const results = await fetchUserDetailsBatch(new Set([uid]));
-        const user = results.find((u) => u.uid === uid);
-
-        if (!user) throw new Error(`User ${uid} not found`);
-        return user;
-      } catch {
-        if (retries < MAX_RETRIES) {
-          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
-          return fetchUserDetailsWithRetry(uid, retries + 1);
-        }
-
-        console.warn(
-          `Failed to fetch user ${uid} after ${MAX_RETRIES} retries`,
-        );
-        return {
-          uid,
-          displayName: 'Unknown User',
-          photoURL: undefined,
-          email: '',
-        };
-      }
-    },
-    [fetchUserDetailsBatch],
-  );
+  // Initialize message listener manager
+  const listenerManager = useMemo(() => new MessageListenerManager(), []);
 
   // ============================================================================
   // UNREAD COUNT MANAGEMENT
@@ -278,42 +175,12 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
 
   const fetchUnreadCount = useCallback(
     async (chatId: string): Promise<number> => {
-      if (!user?.uid) return 0;
-
-      try {
-        const chatRef = doc(db, 'crew_date_chats', chatId);
-        const chatDoc = await getDoc(chatRef);
-
-        if (!chatDoc.exists()) return 0;
-
-        const chatData = chatDoc.data();
-        const lastRead = chatData?.lastRead?.[user.uid];
-
-        if (!lastRead) return 0;
-
-        const messagesRef = collection(
-          db,
-          'crew_date_chats',
-          chatId,
-          'messages',
-        );
-        const unreadQuery = query(
-          messagesRef,
-          where('createdAt', '>', lastRead),
-        );
-
-        const countSnapshot = await getCountFromServer(unreadQuery);
-        return countSnapshot.data().count;
-      } catch (error: any) {
-        if (
-          error.code === 'permission-denied' ||
-          error.code === 'unavailable'
-        ) {
-          return 0;
-        }
-        console.error(`Error fetching unread count for chat ${chatId}:`, error);
-        return 0;
-      }
+      return await fetchUnreadCountUtil(
+        chatId,
+        user?.uid || '',
+        'crew_date_chats',
+        { fallbackValue: 0 },
+      );
     },
     [user?.uid],
   );
@@ -325,17 +192,18 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
     }
 
     try {
-      const unreadPromises = chats
-        .filter((chat) => !activeChats.has(chat.id))
-        .map((chat) => fetchUnreadCount(chat.id));
-
-      const unreadCounts = await Promise.all(unreadPromises);
-      const total = unreadCounts.reduce((acc, count) => acc + count, 0);
+      const total = await computeTotalUnreadUtil(
+        chats,
+        user.uid,
+        activeChats,
+        'crew_date_chats',
+      );
       setTotalUnread(total);
     } catch (error) {
       console.error('Error computing total unread messages:', error);
+      setTotalUnread(0);
     }
-  }, [user?.uid, chats, fetchUnreadCount, activeChats]);
+  }, [user?.uid, chats, activeChats]);
 
   // ============================================================================
   // CHAT FETCHING & MANAGEMENT
@@ -349,8 +217,10 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
       const memberIds: string[] = chatData.memberIds || [];
       const otherMemberIds = memberIds.filter((id) => id !== user?.uid);
 
-      // Batch fetch user details
-      const otherMembers = await fetchUserDetailsBatch(new Set(otherMemberIds));
+      // Batch fetch user details using UserBatchFetcher
+      const otherMembers = await userFetcher.fetchUserDetailsBatch(
+        new Set(otherMemberIds),
+      );
 
       const [crewId] = docSnap.id.split('_');
       const crew = crews.find((c) => c.id === crewId);
@@ -364,7 +234,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         lastRead: chatData.lastRead || {},
       };
     },
-    [user?.uid, crews, fetchUserDetailsBatch],
+    [user?.uid, crews, userFetcher],
   );
 
   const fetchChats = useCallback(async () => {
@@ -435,25 +305,6 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
   // MESSAGE MANAGEMENT
   // ============================================================================
 
-  const processMessage = useCallback(
-    async (docSnap: QueryDocumentSnapshot<DocumentData>): Promise<Message> => {
-      const msgData = docSnap.data();
-      const senderId: string = msgData.senderId;
-      const sender = await fetchUserDetailsWithRetry(senderId);
-
-      return {
-        id: docSnap.id,
-        senderId,
-        text: msgData.text || '',
-        createdAt: msgData.createdAt?.toDate() || new Date(),
-        senderName: sender.displayName,
-        imageUrl: msgData.imageUrl,
-        poll: msgData.poll,
-      };
-    },
-    [fetchUserDetailsWithRetry],
-  );
-
   const sendMessage = useCallback(
     async (chatId: string, text: string, imageUrl?: string) => {
       if (!user?.uid) return;
@@ -519,56 +370,26 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
     (chatId: string) => {
       if (!user?.uid) return () => {};
 
-      // Cleanup existing listener
-      if (listenersRef.current[chatId]) {
-        listenersRef.current[chatId]();
-        delete listenersRef.current[chatId];
-      }
+      // Cleanup existing listener using MessageListenerManager
+      listenerManager.removeListener(chatId);
 
-      // Initialize pagination info
-      if (!messagePaginationInfo[chatId]) {
-        setMessagePaginationInfo((prev) => ({
-          ...prev,
-          [chatId]: {
-            hasMore: true,
-            loading: false,
-            lastDoc: null,
-          },
-        }));
-      }
-
-      const messagesRef = collection(db, 'crew_date_chats', chatId, 'messages');
-
-      // Load cached messages
-      const cachedMessages = storage.getString(`messages_${chatId}`);
-      if (cachedMessages) {
-        try {
-          const parsedCachedMessages: Message[] = JSON.parse(
-            cachedMessages,
-            (key, value) => {
-              if (key === 'createdAt' && typeof value === 'string') {
-                return new Date(value);
-              }
-              return value;
-            },
-          );
-          setMessages((prev) => ({
-            ...prev,
-            [chatId]: parsedCachedMessages,
-          }));
-        } catch (error) {
-          console.warn('Failed to parse cached messages:', error);
-        }
-      }
-
-      // Real-time listener for new and modified messages
-      const msgQuery = query(
-        messagesRef,
-        orderBy('createdAt', 'desc'),
-        limit(MESSAGES_PER_LOAD),
+      // Create standardized message listener
+      const unsubscribe = createMessageListener(
+        chatId,
+        user.uid,
+        'crew_date_chats',
+        userFetcher,
+        (updater) => setMessages(updater),
+        (updater) => setMessagePaginationInfo(updater),
+        {
+          enableCaching: true,
+          cachePrefix: 'crew_messages',
+          messagesPerLoad: MESSAGES_PER_LOAD,
+        },
       );
 
-      // Additional listener specifically for poll updates on all messages
+      // Set up additional poll update listener (specific to crew date chats)
+      const messagesRef = collection(db, 'crew_date_chats', chatId, 'messages');
       const pollUpdateQuery = query(messagesRef, where('poll', '!=', null));
 
       const pollUpdateUnsubscribe = onSnapshot(
@@ -585,9 +406,10 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
 
             if (modifiedDocs.length === 0) return;
 
-            // Process modified poll messages
-            const modifiedPollMessages = await Promise.all(
-              modifiedDocs.map(processMessage),
+            // Process modified poll messages using the new utility
+            const modifiedPollMessages = await processMessagesBatch(
+              modifiedDocs,
+              userFetcher,
             );
 
             // Update existing messages with poll changes
@@ -622,183 +444,69 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         },
       );
 
-      const unsubscribe = onSnapshot(
-        msgQuery,
-        async (querySnapshot) => {
-          if (!user?.uid) return;
-
-          try {
-            const lastVisible =
-              querySnapshot.docs.length > 0
-                ? querySnapshot.docs[querySnapshot.docs.length - 1]
-                : null;
-
-            // Update pagination info
-            setMessagePaginationInfo((prev) => ({
-              ...prev,
-              [chatId]: {
-                ...(prev[chatId] || {}),
-                hasMore: querySnapshot.docs.length >= MESSAGES_PER_LOAD,
-                lastDoc: lastVisible,
-                loading: false,
-              },
-            }));
-
-            // Process all messages (new and modified)
-            const fetchedMessages = await Promise.all(
-              querySnapshot.docs.map(processMessage),
-            );
-
-            const sortedMessages = fetchedMessages.sort(
-              (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-            );
-
-            setMessages((prev) => {
-              const existingMessages = prev[chatId] || [];
-              const messageMap = new Map(
-                existingMessages.map((msg) => [msg.id, msg]),
-              );
-
-              // Update existing messages or add new ones
-              sortedMessages.forEach((newMsg) => {
-                messageMap.set(newMsg.id, newMsg);
-              });
-
-              // Convert back to array and sort
-              const mergedMessages = Array.from(messageMap.values()).sort(
-                (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-              );
-
-              return { ...prev, [chatId]: mergedMessages };
-            });
-
-            // Cache messages
-            const messagesToCache = sortedMessages.map((msg) => ({
-              ...msg,
-              createdAt: msg.createdAt.toISOString(),
-            }));
-            storage.set(`messages_${chatId}`, JSON.stringify(messagesToCache));
-          } catch (error) {
-            console.error('Error processing messages snapshot:', error);
-          }
-        },
-        (error) => {
-          if (error.code !== 'permission-denied') {
-            console.error('Error listening to messages:', error);
-          }
-        },
-      );
-
-      listenersRef.current[chatId] = () => {
+      // Combine both unsubscribe functions
+      const combinedUnsubscribe = () => {
         unsubscribe();
         pollUpdateUnsubscribe();
       };
 
-      return () => {
-        unsubscribe();
-        pollUpdateUnsubscribe();
-      };
+      // Add to MessageListenerManager
+      listenerManager.addListener(chatId, combinedUnsubscribe);
+
+      return combinedUnsubscribe;
     },
-    [user?.uid, processMessage, messagePaginationInfo],
+    [user?.uid, userFetcher, listenerManager],
   );
 
   const loadEarlierMessages = useCallback(
     async (chatId: string): Promise<boolean> => {
-      if (!user?.uid || !messagePaginationInfo[chatId]?.hasMore) {
-        return false;
-      }
+      if (!user?.uid) return false;
 
-      const paginationInfo = messagePaginationInfo[chatId];
-      if (paginationInfo?.loading) return false;
-
-      // Set loading state
-      setMessagePaginationInfo((prev) => ({
-        ...prev,
-        [chatId]: {
-          ...prev[chatId],
-          loading: true,
+      const result = await loadEarlierMessagesUtil(
+        chatId,
+        'crew_date_chats',
+        messagePaginationInfo[chatId],
+        setMessagePaginationInfo,
+        {
+          messagesPerLoad: MESSAGES_PER_LOAD,
+          logPrefix: '[CrewDateChat]',
         },
-      }));
+      );
 
-      try {
-        const lastDoc = paginationInfo?.lastDoc;
-        if (!lastDoc) return false;
-
+      if (result.success && result.lastDoc) {
+        // Process the messages that were loaded
         const messagesRef = collection(
           db,
           'crew_date_chats',
           chatId,
           'messages',
         );
-        const olderMessagesQuery = query(
+        const newQuery = query(
           messagesRef,
           orderBy('createdAt', 'desc'),
-          startAfter(lastDoc),
+          startAfter(messagePaginationInfo[chatId]?.lastDoc),
           limit(MESSAGES_PER_LOAD),
         );
 
-        const querySnapshot = await getDocs(olderMessagesQuery);
-        const lastVisible =
-          querySnapshot.docs.length > 0
-            ? querySnapshot.docs[querySnapshot.docs.length - 1]
-            : null;
-
-        // Update pagination info
-        setMessagePaginationInfo((prev) => ({
-          ...prev,
-          [chatId]: {
-            hasMore: querySnapshot.docs.length >= MESSAGES_PER_LOAD,
-            lastDoc: lastVisible || prev[chatId].lastDoc,
-            loading: false,
-          },
-        }));
-
-        if (querySnapshot.empty) return false;
-
-        // Process older messages
-        const olderMessages = await Promise.all(
-          querySnapshot.docs.map(processMessage),
+        const querySnapshot = await getDocs(newQuery);
+        const processedMessages = await processMessagesBatch(
+          querySnapshot.docs,
+          userFetcher,
         );
 
-        const sortedOlderMessages = olderMessages.sort(
-          (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-        );
-
-        // Update messages state
-        setMessages((prev) => {
-          const existingMessages = prev[chatId] || [];
-          const mergedMessages = [...existingMessages];
-
-          sortedOlderMessages.forEach((oldMsg) => {
-            const isDuplicate = mergedMessages.some(
-              (existing) => existing.id === oldMsg.id,
-            );
-            if (!isDuplicate) {
-              mergedMessages.unshift(oldMsg);
-            }
-          });
-
-          mergedMessages.sort(
-            (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-          );
-
-          return { ...prev, [chatId]: mergedMessages };
-        });
-
-        return querySnapshot.docs.length > 0;
-      } catch (error) {
-        console.error('Error loading earlier messages:', error);
-        setMessagePaginationInfo((prev) => ({
+        // Add processed messages to the beginning of the chat
+        setMessages((prev) => ({
           ...prev,
-          [chatId]: {
-            ...prev[chatId],
-            loading: false,
-          },
+          [chatId]: [
+            ...(prev[chatId] || []),
+            ...processedMessages.reverse(), // Reverse to maintain chronological order
+          ],
         }));
-        return false;
       }
+
+      return result.success;
     },
-    [user?.uid, messagePaginationInfo, processMessage],
+    [user?.uid, messagePaginationInfo, userFetcher],
   );
 
   // ============================================================================
