@@ -27,7 +27,6 @@ import {
   serverTimestamp,
   arrayUnion,
   arrayRemove,
-  FirestoreError,
   getCountFromServer,
   limit,
   startAfter,
@@ -253,7 +252,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
 
         if (!user) throw new Error(`User ${uid} not found`);
         return user;
-      } catch (error) {
+      } catch {
         if (retries < MAX_RETRIES) {
           await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
           return fetchUserDetailsWithRetry(uid, retries + 1);
@@ -569,6 +568,60 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         limit(MESSAGES_PER_LOAD),
       );
 
+      // Additional listener specifically for poll updates on all messages
+      const pollUpdateQuery = query(messagesRef, where('poll', '!=', null));
+
+      const pollUpdateUnsubscribe = onSnapshot(
+        pollUpdateQuery,
+        async (querySnapshot) => {
+          if (!user?.uid) return;
+
+          try {
+            // Handle only modified documents (poll vote changes)
+            const modifiedDocs = querySnapshot
+              .docChanges()
+              .filter((change) => change.type === 'modified')
+              .map((change) => change.doc);
+
+            if (modifiedDocs.length === 0) return;
+
+            // Process modified poll messages
+            const modifiedPollMessages = await Promise.all(
+              modifiedDocs.map(processMessage),
+            );
+
+            // Update existing messages with poll changes
+            setMessages((prev) => {
+              const existingMessages = prev[chatId] || [];
+              const messageMap = new Map(
+                existingMessages.map((msg) => [msg.id, msg]),
+              );
+
+              // Update only the modified poll messages
+              modifiedPollMessages.forEach((updatedMsg) => {
+                if (messageMap.has(updatedMsg.id)) {
+                  messageMap.set(updatedMsg.id, updatedMsg);
+                }
+              });
+
+              // Convert back to array and sort
+              const mergedMessages = Array.from(messageMap.values()).sort(
+                (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+              );
+
+              return { ...prev, [chatId]: mergedMessages };
+            });
+          } catch (error) {
+            console.error('Error processing poll updates:', error);
+          }
+        },
+        (error) => {
+          if (error.code !== 'permission-denied') {
+            console.error('Error listening to poll updates:', error);
+          }
+        },
+      );
+
       const unsubscribe = onSnapshot(
         msgQuery,
         async (querySnapshot) => {
@@ -591,7 +644,7 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
               },
             }));
 
-            // Process messages
+            // Process all messages (new and modified)
             const fetchedMessages = await Promise.all(
               querySnapshot.docs.map(processMessage),
             );
@@ -602,20 +655,17 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
 
             setMessages((prev) => {
               const existingMessages = prev[chatId] || [];
-              const mergedMessages = [...existingMessages];
+              const messageMap = new Map(
+                existingMessages.map((msg) => [msg.id, msg]),
+              );
 
-              // Add new messages, avoiding duplicates
+              // Update existing messages or add new ones
               sortedMessages.forEach((newMsg) => {
-                const isDuplicate = mergedMessages.some(
-                  (existing) => existing.id === newMsg.id,
-                );
-                if (!isDuplicate) {
-                  mergedMessages.push(newMsg);
-                }
+                messageMap.set(newMsg.id, newMsg);
               });
 
-              // Sort by date
-              mergedMessages.sort(
+              // Convert back to array and sort
+              const mergedMessages = Array.from(messageMap.values()).sort(
                 (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
               );
 
@@ -639,8 +689,15 @@ export const CrewDateChatProvider: React.FC<{ children: ReactNode }> = ({
         },
       );
 
-      listenersRef.current[chatId] = unsubscribe;
-      return unsubscribe;
+      listenersRef.current[chatId] = () => {
+        unsubscribe();
+        pollUpdateUnsubscribe();
+      };
+
+      return () => {
+        unsubscribe();
+        pollUpdateUnsubscribe();
+      };
     },
     [user?.uid, processMessage, messagePaginationInfo],
   );
