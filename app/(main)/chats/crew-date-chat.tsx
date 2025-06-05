@@ -27,7 +27,6 @@ import {
   InputToolbar,
   Actions,
   MessageImageProps,
-  // Add MessageProps type for properly typing renderCustomView
   MessageProps,
 } from 'react-native-gifted-chat';
 import { useUser } from '@/context/UserContext';
@@ -61,7 +60,7 @@ import ImageOptionsMenu from '@/components/ImageOptionsMenu';
 import PollCreationModal from '@/components/PollCreationModal';
 import PollMessage from '@/components/PollMessage';
 
-// Add Poll interface and extend IMessage
+// Types and interfaces
 interface Poll {
   question: string;
   options: string[];
@@ -69,13 +68,198 @@ interface Poll {
   totalVotes: number;
 }
 
-// Extend IMessage to include our poll property
 interface ExtendedMessage extends IMessage {
   poll?: Poll;
 }
 
+// Constants
 const TYPING_TIMEOUT = 1000;
-const READ_UPDATE_DEBOUNCE = 1000; // 1 second debounce for read status updates
+const READ_UPDATE_DEBOUNCE = 1000;
+
+// Custom hooks for state management
+const useChatState = (chatId: string | null, user: any) => {
+  const [otherMembers, setOtherMembers] = useState<User[]>([]);
+  const [crew, setCrew] = useState<{ name: string; iconUrl?: string } | null>(
+    null,
+  );
+  const [otherUsersTyping, setOtherUsersTyping] = useState<{
+    [key: string]: boolean;
+  }>({});
+  const [lastReadByUsers, setLastReadByUsers] = useState<{
+    [uid: string]: Date;
+  }>({});
+  const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isImageMenuVisible, setIsImageMenuVisible] = useState(false);
+  const [isPollModalVisible, setIsPollModalVisible] = useState(false);
+
+  return {
+    otherMembers,
+    setOtherMembers,
+    crew,
+    setCrew,
+    otherUsersTyping,
+    setOtherUsersTyping,
+    lastReadByUsers,
+    setLastReadByUsers,
+    isLoadingEarlier,
+    setIsLoadingEarlier,
+    isUploading,
+    setIsUploading,
+    isImageMenuVisible,
+    setIsImageMenuVisible,
+    isPollModalVisible,
+    setIsPollModalVisible,
+  };
+};
+
+const useTypingHandler = (
+  chatId: string | null,
+  user: any,
+  updateTypingStatusImmediately: any,
+) => {
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const prevTypingStateRef = useRef<boolean>(false);
+
+  const debouncedStopTyping = useMemo(
+    () =>
+      debounce(() => {
+        updateTypingStatusImmediately(false);
+        prevTypingStateRef.current = false;
+      }, 500),
+    [updateTypingStatusImmediately],
+  );
+
+  const handleInputTextChanged = useCallback(
+    (text: string) => {
+      const isTyping = text.length > 0;
+
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+
+      if (isTyping !== prevTypingStateRef.current) {
+        if (isTyping) {
+          updateTypingStatusImmediately(true);
+          prevTypingStateRef.current = true;
+        } else {
+          debouncedStopTyping();
+        }
+      }
+
+      if (isTyping) {
+        typingTimeoutRef.current = setTimeout(() => {
+          updateTypingStatusImmediately(false);
+          prevTypingStateRef.current = false;
+          typingTimeoutRef.current = null;
+        }, TYPING_TIMEOUT);
+      }
+    },
+    [updateTypingStatusImmediately, debouncedStopTyping],
+  );
+
+  useEffect(() => {
+    return () => {
+      debouncedStopTyping.cancel();
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, [debouncedStopTyping]);
+
+  return { handleInputTextChanged };
+};
+
+const useOptimisticMessages = (
+  conversationMessages: any[],
+  user: any,
+  otherMembers: User[],
+  lastReadByUsers: any,
+) => {
+  const [optimisticMessages, setOptimisticMessages] = useState<
+    ExtendedMessage[]
+  >([]);
+
+  const isMessageReadByAll = useCallback(
+    (messageTimestamp: Date) => {
+      if (!otherMembers.length || !Object.keys(lastReadByUsers).length) {
+        return false;
+      }
+      return otherMembers.every((member) => {
+        const lastReadTime = lastReadByUsers[member.uid];
+        return lastReadTime && messageTimestamp < lastReadTime;
+      });
+    },
+    [otherMembers, lastReadByUsers],
+  );
+
+  const giftedChatMessages: ExtendedMessage[] = useMemo(() => {
+    const serverMessages = conversationMessages
+      .map((message) => {
+        const messageTime =
+          message.createdAt instanceof Date
+            ? message.createdAt
+            : new Date(message.createdAt);
+        const isReadByAll =
+          message.senderId === user?.uid && isMessageReadByAll(messageTime);
+
+        return {
+          _id: message.id,
+          text: message.text,
+          createdAt: messageTime,
+          user: {
+            _id: message.senderId,
+            name:
+              message.senderId === user?.uid
+                ? user?.displayName || 'You'
+                : otherMembers.find((m) => m.uid === message.senderId)
+                    ?.displayName || 'Unknown',
+            avatar:
+              message.senderId === user?.uid
+                ? user?.photoURL
+                : otherMembers.find((m) => m.uid === message.senderId)
+                    ?.photoURL,
+          },
+          sent: true,
+          received: isReadByAll || false,
+          image: message.imageUrl,
+          poll: message.poll,
+        };
+      })
+      .reverse();
+
+    const newOptimisticMessages = optimisticMessages.filter((optMsg) => {
+      return !serverMessages.some(
+        (serverMsg) =>
+          serverMsg.text === optMsg.text &&
+          Math.abs(
+            new Date(serverMsg.createdAt).getTime() -
+              new Date(optMsg.createdAt).getTime(),
+          ) < 5000,
+      );
+    });
+
+    if (newOptimisticMessages.length !== optimisticMessages.length) {
+      setOptimisticMessages(newOptimisticMessages);
+    }
+
+    return [...newOptimisticMessages, ...serverMessages];
+  }, [
+    conversationMessages,
+    user?.uid,
+    user?.displayName,
+    user?.photoURL,
+    otherMembers,
+    optimisticMessages,
+    isMessageReadByAll,
+  ]);
+
+  return {
+    giftedChatMessages,
+    setOptimisticMessages,
+  };
+};
 
 const CrewDateChatScreen: React.FC = () => {
   const { crewId, date, id } = useLocalSearchParams<{
@@ -83,8 +267,14 @@ const CrewDateChatScreen: React.FC = () => {
     date: string;
     id?: string;
   }>();
+
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
+  const tabBarHeight = useBottomTabBarHeight();
+
+  const { user, addActiveChat, removeActiveChat } = useUser();
+  const { crews, usersCache, setUsersCache } = useCrews();
   const {
     sendMessage,
     updateLastRead,
@@ -95,29 +285,6 @@ const CrewDateChatScreen: React.FC = () => {
     createPoll,
     votePoll,
   } = useCrewDateChat();
-  const { crews, usersCache, setUsersCache } = useCrews();
-  const isFocused = useIsFocused();
-  const tabBarHeight = useBottomTabBarHeight();
-  const { user, addActiveChat, removeActiveChat } = useUser();
-  const [otherMembers, setOtherMembers] = useState<User[]>([]);
-  const [crew, setCrew] = useState<{ name: string; iconUrl?: string } | null>(
-    null,
-  );
-  const [otherUsersTyping, setOtherUsersTyping] = useState<{
-    [key: string]: boolean;
-  }>({});
-  const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
-  // Add states for optimistic messages and reading status
-  const [optimisticMessages, setOptimisticMessages] = useState<
-    ExtendedMessage[]
-  >([]);
-  const [lastReadByUsers, setLastReadByUsers] = useState<{
-    [uid: string]: Date;
-  }>({});
-  const [isUploading, setIsUploading] = useState(false);
-  const [isImageMenuVisible, setIsImageMenuVisible] = useState(false);
-  // Add state for poll creation modal
-  const [isPollModalVisible, setIsPollModalVisible] = useState(false);
 
   const chatId = useMemo(() => {
     if (id) return id;
@@ -125,44 +292,75 @@ const CrewDateChatScreen: React.FC = () => {
     return null;
   }, [crewId, date, id]);
 
-  // Get pagination info for this chat
+  const {
+    otherMembers,
+    setOtherMembers,
+    crew,
+    setCrew,
+    otherUsersTyping,
+    setOtherUsersTyping,
+    lastReadByUsers,
+    setLastReadByUsers,
+    isLoadingEarlier,
+    setIsLoadingEarlier,
+    isUploading,
+    setIsUploading,
+    isImageMenuVisible,
+    setIsImageMenuVisible,
+    isPollModalVisible,
+    setIsPollModalVisible,
+  } = useChatState(chatId, user);
+
+  const conversationMessages = messages[chatId || ''] || [];
   const paginationInfo = chatId ? messagePaginationInfo[chatId] : undefined;
 
-  // Handle loading earlier messages with debugging
-  const handleLoadEarlier = useCallback(async () => {
-    if (!chatId || isLoadingEarlier) {
-      console.log(
-        "[CrewDateChat] Can't load earlier messages:",
-        !chatId ? 'Invalid chatId' : 'Already loading',
-      );
-      return;
-    }
+  const { giftedChatMessages, setOptimisticMessages } = useOptimisticMessages(
+    conversationMessages,
+    user,
+    otherMembers,
+    lastReadByUsers,
+  );
 
-    if (!paginationInfo?.hasMore) {
-      console.log('[CrewDateChat] No more earlier messages available');
-      return;
-    }
+  // Typing status management
+  const updateTypingStatusImmediately = useCallback(
+    async (isTyping: boolean) => {
+      if (!chatId || !user?.uid) return;
+      try {
+        await updateDoc(doc(db, 'crew_date_chats', chatId), {
+          [`typingStatus.${user.uid}`]: isTyping,
+          [`typingStatus.${user.uid}LastUpdate`]: serverTimestamp(),
+        });
+      } catch (error: any) {
+        if (error.code === 'not-found') {
+          try {
+            await setDoc(
+              doc(db, 'crew_date_chats', chatId),
+              {
+                typingStatus: {
+                  [user.uid]: isTyping,
+                  [`${user.uid}LastUpdate`]: serverTimestamp(),
+                },
+              },
+              { merge: true },
+            );
+          } catch (innerError) {
+            console.error('Error creating typing status:', innerError);
+          }
+        } else {
+          console.error('Error updating typing status:', error);
+        }
+      }
+    },
+    [chatId, user?.uid],
+  );
 
-    console.log('[CrewDateChat] Loading earlier messages...');
-    setIsLoadingEarlier(true);
+  const { handleInputTextChanged } = useTypingHandler(
+    chatId,
+    user,
+    updateTypingStatusImmediately,
+  );
 
-    try {
-      const hasMore = await loadEarlierMessages(chatId);
-      console.log('[CrewDateChat] Loaded earlier messages, has more:', hasMore);
-    } catch (error) {
-      console.error('[CrewDateChat] Error loading earlier messages:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Could not load earlier messages',
-        position: 'bottom',
-      });
-    } finally {
-      setIsLoadingEarlier(false);
-    }
-  }, [chatId, paginationInfo, loadEarlierMessages, isLoadingEarlier]);
-
-  // Fetch crew details from crews context.
+  // Fetch crew details
   useEffect(() => {
     if (!crewId || !user?.uid) {
       setCrew({ name: 'Unknown Crew', iconUrl: undefined });
@@ -193,11 +391,12 @@ const CrewDateChatScreen: React.FC = () => {
     };
 
     fetchCrew();
-  }, [crewId, crews, user?.uid]);
+  }, [crewId, crews, user?.uid, setCrew]);
 
-  // Fetch other members details using the global usersCache.
+  // Fetch other members
   useEffect(() => {
     if (!chatId || !user?.uid) return;
+
     const fetchMembers = async () => {
       try {
         const chatRef = doc(db, 'crew_date_chats', chatId);
@@ -206,7 +405,7 @@ const CrewDateChatScreen: React.FC = () => {
           const chatData = chatSnap.data();
           const memberIds: string[] = chatData.memberIds || [];
           const otherMemberIds = memberIds.filter((id) => id !== user?.uid);
-          // For each member, try to use the cache; if not present, fallback to a one-time fetch.
+
           const fetchedMembers = await Promise.all(
             otherMemberIds.map(async (uid) => {
               if (usersCache[uid]) return usersCache[uid];
@@ -246,18 +445,9 @@ const CrewDateChatScreen: React.FC = () => {
     };
 
     fetchMembers();
-  }, [chatId, user?.uid]);
+  }, [chatId, user?.uid, usersCache, setUsersCache, setOtherMembers]);
 
-  // Log when pagination info changes
-  useEffect(() => {
-    if (paginationInfo) {
-      console.log('[CrewDateChat] Pagination info updated:', {
-        hasMore: paginationInfo.hasMore,
-        loading: paginationInfo.loading,
-      });
-    }
-  }, [paginationInfo]);
-
+  // Set navigation title
   useLayoutEffect(() => {
     if (crew) {
       navigation.setOptions({
@@ -267,197 +457,18 @@ const CrewDateChatScreen: React.FC = () => {
     }
   }, [navigation, crew, date, insets.top]);
 
-  // Typing status for group chat.
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  // Track previous typing state to prevent unnecessary updates
-  const prevTypingStateRef = useRef<boolean>(false);
-
-  // Function to immediately update typing status when typing starts
-  const updateTypingStatusImmediately = useCallback(
-    async (isTyping: boolean) => {
-      if (!chatId || !user?.uid) return;
-      try {
-        await updateDoc(doc(db, 'crew_date_chats', chatId), {
-          [`typingStatus.${user.uid}`]: isTyping,
-          [`typingStatus.${user.uid}LastUpdate`]: serverTimestamp(),
-        });
-      } catch (error: any) {
-        if (error.code === 'not-found') {
-          try {
-            await setDoc(
-              doc(db, 'crew_date_chats', chatId),
-              {
-                typingStatus: {
-                  [user.uid]: isTyping,
-                  [`${user.uid}LastUpdate`]: serverTimestamp(),
-                },
-              },
-              { merge: true },
-            );
-          } catch (innerError) {
-            console.error('Error creating typing status:', innerError);
-          }
-        } else {
-          console.error('Error updating typing status:', error);
-        }
-      }
-    },
-    [chatId, user?.uid],
-  );
-
-  // Only debounce the "stop typing" signal to reduce Firebase operations
-  const debouncedStopTyping = useMemo(
-    () =>
-      debounce(() => {
-        updateTypingStatusImmediately(false);
-        prevTypingStateRef.current = false;
-      }, 500),
-    [updateTypingStatusImmediately],
-  );
-
-  // Optimize the input text change handler
-  const handleInputTextChanged = useCallback(
-    (text: string) => {
-      const isTyping = text.length > 0;
-
-      // Clear any existing timeout
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = null;
-      }
-
-      // Only send updates when typing state changes to avoid unnecessary writes
-      if (isTyping !== prevTypingStateRef.current) {
-        // If typing started, update immediately
-        if (isTyping) {
-          updateTypingStatusImmediately(true);
-          prevTypingStateRef.current = true;
-        } else {
-          // If typing stopped, use debounce to avoid flickering when
-          // user is just pausing between words
-          debouncedStopTyping();
-        }
-      }
-
-      // Set timeout to clear typing status after inactivity
-      if (isTyping) {
-        typingTimeoutRef.current = setTimeout(() => {
-          updateTypingStatusImmediately(false);
-          prevTypingStateRef.current = false;
-          typingTimeoutRef.current = null;
-        }, TYPING_TIMEOUT);
-      }
-    },
-    [updateTypingStatusImmediately, debouncedStopTyping],
-  );
-
-  // Make sure to cancel debounced function on unmount
-  useEffect(() => {
-    return () => {
-      debouncedStopTyping.cancel();
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-    };
-  }, [debouncedStopTyping]);
-
-  const conversationMessages = messages[chatId || ''] || [];
-
-  // Function to check if a message has been read by all participants
-  const isMessageReadByAll = useCallback(
-    (messageTimestamp: Date) => {
-      // If we don't have member data or timestamp data, assume not read
-      if (!otherMembers.length || !Object.keys(lastReadByUsers).length) {
-        return false;
-      }
-
-      // Check if all other members have read the message
-      return otherMembers.every((member) => {
-        const lastReadTime = lastReadByUsers[member.uid];
-        return lastReadTime && messageTimestamp < lastReadTime;
-      });
-    },
-    [otherMembers, lastReadByUsers],
-  );
-
-  // Modified to include optimistic messages and read status
-  const giftedChatMessages: ExtendedMessage[] = useMemo(() => {
-    // Get messages from server
-    const serverMessages = conversationMessages
-      .map((message) => {
-        // Determine if message has been read by all other participants
-        const messageTime =
-          message.createdAt instanceof Date
-            ? message.createdAt
-            : new Date(message.createdAt);
-
-        const isReadByAll =
-          message.senderId === user?.uid && isMessageReadByAll(messageTime);
-
-        return {
-          _id: message.id,
-          text: message.text,
-          createdAt: messageTime,
-          user: {
-            _id: message.senderId,
-            name:
-              message.senderId === user?.uid
-                ? user?.displayName || 'You'
-                : otherMembers.find((m) => m.uid === message.senderId)
-                    ?.displayName || 'Unknown',
-            avatar:
-              message.senderId === user?.uid
-                ? user?.photoURL
-                : otherMembers.find((m) => m.uid === message.senderId)
-                    ?.photoURL,
-          },
-          sent: true, // All server messages were successfully sent
-          received: isReadByAll || false, // Received when read by all members
-          image: message.imageUrl, // Add image URL if it exists
-          poll: message.poll, // Add poll data if it exists
-        };
-      })
-      .reverse();
-
-    // Filter out optimistic messages that have been confirmed by the server
-    const newOptimisticMessages = optimisticMessages.filter((optMsg) => {
-      return !serverMessages.some(
-        (serverMsg) =>
-          serverMsg.text === optMsg.text &&
-          Math.abs(
-            new Date(serverMsg.createdAt).getTime() -
-              new Date(optMsg.createdAt).getTime(),
-          ) < 5000,
-      );
-    });
-
-    // Update optimistic messages if any were confirmed
-    if (newOptimisticMessages.length !== optimisticMessages.length) {
-      setOptimisticMessages(newOptimisticMessages);
-    }
-
-    // Combine optimistic and server messages
-    return [...newOptimisticMessages, ...serverMessages];
-  }, [
-    conversationMessages,
-    user?.uid,
-    user?.displayName,
-    user?.photoURL,
-    otherMembers,
-    optimisticMessages,
-    isMessageReadByAll,
-  ]);
-
+  // Listen to messages
   useEffect(() => {
     if (!chatId) return;
     console.log('[CrewDateChat] Setting up message listener for:', chatId);
     const unsubscribeMessages = listenToMessages(chatId);
     return () => unsubscribeMessages();
-  }, [chatId]);
+  }, [chatId]); // Remove listenToMessages from dependencies
 
-  // Listen for last read timestamps from all members
+  // Listen for typing status and read receipts
   useEffect(() => {
     if (!chatId || !user?.uid) return;
+
     const chatRef = doc(db, 'crew_date_chats', chatId);
     const unsubscribe = onSnapshot(
       chatRef,
@@ -465,6 +476,8 @@ const CrewDateChatScreen: React.FC = () => {
         if (!user?.uid) return;
         if (docSnapshot.exists()) {
           const data = docSnapshot.data();
+
+          // Handle read receipts
           if (data.lastRead) {
             const lastReadData: { [uid: string]: Date } = {};
             Object.keys(data.lastRead).forEach((uid) => {
@@ -476,7 +489,7 @@ const CrewDateChatScreen: React.FC = () => {
             setLastReadByUsers(lastReadData);
           }
 
-          // Continue with typing status handling
+          // Handle typing status
           if (data.typingStatus) {
             const updatedTypingStatus: { [key: string]: boolean } = {};
             Object.keys(data.typingStatus).forEach((key) => {
@@ -507,13 +520,42 @@ const CrewDateChatScreen: React.FC = () => {
       },
     );
     return () => unsubscribe();
-  }, [chatId, user?.uid]);
+  }, [chatId, user?.uid, setLastReadByUsers, setOtherUsersTyping]);
 
+  // Handle loading earlier messages
+  const handleLoadEarlier = useCallback(async () => {
+    if (!chatId || isLoadingEarlier || !paginationInfo?.hasMore) return;
+
+    console.log('[CrewDateChat] Loading earlier messages...');
+    setIsLoadingEarlier(true);
+
+    try {
+      const hasMore = await loadEarlierMessages(chatId);
+      console.log('[CrewDateChat] Loaded earlier messages, has more:', hasMore);
+    } catch (error) {
+      console.error('[CrewDateChat] Error loading earlier messages:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Could not load earlier messages',
+        position: 'bottom',
+      });
+    } finally {
+      setIsLoadingEarlier(false);
+    }
+  }, [
+    chatId,
+    paginationInfo,
+    loadEarlierMessages,
+    isLoadingEarlier,
+    setIsLoadingEarlier,
+  ]);
+
+  // Message handling
   const onSend = useCallback(
     async (msgs: ExtendedMessage[] = []) => {
       const text = msgs[0].text;
       if (text && text.trim() !== '' && chatId) {
-        // Create optimistic message
         const optimisticMsg: ExtendedMessage = {
           _id: `temp-${Date.now()}`,
           text: text.trim(),
@@ -526,15 +568,11 @@ const CrewDateChatScreen: React.FC = () => {
           pending: true,
         };
 
-        // Add to optimistic messages
         setOptimisticMessages((prev) => [...prev, optimisticMsg]);
 
-        // Send to server
         try {
           await sendMessage(chatId, text.trim());
-          // Explicitly set typing status to false when sending a message
           updateTypingStatusImmediately(false);
-          prevTypingStateRef.current = false;
           await updateLastRead(chatId);
         } catch (error) {
           console.error('Failed to send message:', error);
@@ -546,10 +584,17 @@ const CrewDateChatScreen: React.FC = () => {
         }
       }
     },
-    [chatId, sendMessage, updateTypingStatusImmediately, updateLastRead, user],
+    [
+      chatId,
+      sendMessage,
+      updateTypingStatusImmediately,
+      updateLastRead,
+      user,
+      setOptimisticMessages,
+    ],
   );
 
-  // Handle image picking and sending
+  // Image handling
   const handlePickImage = useCallback(async () => {
     if (!chatId || !user?.uid) return;
 
@@ -558,16 +603,9 @@ const CrewDateChatScreen: React.FC = () => {
       if (!imageUri) return;
 
       setIsUploading(true);
-
-      // Upload image to Firebase Storage
       const imageUrl = await uploadImage(imageUri, user.uid, chatId);
-
-      // Send message with image
       await sendMessage(chatId, '', imageUrl);
-
-      // Explicitly set typing status to false when sending a message
       updateTypingStatusImmediately(false);
-      prevTypingStateRef.current = false;
       await updateLastRead(chatId);
     } catch (error) {
       console.error('Error sending image:', error);
@@ -585,9 +623,9 @@ const CrewDateChatScreen: React.FC = () => {
     sendMessage,
     updateTypingStatusImmediately,
     updateLastRead,
+    setIsUploading,
   ]);
 
-  // New function to handle taking a photo
   const handleTakePhoto = useCallback(async () => {
     if (!chatId || !user?.uid) return;
 
@@ -596,16 +634,9 @@ const CrewDateChatScreen: React.FC = () => {
       if (!photoUri) return;
 
       setIsUploading(true);
-
-      // Upload image to Firebase Storage
       const imageUrl = await uploadImage(photoUri, user.uid, chatId);
-
-      // Send message with image
       await sendMessage(chatId, '', imageUrl);
-
-      // Explicitly set typing status to false
       updateTypingStatusImmediately(false);
-      prevTypingStateRef.current = false;
       await updateLastRead(chatId);
     } catch (error) {
       console.error('Error sending photo:', error);
@@ -623,9 +654,10 @@ const CrewDateChatScreen: React.FC = () => {
     sendMessage,
     updateTypingStatusImmediately,
     updateLastRead,
+    setIsUploading,
   ]);
 
-  // Handle poll creation
+  // Poll handling
   const handleCreatePoll = useCallback(
     async (question: string, options: string[]) => {
       if (!chatId) return;
@@ -643,7 +675,6 @@ const CrewDateChatScreen: React.FC = () => {
     [chatId, createPoll],
   );
 
-  // Handle voting in a poll
   const handleVotePoll = useCallback(
     async (messageId: string, optionIndex: number) => {
       if (!chatId) return;
@@ -661,7 +692,7 @@ const CrewDateChatScreen: React.FC = () => {
     [chatId, votePoll],
   );
 
-  // Modified render actions function to show menu
+  // Render functions
   const renderActions = useCallback(() => {
     return (
       <>
@@ -721,9 +752,10 @@ const CrewDateChatScreen: React.FC = () => {
     isUploading,
     isImageMenuVisible,
     isPollModalVisible,
+    setIsImageMenuVisible,
+    setIsPollModalVisible,
   ]);
 
-  // Custom render for poll messages - fixed with proper typing
   const renderCustomView = useCallback(
     (props: MessageProps<ExtendedMessage>) => {
       const { currentMessage } = props;
@@ -734,7 +766,7 @@ const CrewDateChatScreen: React.FC = () => {
             options={currentMessage.poll.options}
             votes={currentMessage.poll.votes || {}}
             totalVotes={currentMessage.poll.totalVotes || 0}
-            messageId={String(currentMessage._id)} // Convert to string for consistency
+            messageId={String(currentMessage._id)}
             onVote={(optionIndex) =>
               handleVotePoll(String(currentMessage._id), optionIndex)
             }
@@ -746,7 +778,92 @@ const CrewDateChatScreen: React.FC = () => {
     [handleVotePoll],
   );
 
-  // Manage active chat state when screen gains/loses focus.
+  const renderAvatar = useCallback(
+    (props: AvatarProps<ExtendedMessage>) => {
+      const messageUserId = props.currentMessage.user._id;
+      const messageUser = otherMembers.find((m) => m.uid === messageUserId);
+      return (
+        <ProfilePicturePicker
+          imageUrl={messageUser?.photoURL || null}
+          onImageUpdate={() => {}}
+          editable={false}
+          size={36}
+        />
+      );
+    },
+    [otherMembers],
+  );
+
+  const renderTicks = useCallback(
+    (message: ExtendedMessage) => {
+      if (message.user._id !== user?.uid) return null;
+
+      if (message.pending) {
+        return (
+          <View style={styles.tickContainer}>
+            <Ionicons name="time-outline" size={10} color="#92AAB0" />
+          </View>
+        );
+      }
+
+      if (message.received) {
+        return (
+          <View style={styles.tickContainer}>
+            <Ionicons name="checkmark-done" size={14} color="#4FC3F7" />
+          </View>
+        );
+      } else if (message.sent) {
+        return (
+          <View style={styles.tickContainer}>
+            <Ionicons name="checkmark" size={14} color="#92AAB0" />
+          </View>
+        );
+      }
+
+      return null;
+    },
+    [user?.uid],
+  );
+
+  const renderMessageImage = useCallback(
+    (props: MessageImageProps<ExtendedMessage>) => {
+      return <ChatImageViewer {...props} imageStyle={styles.messageImage} />;
+    },
+    [],
+  );
+
+  const renderInputToolbar = (props: any) => (
+    <InputToolbar {...props} containerStyle={styles.inputToolbarContainer} />
+  );
+
+  // Computed values
+  const typingUserIds = useMemo(
+    () => Object.keys(otherUsersTyping).filter((uid) => otherUsersTyping[uid]),
+    [otherUsersTyping],
+  );
+
+  const typingDisplayNames = useMemo(() => {
+    return typingUserIds.map((uid) => {
+      const member = otherMembers.find((m) => m.uid === uid);
+      return member ? member.displayName : 'Someone';
+    });
+  }, [typingUserIds, otherMembers]);
+
+  const renderFooter = useCallback(() => {
+    if (typingDisplayNames.length > 0) {
+      return (
+        <View style={styles.footerContainer}>
+          <Text style={styles.footerText}>
+            {typingDisplayNames.join(', ')}{' '}
+            {typingDisplayNames.length === 1 ? 'is' : 'are'} typing...
+          </Text>
+        </View>
+      );
+    }
+    return null;
+  }, [typingDisplayNames]);
+
+  // Focus and app state management
   useFocusEffect(
     useCallback(() => {
       if (chatId) {
@@ -761,7 +878,6 @@ const CrewDateChatScreen: React.FC = () => {
     }, [chatId, updateLastRead, addActiveChat, removeActiveChat]),
   );
 
-  // Handle AppState changes.
   const appState = useRef<AppStateStatus>(AppState.currentState);
   useEffect(() => {
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
@@ -785,138 +901,36 @@ const CrewDateChatScreen: React.FC = () => {
     return () => subscription.remove();
   }, [chatId, isFocused, addActiveChat, removeActiveChat]);
 
-  // Create a ref to track the previous message count for comparison
+  // Auto-mark messages as read
   const previousMessageCountRef = useRef<number>(0);
-
-  // Debounced function to update last read status
   const debouncedUpdateLastRead = useMemo(
     () =>
-      debounce((chatId: string) => {
-        updateLastRead(chatId);
-      }, READ_UPDATE_DEBOUNCE),
+      debounce(
+        (chatId: string) => updateLastRead(chatId),
+        READ_UPDATE_DEBOUNCE,
+      ),
     [updateLastRead],
   );
 
-  // Effect to auto-mark messages as read when receiving new messages while screen is focused
   useEffect(() => {
     if (!chatId || !isFocused) return;
 
     const currentMessageCount = conversationMessages.length;
-
-    // Only update if we received new messages (not on initial load)
     if (
       previousMessageCountRef.current > 0 &&
       currentMessageCount > previousMessageCountRef.current
     ) {
-      // New messages arrived while screen is focused - mark as read
       debouncedUpdateLastRead(chatId);
     }
-
-    // Update the ref with current count for next comparison
     previousMessageCountRef.current = currentMessageCount;
   }, [conversationMessages, chatId, isFocused, debouncedUpdateLastRead]);
 
-  // Reset the counter when changing chats
   useEffect(() => {
     previousMessageCountRef.current = 0;
   }, [chatId]);
 
-  const typingUserIds = useMemo(
-    () => Object.keys(otherUsersTyping).filter((uid) => otherUsersTyping[uid]),
-    [otherUsersTyping],
-  );
-
-  const typingDisplayNames = useMemo(() => {
-    return typingUserIds.map((uid) => {
-      const member = otherMembers.find((m) => m.uid === uid);
-      return member ? member.displayName : 'Someone';
-    });
-  }, [typingUserIds, otherMembers]);
-
-  const renderAvatar = useCallback(
-    (props: AvatarProps<ExtendedMessage>) => {
-      const messageUserId = props.currentMessage.user._id;
-      const messageUser = otherMembers.find((m) => m.uid === messageUserId);
-      return (
-        <ProfilePicturePicker
-          imageUrl={messageUser?.photoURL || null}
-          onImageUpdate={() => {}}
-          editable={false}
-          size={36}
-        />
-      );
-    },
-    [otherMembers],
-  );
-
-  // Custom input toolbar styled to resemble iOS.
-  const renderInputToolbar = (props: any) => (
-    <InputToolbar {...props} containerStyle={styles.inputToolbarContainer} />
-  );
-
-  // Custom render function for message ticks (WhatsApp style)
-  const renderTicks = useCallback(
-    (message: ExtendedMessage) => {
-      // Only show ticks for the current user's messages
-      if (message.user._id !== user?.uid) {
-        return null;
-      }
-
-      // For pending/optimistic messages
-      if (message.pending) {
-        return (
-          <View style={styles.tickContainer}>
-            <Ionicons name="time-outline" size={10} color="#92AAB0" />
-          </View>
-        );
-      }
-
-      // For sent messages
-      if (message.received) {
-        // Double blue ticks for read by all members
-        return (
-          <View style={styles.tickContainer}>
-            <Ionicons name="checkmark-done" size={14} color="#4FC3F7" />
-          </View>
-        );
-      } else if (message.sent) {
-        // Single gray tick for delivered but not read by all
-        return (
-          <View style={styles.tickContainer}>
-            <Ionicons name="checkmark" size={14} color="#92AAB0" />
-          </View>
-        );
-      }
-
-      return null;
-    },
-    [user?.uid],
-  );
-
-  // Only show typing indicator in footer, not loading earlier messages
-  const renderFooter = useCallback(() => {
-    if (typingDisplayNames.length > 0) {
-      return (
-        <View style={styles.footerContainer}>
-          <Text style={styles.footerText}>
-            {typingDisplayNames.join(', ')}{' '}
-            {typingDisplayNames.length === 1 ? 'is' : 'are'} typing...
-          </Text>
-        </View>
-      );
-    }
-    return null;
-  }, [typingDisplayNames]);
-
-  // Custom render for image messages
-  const renderMessageImage = useCallback(
-    (props: MessageImageProps<ExtendedMessage>) => {
-      return <ChatImageViewer {...props} imageStyle={styles.messageImage} />;
-    },
-    [],
-  );
-
   if (!chatId) return <LoadingOverlay />;
+
   return (
     <View style={styles.container}>
       <GiftedChat
