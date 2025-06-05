@@ -52,9 +52,19 @@ import Toast from 'react-native-toast-message';
 import { pickImage, uploadImage, takePhoto } from '@/utils/imageUpload';
 import ChatImageViewer from '@/components/ChatImageViewer';
 import ImageOptionsMenu from '@/components/ImageOptionsMenu';
-
-const TYPING_TIMEOUT = 1000;
-const READ_UPDATE_DEBOUNCE = 1000; // 1 second debounce for read status updates
+import {
+  usePerformanceMonitoring,
+  useTypingHandler,
+  useOptimisticMessages,
+  useCachedChatState,
+  getCacheKey,
+  getCachedData,
+  setCachedData,
+  ensureMessagesArray,
+  cleanupLegacyCache,
+  createOptimisticMessage,
+  READ_UPDATE_DEBOUNCE,
+} from '@/utils/chatUtils';
 
 const DMChatScreen: React.FC = () => {
   const { otherUserId } = useLocalSearchParams<{ otherUserId: string }>();
@@ -72,12 +82,9 @@ const DMChatScreen: React.FC = () => {
   const isFocused = useIsFocused();
   const tabBarHeight = useBottomTabBarHeight();
   const { user, addActiveChat, removeActiveChat } = useUser();
-  const [otherUser, setOtherUser] = useState<User | null>(null);
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const [lastReadTimestamp, setLastReadTimestamp] = useState<Date | null>(null);
   const insets = useSafeAreaInsets();
-  // Add state for optimistic messages
-  const [optimisticMessages, setOptimisticMessages] = useState<IMessage[]>([]);
   // Add state for loading earlier messages
   const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -89,10 +96,31 @@ const DMChatScreen: React.FC = () => {
     return generateDMConversationId(user.uid, otherUserId);
   }, [user?.uid, otherUserId]);
 
+  // 🚀 Performance monitoring
+  const { recordCacheLoad } = usePerformanceMonitoring(conversationId);
+
+  // 💾 Cached state management for instant loading
+  // In DM context, we mainly use this for the recordCacheLoad functionality
+  useCachedChatState(conversationId, recordCacheLoad);
+
+  // Initialize other user from cache for instant loading
+  const [otherUser, setOtherUser] = useState<User | null>(() => {
+    if (!otherUserId) return null;
+    const cached = getCachedData<User>(getCacheKey('user', otherUserId));
+    recordCacheLoad(Boolean(cached));
+    return cached;
+  });
+
   // Get pagination info for this conversation
   const paginationInfo = conversationId
     ? messagePaginationInfo[conversationId]
     : undefined;
+
+  // 🗂️ Message array validation and caching
+  const conversationMessages = useMemo(() => {
+    if (!conversationId || !messages || !messages[conversationId]) return [];
+    return ensureMessagesArray(messages[conversationId], conversationId);
+  }, [conversationId, messages]);
 
   // Handle loading earlier messages
   const handleLoadEarlier = useCallback(async () => {
@@ -182,14 +210,27 @@ const DMChatScreen: React.FC = () => {
     return () => unsubscribe();
   }, [conversationId, otherUserId]);
 
-  // Fetch details for the other user.
+  // 🧹 One-time cache cleanup on mount
+  useEffect(() => {
+    if (!conversationId) return;
+    cleanupLegacyCache(conversationId);
+  }, [conversationId]);
+
+  // Fetch details for the other user and cache them
   useEffect(() => {
     if (usersCache[otherUserId]) {
-      setOtherUser(usersCache[otherUserId]);
+      const cachedUser = usersCache[otherUserId];
+      setOtherUser(cachedUser);
+      // Update cache with latest user data
+      setCachedData(getCacheKey('user', otherUserId), cachedUser);
     } else {
       console.log('Fetching user details from DMChatScreen for', otherUserId);
       fetchUserDetails(otherUserId).then((userData) => {
         setOtherUser(userData);
+        // Cache the fetched user data
+        if (userData) {
+          setCachedData(getCacheKey('user', otherUserId), userData);
+        }
       });
     }
   }, [otherUserId, usersCache, fetchUserDetails]);
@@ -204,12 +245,7 @@ const DMChatScreen: React.FC = () => {
     }
   }, [navigation, otherUser, insets.top]);
 
-  // Use a ref for the typing timeout to ensure proper cleanup.
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  // Track previous typing state to prevent unnecessary updates
-  const prevTypingStateRef = useRef<boolean>(false);
-
-  // Function to immediately update typing status when typing starts
+  // ⌨️ Optimized typing handler with utilities
   const updateTypingStatusImmediately = useCallback(
     async (isTyping: boolean) => {
       if (!conversationId || !user?.uid) return;
@@ -242,65 +278,30 @@ const DMChatScreen: React.FC = () => {
     [conversationId, user?.uid],
   );
 
-  // Only debounce the "stop typing" signal to reduce Firebase operations
-  const debouncedStopTyping = useMemo(
-    () =>
-      debounce(() => {
-        updateTypingStatusImmediately(false);
-        prevTypingStateRef.current = false;
-      }, 500),
-    [updateTypingStatusImmediately],
+  const { handleInputTextChanged } = useTypingHandler(
+    updateTypingStatusImmediately,
   );
 
-  // Optimize the input text change handler
-  const handleInputTextChanged = useCallback(
-    (text: string) => {
-      const isTyping = text.length > 0;
+  // Remove duplicate conversationMessages line since we have it above
+  // const conversationMessages = messages[conversationId] || [];
 
-      // Clear any existing timeout
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = null;
-      }
-
-      // Only send updates when typing state changes to avoid unnecessary writes
-      if (isTyping !== prevTypingStateRef.current) {
-        // If typing started, update immediately
-        if (isTyping) {
-          updateTypingStatusImmediately(true);
-          prevTypingStateRef.current = true;
-        } else {
-          // If typing stopped, use debounce to avoid flickering when
-          // user is just pausing between words
-          debouncedStopTyping();
-        }
-      }
-
-      // Set timeout to clear typing status after inactivity
-      if (isTyping) {
-        typingTimeoutRef.current = setTimeout(() => {
-          updateTypingStatusImmediately(false);
-          prevTypingStateRef.current = false;
-          typingTimeoutRef.current = null;
-        }, TYPING_TIMEOUT);
-      }
+  // 📱 Optimistic messaging with proper user display using chat utils
+  const { giftedChatMessages, setOptimisticMessages } = useOptimisticMessages(
+    conversationMessages,
+    user,
+    (userId: string) => {
+      if (userId === user?.uid) return user.displayName || 'You';
+      return otherUser?.displayName || 'Unknown';
     },
-    [updateTypingStatusImmediately, debouncedStopTyping],
+    (userId: string) => {
+      if (userId === user?.uid) return user.photoURL;
+      return otherUser?.photoURL;
+    },
+    (messageTimestamp: Date) => {
+      // Message is read if lastReadTimestamp exists and is after the message
+      return Boolean(lastReadTimestamp && messageTimestamp < lastReadTimestamp);
+    },
   );
-
-  // Make sure to cancel debounced function on unmount
-  useEffect(() => {
-    return () => {
-      debouncedStopTyping.cancel();
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-    };
-  }, [debouncedStopTyping]);
-
-  const conversationMessages = messages[conversationId] || [];
-
-  // Handle image picking and sending
   const handlePickImage = useCallback(async () => {
     if (!conversationId || !user?.uid) return;
 
@@ -318,7 +319,6 @@ const DMChatScreen: React.FC = () => {
 
       // Explicitly set typing status to false when sending a message
       updateTypingStatusImmediately(false);
-      prevTypingStateRef.current = false;
       await updateLastRead(conversationId);
     } catch (error) {
       console.error('Error sending image:', error);
@@ -356,7 +356,6 @@ const DMChatScreen: React.FC = () => {
 
       // Explicitly set typing status to false when sending a message
       updateTypingStatusImmediately(false);
-      prevTypingStateRef.current = false;
       await updateLastRead(conversationId);
     } catch (error) {
       console.error('Error sending photo:', error);
@@ -376,95 +375,29 @@ const DMChatScreen: React.FC = () => {
     updateLastRead,
   ]);
 
-  // Modified to include optimistic messages and message status
-  const giftedChatMessages: IMessage[] = useMemo(() => {
-    // Get messages from server
-    const serverMessages = conversationMessages
-      .map((message) => {
-        // Determine if message has been read by other user
-        const isRead =
-          lastReadTimestamp &&
-          message.senderId === user?.uid &&
-          new Date(message.createdAt) < lastReadTimestamp;
-
-        return {
-          _id: message.id,
-          text: message.text,
-          createdAt:
-            message.createdAt instanceof Date
-              ? message.createdAt
-              : new Date(message.createdAt),
-          user: {
-            _id: message.senderId,
-            name:
-              message.senderId === user?.uid
-                ? user?.displayName || 'You'
-                : otherUser?.displayName || 'Unknown',
-            avatar:
-              message.senderId === user?.uid
-                ? user?.photoURL
-                : otherUser?.photoURL,
-            isOnline:
-              message.senderId === user?.uid ? true : otherUser?.isOnline,
-          },
-          sent: true, // All server messages were successfully sent
-          received: isRead || false, // Message is "received" when it has been read
-          image: message.imageUrl, // Add image URL if it exists
-        };
-      })
-      .reverse();
-
-    // Find and remove any optimistic messages that have been confirmed
-    const newOptimisticMessages = optimisticMessages.filter((optMsg) => {
-      // If this message appears in server messages, remove it from optimistic messages
-      return !serverMessages.some(
-        (serverMsg) =>
-          serverMsg.text === optMsg.text &&
-          Math.abs(
-            new Date(serverMsg.createdAt).getTime() -
-              new Date(optMsg.createdAt).getTime(),
-          ) < 5000,
-      );
-    });
-
-    // Update optimistic messages if any were confirmed
-    if (newOptimisticMessages.length !== optimisticMessages.length) {
-      setOptimisticMessages(newOptimisticMessages);
-    }
-
-    // Merge server messages with remaining optimistic messages
-    return [...newOptimisticMessages, ...serverMessages];
-  }, [
-    conversationMessages,
-    user,
-    otherUser,
-    optimisticMessages,
-    lastReadTimestamp,
-  ]);
-
   useEffect(() => {
     if (!conversationId) return;
     const unsubscribeMessages = listenToDMMessages(conversationId);
     return () => unsubscribeMessages();
   }, [conversationId, listenToDMMessages]);
 
-  // Modified onSend function to handle text-only messages
+  // 💾 Cache messages for instant loading on next visit
+  useEffect(() => {
+    if (conversationId && conversationMessages.length > 0) {
+      const componentCacheKey = `dm_messages_${conversationId}`;
+      setCachedData(componentCacheKey, {
+        messages: conversationMessages.slice(-50), // Cache last 50 messages
+      });
+    }
+  }, [conversationId, conversationMessages.length]);
+
+  // Modified onSend function to handle text-only messages using chat utilities
   const onSend = useCallback(
     async (msgs: IMessage[] = []) => {
       const text = msgs[0].text;
       if (text && text.trim() !== '') {
-        // Add the message optimistically
-        const optimisticMsg: IMessage = {
-          _id: `temp-${Date.now()}`,
-          text: text.trim(),
-          createdAt: new Date(),
-          user: {
-            _id: user?.uid || '',
-            name: user?.displayName || 'You',
-            avatar: user?.photoURL,
-          },
-          pending: true,
-        };
+        // Create optimistic message using utility
+        const optimisticMsg = createOptimisticMessage(text.trim(), user);
 
         // Add to optimistic messages
         setOptimisticMessages((prev) => [...prev, optimisticMsg]);
@@ -474,7 +407,6 @@ const DMChatScreen: React.FC = () => {
           await sendMessage(conversationId, text.trim());
           // Explicitly set typing status to false when sending a message
           updateTypingStatusImmediately(false);
-          prevTypingStateRef.current = false;
           await updateLastRead(conversationId);
         } catch (error) {
           console.error('Failed to send message:', error);
@@ -492,6 +424,7 @@ const DMChatScreen: React.FC = () => {
       updateTypingStatusImmediately,
       updateLastRead,
       user,
+      setOptimisticMessages,
     ],
   );
 
