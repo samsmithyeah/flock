@@ -135,10 +135,11 @@ export const notifyUsersOnNewGroupMessage = onDocumentCreated(
           }
 
           const activeChats = recipientData.activeChats || [];
+          const isOnline = recipientData.isOnline === true;
 
-          // Check if the recipient has the chat open
-          if (activeChats.includes(chatId)) {
-            console.log(`Recipient ${recipientId} is actively viewing the chat. No notification sent.`);
+          // Check if the recipient has the chat open AND is online
+          if (activeChats.includes(chatId) && isOnline) {
+            console.log(`Recipient ${recipientId} is actively viewing the chat and is online. No notification sent.`);
             return;
           }
 
@@ -162,10 +163,11 @@ export const notifyUsersOnNewGroupMessage = onDocumentCreated(
                 throw new Error(`Recipient data for user ${recipientId} is undefined.`);
               }
 
-              // Check if the recipient is actively viewing the chat
+              // Check if the recipient is actively viewing the chat AND is online
               const activeChats = recipientData.activeChats || [];
-              if (activeChats.includes(chatId)) {
-                console.log(`Recipient ${recipientId} is actively viewing the chat during transaction. No badge increment.`);
+              const isOnline = recipientData.isOnline === true;
+              if (activeChats.includes(chatId) && isOnline) {
+                console.log(`Recipient ${recipientId} is actively viewing the chat and is online during transaction. No badge increment.`);
                 return 0; // Do not increment badgeCount
               }
 
@@ -230,7 +232,7 @@ export const notifyUsersOnNewGroupMessage = onDocumentCreated(
             // Add the messages to the notifications array
             notifications.push(...messages);
           } else {
-            console.log(`No badge count incremented for recipient ${recipientId}. They are actively viewing the chat.`);
+            console.log(`No badge count incremented for recipient ${recipientId}. They are actively viewing the chat and are online.`);
           }
         })
       );
