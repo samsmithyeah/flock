@@ -22,34 +22,29 @@ import {
   orderBy,
   setDoc,
   serverTimestamp,
-  getCountFromServer,
   limit,
   startAfter,
-  DocumentData,
-  QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useUser } from '@/context/UserContext';
 import Toast from 'react-native-toast-message';
 import { useCrews } from './CrewsContext';
-import { storage } from '@/storage';
+import {
+  UserBatchFetcher,
+  MessageListenerManager,
+  fetchUnreadCount as utilsFetchUnreadCount,
+  computeTotalUnread as utilsComputeTotalUnread,
+  createMessageListener,
+  loadEarlierMessages as utilsLoadEarlierMessages,
+  processMessagesBatch,
+  MessagePaginationInfo as UtilsMessagePaginationInfo,
+  ProcessedMessage,
+  DEFAULT_MESSAGES_PER_LOAD,
+} from '@/utils/chatContextUtils';
 
-// Message remains unchanged
-interface Message {
-  id: string;
-  senderId: string;
-  text: string;
-  createdAt: Date;
-  senderName?: string;
-  imageUrl?: string; // Add support for image messages
-}
-
-// Add pagination info interface (same as in CrewDateChatContext)
-interface MessagePaginationInfo {
-  hasMore: boolean;
-  loading: boolean;
-  lastDoc: QueryDocumentSnapshot<DocumentData> | null;
-}
+// Use types from utilities directly
+type Message = ProcessedMessage;
+type MessagePaginationInfo = UtilsMessagePaginationInfo;
 
 // Update DM interface to store only participant UIDs (not full user objects)
 interface DirectMessage {
@@ -59,7 +54,7 @@ interface DirectMessage {
 }
 
 // Default number of messages to load initially and for pagination
-const MESSAGES_PER_LOAD = 20;
+const MESSAGES_PER_LOAD = DEFAULT_MESSAGES_PER_LOAD;
 
 interface DirectMessagesContextProps {
   dms: DirectMessage[];
@@ -84,7 +79,7 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
   const { user, activeChats } = useUser();
-  const { usersCache, fetchUserDetails } = useCrews();
+  const { usersCache, setUsersCache } = useCrews();
   const [dms, setDms] = useState<DirectMessage[]>([]);
   const [messages, setMessages] = useState<{ [dmId: string]: Message[] }>({});
   const [totalUnread, setTotalUnread] = useState<number>(0);
@@ -94,61 +89,47 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
     [dmId: string]: MessagePaginationInfo;
   }>({});
 
-  // Ref to keep track of message listeners
-  const listenersRef = useRef<{ [dmId: string]: () => void }>({});
-  const pendingUserFetches = useRef<{ [uid: string]: Promise<any> }>({});
+  // Initialize utilities with proper cleanup
+  const userBatchFetcher = useRef<UserBatchFetcher | null>(null);
+  const messageListenerManager = useRef<MessageListenerManager | null>(null);
 
-  // Fetch unread count for a specific DM
+  // Initialize utilities
+  useEffect(() => {
+    userBatchFetcher.current = new UserBatchFetcher(usersCache, setUsersCache);
+    messageListenerManager.current = new MessageListenerManager();
+
+    return () => {
+      messageListenerManager.current?.removeAllListeners();
+      userBatchFetcher.current?.clearPendingBatches();
+    };
+  }, [usersCache, setUsersCache]);
+
+  // Fetch unread count for a specific DM using standardized utility
   const fetchUnreadCount = useCallback(
     async (dmId: string): Promise<number> => {
       if (!user?.uid) return 0;
-      try {
-        const dmRef = doc(db, 'direct_messages', dmId);
-        const dmDoc = await getDoc(dmRef);
-        if (!dmDoc.exists()) {
-          console.warn(`DM document ${dmId} does not exist.`);
-          return 0;
-        }
-        const dmData = dmDoc.data();
-        if (!dmData) return 0;
-        const lastRead = dmData.lastRead ? dmData.lastRead[user.uid] : null;
-        if (!lastRead) {
-          // lastRead should not be null other than during fetch so return 0
-          return 0;
-        }
-        const messagesRef = collection(db, 'direct_messages', dmId, 'messages');
-        const msqQuery = query(messagesRef, where('createdAt', '>', lastRead));
-        const countSnapshot = await getCountFromServer(msqQuery);
-        return countSnapshot.data().count;
-      } catch (error: any) {
-        if (error.code === 'unavailable') {
-          Toast.show({
-            type: 'error',
-            text1: 'Error',
-            text2:
-              'Could not fetch unread count. Please check your connection.',
-          });
-          return 0;
-        }
-        console.error('Error fetching unread count:', error);
-        return 0;
-      }
+      return utilsFetchUnreadCount(dmId, user.uid, 'direct_messages', {
+        fallbackValue: 0,
+        includePermissionErrors: false,
+      });
     },
     [user?.uid],
   );
 
-  // Compute total unread messages across all DMs (excluding active chats)
+  // Compute total unread messages across all DMs using standardized utility
   const computeTotalUnread = useCallback(async () => {
     if (!user?.uid || dms.length === 0) {
       setTotalUnread(0);
       return;
     }
     try {
-      const unreadPromises = dms
-        .filter((dm) => !activeChats.has(dm.id))
-        .map((dm) => fetchUnreadCount(dm.id));
-      const unreadCounts = await Promise.all(unreadPromises);
-      const total = unreadCounts.reduce((acc, count) => acc + count, 0);
+      const total = await utilsComputeTotalUnread(
+        dms,
+        user.uid,
+        activeChats,
+        'direct_messages',
+        { fallbackValue: 0 },
+      );
       setTotalUnread(total);
     } catch (error) {
       console.error('Error computing total unread messages:', error);
@@ -158,7 +139,7 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
         text2: 'Could not compute total unread messages',
       });
     }
-  }, [user?.uid, dms, fetchUnreadCount, activeChats]);
+  }, [user?.uid, dms, activeChats]);
 
   // Update the lastRead timestamp for a DM
   const updateLastRead = useCallback(
@@ -253,427 +234,127 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
     [user?.uid, updateLastRead],
   );
 
-  // Listen for real-time updates in DM messages - updated with pagination
+  // Listen for real-time updates in DM messages using standardized listener
   const listenToDMMessages = useCallback(
     (dmId: string) => {
-      if (!user?.uid) return () => {};
+      if (
+        !user?.uid ||
+        !userBatchFetcher.current ||
+        !messageListenerManager.current
+      ) {
+        return () => {};
+      }
 
       // Check if we already have a listener for this DM
-      if (listenersRef.current[dmId]) {
-        return () => {
-          if (listenersRef.current[dmId]) {
-            listenersRef.current[dmId]();
-            delete listenersRef.current[dmId];
-          }
-        };
+      if (messageListenerManager.current.hasListener(dmId)) {
+        return () => messageListenerManager.current?.removeListener(dmId);
       }
 
-      // Initialize pagination info if it doesn't exist - outside the callback to avoid dependency
-      if (!messagePaginationInfo[dmId]) {
-        // Use a stable initialization approach
-        setMessagePaginationInfo((prev) => {
-          // Only update if it doesn't already exist
-          if (prev[dmId]) {
-            return prev;
-          }
-          return {
-            ...prev,
-            [dmId]: {
-              hasMore: true, // Start with true to show "load earlier" button
-              loading: false,
-              lastDoc: null,
-            },
-          };
-        });
-      }
-
-      const messagesRef = collection(db, 'direct_messages', dmId, 'messages');
-
-      // Modified to use limit and get recent messages in descending order (newest first)
-      const msgQuery = query(
-        messagesRef,
-        orderBy('createdAt', 'desc'), // Latest messages first
-        limit(MESSAGES_PER_LOAD),
-      );
-
-      // Load cached messages if available
-      const cachedMessages = storage.getString(`messages_${dmId}`);
-      if (cachedMessages) {
-        try {
-          const parsedCachedMessages: Message[] = JSON.parse(
-            cachedMessages,
-            (key, value) =>
-              key === 'createdAt' && typeof value === 'string'
-                ? new Date(value)
-                : value,
-          );
-          setMessages((prev) => ({ ...prev, [dmId]: parsedCachedMessages }));
-        } catch (error) {
-          console.error('Error parsing cached messages:', error);
-        }
-      }
-
-      const unsubscribe = onSnapshot(
-        msgQuery,
-        async (querySnapshot) => {
-          if (!user?.uid) return;
-          try {
-            // Store the last document for pagination
-            const lastVisible =
-              querySnapshot.docs.length > 0
-                ? querySnapshot.docs[querySnapshot.docs.length - 1]
-                : null;
-
-            // Update pagination info with proper hasMore value
-            // Check if this is exactly the page size to determine if there are probably more
-            const hasMore = querySnapshot.docs.length >= MESSAGES_PER_LOAD;
-
-            // Don't set hasMore=false if we got a full page of messages
-            setMessagePaginationInfo((prev) => {
-              const existing = prev[dmId];
-              if (!existing) {
-                return {
-                  ...prev,
-                  [dmId]: {
-                    hasMore,
-                    lastDoc: lastVisible,
-                    loading: false,
-                  },
-                };
-              }
-              return {
-                ...prev,
-                [dmId]: {
-                  ...existing,
-                  hasMore,
-                  lastDoc: lastVisible,
-                  loading: false,
-                },
-              };
-            });
-
-            // Process message data
-            const fetchedMessages: Message[] = await Promise.all(
-              querySnapshot.docs.map(async (docSnap) => {
-                const msgData = docSnap.data();
-                const senderId: string = msgData.senderId;
-                let senderName = 'Unknown';
-
-                if (senderId === user.uid) {
-                  senderName = user.displayName || 'You';
-                } else if (usersCache[senderId]) {
-                  senderName = usersCache[senderId].displayName || 'Unknown';
-                } else {
-                  // Use the pendingUserFetches cache to prevent duplicate calls.
-                  if (!pendingUserFetches.current[senderId]) {
-                    pendingUserFetches.current[senderId] =
-                      fetchUserDetails(senderId);
-                  }
-                  const fetchedUser =
-                    await pendingUserFetches.current[senderId];
-                  senderName = fetchedUser.displayName || 'Unknown';
-                }
-                return {
-                  id: docSnap.id,
-                  senderId,
-                  text: msgData.text,
-                  createdAt: msgData.createdAt
-                    ? msgData.createdAt.toDate()
-                    : new Date(),
-                  senderName,
-                  imageUrl: msgData.imageUrl || undefined, // Add imageUrl if present
-                };
-              }),
-            );
-
-            // Important: Reverse the messages to get correct chronological order
-            // The query results come newest->oldest, but we want oldest->newest for display
-            const chronologicalMessages = [...fetchedMessages].reverse();
-
-            // Update messages in state, properly merging with previous messages
-            setMessages((prev) => {
-              const existingMessages = [...(prev[dmId] || [])];
-
-              // Create a map of existing message IDs for fast lookup
-              const existingMessageIds = new Set(
-                existingMessages.map((msg) => msg.id),
-              );
-
-              // Add new messages, avoiding duplicates
-              const newMessages = chronologicalMessages.filter(
-                (msg) => !existingMessageIds.has(msg.id),
-              );
-
-              // Combine existing and new messages
-              const mergedMessages = [...existingMessages, ...newMessages];
-
-              // Sort all messages by date (oldest first for display)
-              mergedMessages.sort(
-                (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-              );
-              return { ...prev, [dmId]: mergedMessages };
-            });
-
-            // Cache the messages
-            const messagesToCache = chronologicalMessages.map((msg) => ({
-              ...msg,
-              createdAt: msg.createdAt.toISOString(),
-            }));
-
-            if (messagesToCache.length > 0) {
-              storage.set(`messages_${dmId}`, JSON.stringify(messagesToCache));
-            }
-          } catch (error) {
-            console.error('Error processing messages snapshot:', error);
-            Toast.show({
-              type: 'error',
-              text1: 'Error',
-              text2: 'Could not process messages updates.',
-            });
-          }
-        },
-        (error) => {
-          if (!user?.uid) return;
-          if (error.code === 'permission-denied') return;
-          console.warn('Error listening to DM messages:', error);
+      // Create standardized message listener
+      const unsubscribe = createMessageListener(
+        dmId,
+        user.uid,
+        'direct_messages',
+        userBatchFetcher.current,
+        setMessages,
+        setMessagePaginationInfo,
+        {
+          messagesPerLoad: MESSAGES_PER_LOAD,
+          enableCaching: true,
+          cachePrefix: 'messages',
         },
       );
 
-      listenersRef.current[dmId] = unsubscribe;
-      return () => {
-        if (listenersRef.current[dmId]) {
-          listenersRef.current[dmId]();
-          delete listenersRef.current[dmId];
-        }
-      };
+      messageListenerManager.current.addListener(dmId, unsubscribe);
+      return () => messageListenerManager.current?.removeListener(dmId);
     },
-    // Remove messagePaginationInfo from dependencies to break the loop
-    [user?.uid, user?.displayName, usersCache, fetchUserDetails],
+    [user?.uid],
   );
 
-  // Fix loadEarlierMessages implementation
+  // Load earlier messages using standardized utility
   const loadEarlierMessages = useCallback(
     async (dmId: string): Promise<boolean> => {
-      // Guard against invalid state
-      if (!user?.uid) return false;
+      if (!user?.uid || !userBatchFetcher.current) return false;
 
-      // Get pagination info for this DM
-      const paginationInfo = messagePaginationInfo[dmId];
-
-      // Log the current pagination state
-      console.log(
-        `[DMChat] loadEarlierMessages called for ${dmId}: hasMore=${paginationInfo?.hasMore}, loading=${paginationInfo?.loading}`,
+      const result = await utilsLoadEarlierMessages(
+        dmId,
+        'direct_messages',
+        messagePaginationInfo[dmId],
+        setMessagePaginationInfo,
+        {
+          messagesPerLoad: MESSAGES_PER_LOAD,
+          logPrefix: '[DMChat]',
+        },
       );
 
-      // If we're already loading or there are no more messages, don't proceed
-      if (!paginationInfo?.hasMore || paginationInfo?.loading) {
-        console.log(
-          "[DMChat] Can't load earlier messages:",
-          !paginationInfo?.hasMore ? 'No more messages' : 'Already loading',
-        );
-        return false;
-      }
-
-      // Set loading state
-      setMessagePaginationInfo((prev) => ({
-        ...prev,
-        [dmId]: {
-          ...prev[dmId],
-          loading: true,
-        },
-      }));
-
-      try {
-        const lastDoc = paginationInfo?.lastDoc;
-
-        // If we don't have a last document reference, we can't load more
-        if (!lastDoc) {
-          console.log('[DMChat] No lastDoc available for pagination');
-          setMessagePaginationInfo((prev) => ({
-            ...prev,
-            [dmId]: {
-              ...prev[dmId],
-              loading: false,
-              hasMore: false,
-            },
-          }));
-          return false;
-        }
-
-        console.log(
-          `[DMChat] Fetching earlier messages starting after doc: ${lastDoc.id}`,
-        );
-
+      if (result.success && result.messages.length > 0) {
+        // Process the raw documents to get proper messages
         const messagesRef = collection(db, 'direct_messages', dmId, 'messages');
-
-        // Query for older messages (ordered by createdAt desc, so most recent first)
-        const olderMessagesQuery = query(
+        const olderQuery = query(
           messagesRef,
           orderBy('createdAt', 'desc'),
-          startAfter(lastDoc),
+          startAfter(messagePaginationInfo[dmId]?.lastDoc),
           limit(MESSAGES_PER_LOAD),
         );
 
-        // Execute the query
-        const querySnapshot = await getDocs(olderMessagesQuery);
-        console.log(
-          `[DMChat] Fetched ${querySnapshot.docs.length} older messages`,
-        );
+        try {
+          const querySnapshot = await getDocs(olderQuery);
+          const olderMessages = await processMessagesBatch(
+            querySnapshot.docs,
+            userBatchFetcher.current,
+          );
 
-        // Get the new last document
-        const lastVisible =
-          querySnapshot.docs.length > 0
-            ? querySnapshot.docs[querySnapshot.docs.length - 1]
-            : lastDoc; // Keep the previous lastDoc if no new docs
+          const reversedOlderMessages = olderMessages.reverse();
 
-        // Determine if there are more messages (if we got a full page)
-        const hasMore = querySnapshot.docs.length >= MESSAGES_PER_LOAD;
+          // Update messages state by prepending older messages
+          setMessages((prev) => {
+            const existingMessages = [...(prev[dmId] || [])];
+            const existingMessageIds = new Set(
+              existingMessages.map((msg) => msg.id),
+            );
 
-        // Log pagination results
-        console.log(
-          `[DMChat] Loaded ${querySnapshot.docs.length} earlier messages, hasMore=${hasMore}`,
-        );
+            const uniqueOlderMessages = reversedOlderMessages.filter(
+              (msg) => !existingMessageIds.has(msg.id),
+            );
 
-        // Update pagination info
-        setMessagePaginationInfo((prev) => ({
-          ...prev,
-          [dmId]: {
-            hasMore,
-            lastDoc: lastVisible,
-            loading: false,
-          },
-        }));
+            const mergedMessages = [
+              ...uniqueOlderMessages,
+              ...existingMessages,
+            ];
+            mergedMessages.sort(
+              (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+            );
 
-        // If no results, we're done
-        if (querySnapshot.empty) {
-          console.log('[DMChat] No more messages found');
+            return { ...prev, [dmId]: mergedMessages };
+          });
+
+          return true;
+        } catch (error) {
+          console.error('Error processing older messages:', error);
           return false;
         }
-
-        // Process and add older messages
-        const olderMessages: Message[] = await Promise.all(
-          querySnapshot.docs.map(async (docSnap) => {
-            const msgData = docSnap.data();
-            const senderId: string = msgData.senderId;
-            let senderName = 'Unknown';
-
-            if (senderId === user.uid) {
-              senderName = user.displayName || 'You';
-            } else if (usersCache[senderId]) {
-              senderName = usersCache[senderId].displayName || 'Unknown';
-            } else {
-              if (!pendingUserFetches.current[senderId]) {
-                pendingUserFetches.current[senderId] =
-                  fetchUserDetails(senderId);
-              }
-              const fetchedUser = await pendingUserFetches.current[senderId];
-              senderName = fetchedUser.displayName || 'Unknown';
-            }
-
-            return {
-              id: docSnap.id,
-              senderId,
-              text: msgData.text,
-              createdAt: msgData.createdAt
-                ? msgData.createdAt.toDate()
-                : new Date(),
-              senderName,
-              imageUrl: msgData.imageUrl || undefined, // Add imageUrl if present
-            };
-          }),
-        );
-
-        // Important: Reverse to get chronological ordering (oldest first)
-        const reversedOlderMessages = olderMessages.reverse();
-
-        // Update messages state by prepending older messages
-        setMessages((prev) => {
-          // Start with all existing messages
-          const existingMessages = [...(prev[dmId] || [])];
-          console.log(
-            `[DMChat] Existing messages: ${existingMessages.length}, new messages: ${reversedOlderMessages.length}`,
-          );
-
-          // Create a map of existing message IDs for fast lookup
-          const existingMessageIds = new Set(
-            existingMessages.map((msg) => msg.id),
-          );
-
-          // Filter out duplicates
-          const uniqueOlderMessages = reversedOlderMessages.filter(
-            (msg) => !existingMessageIds.has(msg.id),
-          );
-
-          // Prepend older messages (they should go at beginning since they're older)
-          const mergedMessages = [...uniqueOlderMessages, ...existingMessages];
-
-          // Sort all messages by date (oldest first)
-          mergedMessages.sort(
-            (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-          );
-
-          console.log(
-            `[DMChat] Total messages after merge: ${mergedMessages.length}`,
-          );
-          return { ...prev, [dmId]: mergedMessages };
-        });
-
-        return querySnapshot.docs.length > 0;
-      } catch (error) {
-        console.error('Error loading earlier messages:', error);
-        Toast.show({
-          type: 'error',
-          text1: 'Error',
-          text2: 'Could not load earlier messages.',
-        });
-
-        // Reset loading state on error
-        setMessagePaginationInfo((prev) => ({
-          ...prev,
-          [dmId]: {
-            ...prev[dmId],
-            loading: false,
-          },
-        }));
-
-        return false;
       }
+
+      return result.success;
     },
-    [
-      user?.uid,
-      user?.displayName,
-      messagePaginationInfo,
-      fetchUserDetails,
-      usersCache,
-    ],
+    [user?.uid, messagePaginationInfo],
   );
 
-  // Fix the effect that sets up message listeners for each DM
+  // Set up message listeners for each DM using the manager
   useEffect(() => {
-    // Only run this effect if user is logged in
-    if (!user?.uid) return;
-
-    // Store current DM IDs to know what to clean up
-    const currentDmIds = new Set(dms.map((dm) => dm.id));
+    if (!user?.uid || !messageListenerManager.current) return;
 
     // Set up listeners for each DM
     dms.forEach((dm) => {
       listenToDMMessages(dm.id);
     });
 
-    // Clean up function
+    // Cleanup function
     return () => {
-      // Clean up listeners when this effect changes or unmounts
-      Object.entries(listenersRef.current).forEach(([dmId, unsubscribe]) => {
-        if (!currentDmIds.has(dmId)) {
-          // Only clean up listeners for DMs that are no longer in the list
-          unsubscribe();
-          delete listenersRef.current[dmId];
-          console.log(`[DMChat] Cleaned up listener for ${dmId}`);
-        }
-      });
+      // The MessageListenerManager handles cleanup automatically
+      messageListenerManager.current?.removeAllListeners();
     };
-  }, [dms, user?.uid, listenToDMMessages]); // Include user?.uid in dependencies
+  }, [dms, user?.uid, listenToDMMessages]);
 
   // Listen for real-time updates in DM list.
   // Now, we simply store the other participant's UID in each DM.
@@ -790,10 +471,8 @@ export const DirectMessagesProvider: React.FC<{ children: ReactNode }> = ({
 
   useEffect(() => {
     return () => {
-      Object.values(listenersRef.current).forEach((unsubscribe) =>
-        unsubscribe(),
-      );
-      listenersRef.current = {};
+      // Cleanup is handled by the MessageListenerManager in the initialization effect
+      messageListenerManager.current?.removeAllListeners();
     };
   }, []);
 
