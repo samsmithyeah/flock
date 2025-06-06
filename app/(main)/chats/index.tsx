@@ -1,4 +1,4 @@
-// // app/(main)/chats/index.tsx
+// app/(main)/chats/index.tsx
 
 import React, {
   useEffect,
@@ -17,9 +17,9 @@ import {
 } from 'react-native';
 import { useDirectMessages } from '@/context/DirectMessagesContext';
 import { useCrewDateChat } from '@/context/CrewDateChatContext';
+import { useCrewChat } from '@/context/CrewChatContext'; // Import the new context
 import { useCrews } from '@/context/CrewsContext';
 import {
-  doc,
   collection,
   getDocs,
   limit,
@@ -27,6 +27,7 @@ import {
   query,
   onSnapshot,
   Timestamp,
+  doc,
 } from 'firebase/firestore';
 import { db } from '@/firebase';
 import moment from 'moment';
@@ -40,7 +41,6 @@ import { FirebaseError } from 'firebase/app';
 import Toast from 'react-native-toast-message';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { debounce } from 'lodash';
-// Performance utilities
 import {
   getCacheKey,
   getCachedData,
@@ -55,19 +55,19 @@ interface TypingStatus {
   [chatId: string]: string[]; // array of userIds typing in each chat
 }
 
-// Rest of the existing interfaces...
+// Update CombinedChat to include the new 'crew' type
 interface CombinedChat {
   id: string;
-  type: 'direct' | 'group';
+  type: 'direct' | 'group' | 'crew';
   title: string;
   iconUrl?: string;
   lastMessage?: string;
   lastMessageTime?: Date;
   lastMessageSenderId?: string;
   lastMessageSenderName?: string;
-  lastMessageImageUrl?: string; // Add support for image URL
-  lastMessageIsPoll?: boolean; // Add flag for poll messages
-  lastMessagePollQuestion?: string; // Add poll question field
+  lastMessageImageUrl?: string;
+  lastMessageIsPoll?: boolean;
+  lastMessagePollQuestion?: string;
   unreadCount: number;
   isOnline?: boolean;
 }
@@ -77,26 +77,26 @@ interface ChatMetadata {
   lastMessageTime?: string;
   lastMessageSenderId?: string;
   lastMessageSenderName?: string;
-  imageUrl?: string; // Add support for image URL
-  isPoll?: boolean; // Add flag for poll messages
-  pollQuestion?: string; // Add poll question field
+  imageUrl?: string;
+  isPoll?: boolean;
+  pollQuestion?: string;
 }
 
 const ChatsListScreen: React.FC = () => {
   const { dms, fetchUnreadCount: fetchDMUnreadCount } = useDirectMessages();
   const { chats: groupChats, fetchUnreadCount: fetchGroupUnreadCount } =
     useCrewDateChat();
+  const { chats: crewChats, fetchUnreadCount: fetchCrewUnreadCount } =
+    useCrewChat(); // Use the new context
   const { crews, usersCache, setUsersCache, fetchCrew } = useCrews();
   const { user } = useUser();
   const globalStyles = useGlobalStyles();
   const navigation = useNavigation();
   const isFocused = navigation.isFocused();
 
-  // Performance monitoring
   const { recordCacheLoad, recordFullLoad, getMetrics, resetMetrics } =
     usePerformanceMonitoring('chats_list');
 
-  // Initialize UserBatchFetcher for efficient user fetching
   const userBatchFetcher = useMemo(
     () => new UserBatchFetcher(usersCache, setUsersCache),
     [usersCache, setUsersCache],
@@ -106,38 +106,29 @@ const ChatsListScreen: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filteredChats, setFilteredChats] = useState<CombinedChat[]>([]);
-  // Add state for typing indicators
   const [typingStatus, setTypingStatus] = useState<TypingStatus>({});
-  // Add state for chat navigation loading
   const [navigatingChatId, setNavigatingChatId] = useState<string | null>(null);
 
   const senderNameCache = useRef<{ [senderId: string]: string }>({});
-  // Ref to store unsubscribe functions
   const typingListenersRef = useRef<{ [key: string]: () => void }>({});
 
-  // Optimized user name fetching using batch fetcher
   const getSenderName = useCallback(
     async (senderId: string): Promise<string> => {
-      // Check local cache first
       if (senderNameCache.current[senderId]) {
         recordCacheLoad(true);
         return senderNameCache.current[senderId];
       }
-
-      // Try to get from user batch fetcher
       try {
         const users = await userBatchFetcher.fetchUserDetailsBatch(
           new Set([senderId]),
         );
         const user = users.find((u) => u.uid === senderId);
-
         if (user) {
           const name = user.displayName || 'Unknown';
           senderNameCache.current[senderId] = name;
           recordCacheLoad(false);
           return name;
         }
-
         recordCacheLoad(false);
         return 'Unknown';
       } catch (error) {
@@ -149,11 +140,9 @@ const ChatsListScreen: React.FC = () => {
     [userBatchFetcher, recordCacheLoad],
   );
 
-  // Optimized cached chat data with TTL validation
   const loadCachedChatData = useCallback((): CombinedChat[] => {
     const cacheKey = getCacheKey('combined', 'chats');
     const cachedData = getCachedData<{ data: CombinedChat[] }>(cacheKey);
-
     if (cachedData?.data) {
       recordCacheLoad(true);
       return cachedData.data.map((chat) => ({
@@ -163,7 +152,6 @@ const ChatsListScreen: React.FC = () => {
           : undefined,
       }));
     }
-
     recordCacheLoad(false);
     return [];
   }, [recordCacheLoad]);
@@ -183,12 +171,10 @@ const ChatsListScreen: React.FC = () => {
     (chatId: string): ChatMetadata | null => {
       const cacheKey = getCacheKey('metadata', chatId);
       const cachedData = getCachedData<ChatMetadata>(cacheKey);
-
       if (cachedData) {
         recordCacheLoad(true);
         return cachedData;
       }
-
       recordCacheLoad(false);
       return null;
     },
@@ -203,22 +189,28 @@ const ChatsListScreen: React.FC = () => {
   const fetchLastMessageFromFirestore = useCallback(
     async (
       chatId: string,
-      chatType: 'direct' | 'group',
+      chatType: 'direct' | 'group' | 'crew',
     ): Promise<{
       text: string;
       senderId: string;
       senderName: string;
       createdAt: Date;
-      imageUrl?: string; // Add support for image URL
-      isPoll?: boolean; // Add flag for poll messages
-      pollQuestion?: string; // Add poll question field
+      imageUrl?: string;
+      isPoll?: boolean;
+      pollQuestion?: string;
     } | null> => {
       if (!user) return null;
       try {
-        const messagesRef =
-          chatType === 'direct'
-            ? collection(db, 'direct_messages', chatId, 'messages')
-            : collection(db, 'crew_date_chats', chatId, 'messages');
+        let messagesRef;
+        if (chatType === 'direct') {
+          messagesRef = collection(db, 'direct_messages', chatId, 'messages');
+        } else if (chatType === 'group') {
+          messagesRef = collection(db, 'crew_date_chats', chatId, 'messages');
+        } else {
+          // 'crew'
+          messagesRef = collection(db, 'crews', chatId, 'messages');
+        }
+
         const messagesQuery = query(
           messagesRef,
           orderBy('createdAt', 'desc'),
@@ -239,13 +231,12 @@ const ChatsListScreen: React.FC = () => {
             createdAt: msgData.createdAt
               ? msgData.createdAt.toDate()
               : new Date(),
-            imageUrl: msgData.imageUrl, // Get image URL if it exists
-            isPoll: !!msgData.poll, // Check if poll exists in the message data
-            pollQuestion: msgData.poll?.question || null, // Extract poll question
+            imageUrl: msgData.imageUrl,
+            isPoll: !!msgData.poll,
+            pollQuestion: msgData.poll?.question || null,
           };
-        } else {
-          return null;
         }
+        return null;
       } catch {
         return null;
       }
@@ -254,7 +245,7 @@ const ChatsListScreen: React.FC = () => {
   );
 
   const fetchLastMessage = useCallback(
-    async (chatId: string, chatType: 'direct' | 'group') => {
+    async (chatId: string, chatType: 'direct' | 'group' | 'crew') => {
       const cached = getChatMetadata(chatId);
       if (
         cached?.lastMessage &&
@@ -266,32 +257,24 @@ const ChatsListScreen: React.FC = () => {
           senderId: cached.lastMessageSenderId,
           senderName: cached.lastMessageSenderName ?? 'Unknown',
           createdAt: new Date(cached.lastMessageTime),
-          imageUrl: cached.imageUrl, // Add support for image URL
-          isPoll: cached.isPoll, // Add flag for poll messages
-          pollQuestion: cached.pollQuestion, // Include poll question
+          imageUrl: cached.imageUrl,
+          isPoll: cached.isPoll,
+          pollQuestion: cached.pollQuestion,
         };
         (async () => {
           const updated = await fetchLastMessageFromFirestore(chatId, chatType);
           if (
             updated &&
-            (updated.text !== cachedResult.text ||
-              updated.senderId !== cachedResult.senderId ||
-              updated.senderName !== cachedResult.senderName ||
-              updated.createdAt.getTime() !==
-                cachedResult.createdAt.getTime() ||
-              updated.imageUrl !== cachedResult.imageUrl ||
-              updated.isPoll !== cachedResult.isPoll ||
-              updated.pollQuestion !== cachedResult.pollQuestion) // Check poll question
+            updated.createdAt.getTime() !== cachedResult.createdAt.getTime()
           ) {
             saveChatMetadata(chatId, {
-              ...cached,
               lastMessage: updated.text,
               lastMessageTime: updated.createdAt.toISOString(),
               lastMessageSenderId: updated.senderId,
               lastMessageSenderName: updated.senderName,
-              imageUrl: updated.imageUrl, // Save image URL in metadata
-              isPoll: updated.isPoll, // Save poll flag in metadata
-              pollQuestion: updated.pollQuestion, // Save poll question
+              imageUrl: updated.imageUrl,
+              isPoll: updated.isPoll,
+              pollQuestion: updated.pollQuestion,
             });
           }
         })();
@@ -304,9 +287,9 @@ const ChatsListScreen: React.FC = () => {
             lastMessageTime: result.createdAt.toISOString(),
             lastMessageSenderId: result.senderId,
             lastMessageSenderName: result.senderName,
-            imageUrl: result.imageUrl, // Save image URL in metadata
-            isPoll: result.isPoll, // Save poll flag in metadata
-            pollQuestion: result.pollQuestion, // Save poll question
+            imageUrl: result.imageUrl,
+            isPoll: result.isPoll,
+            pollQuestion: result.pollQuestion,
           });
         }
         return result;
@@ -316,28 +299,26 @@ const ChatsListScreen: React.FC = () => {
   );
 
   const fetchUnreadFromFirestore = useCallback(
-    async (chatId: string, chatType: 'direct' | 'group'): Promise<number> => {
-      if (chatType === 'direct') {
-        return await fetchDMUnreadCount(chatId);
-      } else {
-        return await fetchGroupUnreadCount(chatId);
-      }
+    async (
+      chatId: string,
+      chatType: 'direct' | 'group' | 'crew',
+    ): Promise<number> => {
+      if (chatType === 'direct') return await fetchDMUnreadCount(chatId);
+      if (chatType === 'group') return await fetchGroupUnreadCount(chatId);
+      if (chatType === 'crew') return await fetchCrewUnreadCount(chatId);
+      return 0;
     },
-    [fetchDMUnreadCount, fetchGroupUnreadCount],
+    [fetchDMUnreadCount, fetchGroupUnreadCount, fetchCrewUnreadCount],
   );
 
   const getCrewName = useCallback(
-    async (chatId: string): Promise<string> => {
-      const crewId = chatId.split('_')[0];
+    async (crewId: string): Promise<string> => {
       const crew = crews.find((c) => c.id === crewId);
-      if (crew) {
-        return crew.name;
-      } else {
-        const crew = await fetchCrew(crewId);
-        return crew ? crew.name : 'Unknown Crew';
-      }
+      if (crew) return crew.name;
+      const fetchedCrew = await fetchCrew(crewId);
+      return fetchedCrew ? fetchedCrew.name : 'Unknown Crew';
     },
-    [crews],
+    [crews, fetchCrew],
   );
 
   const getFormattedChatDate = useCallback((chatId: string): string => {
@@ -346,111 +327,73 @@ const ChatsListScreen: React.FC = () => {
   }, []);
 
   const getIconUrlForCrew = useCallback(
-    (chatId: string): string | undefined => {
-      const crewId = chatId.split('_')[0];
+    (crewId: string): string | undefined => {
       const crew = crews.find((c) => c.id === crewId);
       return crew?.iconUrl;
     },
     [crews],
   );
 
-  // Optimized typing status management with debouncing
   const debouncedUpdateTypingStatus = useMemo(
     () =>
       debounce((chatId: string, typingUsers: string[]) => {
-        setTypingStatus((prev) => ({
-          ...prev,
-          [chatId]: typingUsers,
-        }));
+        setTypingStatus((prev) => ({ ...prev, [chatId]: typingUsers }));
       }, 300),
     [],
   );
 
-  // Set up typing listeners for all chats with optimized cleanup
   const setupTypingListeners = useCallback(() => {
     if (!user?.uid) return;
 
-    // Clean up any existing listeners
     Object.values(typingListenersRef.current).forEach((unsubscribe) =>
       unsubscribe(),
     );
     typingListenersRef.current = {};
 
-    // Set up listeners for direct messages
-    dms.forEach((dm) => {
-      const chatId = dm.id;
-      const chatRef = doc(db, 'direct_messages', chatId);
+    const allChatItems = [
+      ...dms.map((dm) => ({ id: dm.id, type: 'direct' })),
+      ...groupChats.map((gc) => ({ id: gc.id, type: 'group' })),
+      ...crewChats.map((cc) => ({ id: cc.id, type: 'crew' })),
+    ];
 
-      const unsubscribe = onSnapshot(chatRef, (docSnap) => {
+    allChatItems.forEach((chat) => {
+      let collectionPath;
+      if (chat.type === 'direct') collectionPath = 'direct_messages';
+      else if (chat.type === 'group') collectionPath = 'crew_date_chats';
+      else collectionPath = 'crews';
+
+      const docPath =
+        chat.type === 'crew'
+          ? doc(db, collectionPath, chat.id, 'messages', 'metadata')
+          : doc(db, collectionPath, chat.id);
+
+      const unsubscribe = onSnapshot(docPath, (docSnap) => {
         if (!docSnap.exists() || !user?.uid) return;
-
         const data = docSnap.data();
         if (data.typingStatus) {
-          // Find typing users other than current user
           const typingUsers = Object.keys(data.typingStatus)
-            .filter((key) => !key.includes('LastUpdate') && key !== user.uid)
+            .filter((key) => !key.endsWith('LastUpdate') && key !== user.uid)
             .filter((uid) => {
-              // Check if typing is recent
               const lastUpdate = data.typingStatus[`${uid}LastUpdate`];
-              if (!lastUpdate) return false;
-
-              const now = Date.now();
-              const lastUpdateTime = (lastUpdate as Timestamp).toMillis();
               return (
                 data.typingStatus[uid] &&
-                now - lastUpdateTime < TYPING_TIMEOUT * 10
-              ); // 10s timeout
+                lastUpdate &&
+                Date.now() - (lastUpdate as Timestamp).toMillis() <
+                  TYPING_TIMEOUT * 10
+              );
             });
-
-          debouncedUpdateTypingStatus(chatId, typingUsers);
+          debouncedUpdateTypingStatus(chat.id, typingUsers);
         }
       });
-
-      typingListenersRef.current[`dm_${chatId}`] = unsubscribe;
+      typingListenersRef.current[`${chat.type}_${chat.id}`] = unsubscribe;
     });
+  }, [user?.uid, dms, groupChats, crewChats, debouncedUpdateTypingStatus]);
 
-    // Set up listeners for group chats
-    groupChats.forEach((groupChat) => {
-      const chatId = groupChat.id;
-      const chatRef = doc(db, 'crew_date_chats', chatId);
-
-      const unsubscribe = onSnapshot(chatRef, (docSnap) => {
-        if (!docSnap.exists() || !user?.uid) return;
-
-        const data = docSnap.data();
-        if (data.typingStatus) {
-          // Find typing users other than current user
-          const typingUsers = Object.keys(data.typingStatus)
-            .filter((key) => !key.includes('LastUpdate') && key !== user.uid)
-            .filter((uid) => {
-              // Check if typing is recent
-              const lastUpdate = data.typingStatus[`${uid}LastUpdate`];
-              if (!lastUpdate) return false;
-
-              const now = Date.now();
-              const lastUpdateTime = (lastUpdate as Timestamp).toMillis();
-              return (
-                data.typingStatus[uid] &&
-                now - lastUpdateTime < TYPING_TIMEOUT * 10
-              ); // 10s timeout
-            });
-
-          debouncedUpdateTypingStatus(chatId, typingUsers);
-        }
-      });
-
-      typingListenersRef.current[`group_${chatId}`] = unsubscribe;
-    });
-  }, [user?.uid, dms, groupChats, debouncedUpdateTypingStatus]);
-
-  // Call setupTypingListeners when dms or groupChats change with cleanup
   useEffect(() => {
     if (isFocused) {
       setupTypingListeners();
     }
-
     return () => {
-      // Clean up listeners and debounced functions when component unmounts or loses focus
       Object.values(typingListenersRef.current).forEach((unsubscribe) =>
         unsubscribe(),
       );
@@ -458,18 +401,17 @@ const ChatsListScreen: React.FC = () => {
       debouncedUpdateTypingStatus.cancel();
     };
   }, [
-    setupTypingListeners,
     isFocused,
-    dms.length,
-    groupChats.length,
+    dms,
+    groupChats,
+    crewChats,
+    setupTypingListeners,
     debouncedUpdateTypingStatus,
   ]);
 
   const combineChats = useCallback(async () => {
     if (!user) return;
-
-    resetMetrics(); // Reset performance metrics at start
-
+    resetMetrics();
     const cachedCombined = loadCachedChatData();
     if (cachedCombined.length > 0 && !isFocused) {
       setCombinedChats(cachedCombined);
@@ -480,41 +422,26 @@ const ChatsListScreen: React.FC = () => {
     }
 
     try {
-      // Collect all unique user IDs needed for batch fetching
       const allUserIds = new Set<string>();
-
-      // Add user IDs from DM participants
-      dms.forEach((dm) => {
-        dm.participants.forEach((uid) => allUserIds.add(uid));
-      });
-
-      // Pre-fetch all user details in one batch operation
-      if (allUserIds.size > 0) {
+      dms.forEach((dm) =>
+        dm.participants.forEach((uid) => allUserIds.add(uid)),
+      );
+      if (allUserIds.size > 0)
         await userBatchFetcher.fetchUserDetailsBatch(allUserIds);
-      }
 
-      // For direct messages, we now resolve participant UIDs using the batch-fetched cache
-      const directMessagesPromises = dms.map(async (dm) => {
-        // dm.participants is now an array of UIDs. Resolve each from the updated cache:
-        const resolvedParticipants = dm.participants.map(
-          (uid) =>
-            usersCache[uid] || {
-              displayName: 'Unknown',
-              photoURL: null,
-              isOnline: false,
-            },
-        );
-        const title = resolvedParticipants.map((u) => u.displayName).join(', ');
-        const iconUrl = resolvedParticipants[0]?.photoURL;
+      const dmPromises = dms.map(async (dm) => {
+        const otherParticipant = usersCache[dm.participants[0]] || {
+          displayName: 'Unknown',
+          isOnline: false,
+          photoURL: undefined,
+        };
         const lastMsg = await fetchLastMessage(dm.id, 'direct');
         const unreadCount = await fetchUnreadFromFirestore(dm.id, 'direct');
-        const isOnline = resolvedParticipants[0]?.isOnline ?? false;
-
         return {
           id: dm.id,
           type: 'direct' as const,
-          title,
-          iconUrl,
+          title: otherParticipant.displayName,
+          iconUrl: otherParticipant.photoURL,
           lastMessage: lastMsg?.text,
           lastMessageTime: lastMsg?.createdAt,
           lastMessageSenderId: lastMsg?.senderId,
@@ -523,23 +450,20 @@ const ChatsListScreen: React.FC = () => {
           lastMessageIsPoll: lastMsg?.isPoll,
           lastMessagePollQuestion: lastMsg?.pollQuestion,
           unreadCount,
-          isOnline,
+          isOnline: otherParticipant.isOnline,
         };
       });
 
-      const groupChatsPromises = groupChats.map(async (gc) => {
-        const crewName = await getCrewName(gc.id);
+      const groupChatPromises = groupChats.map(async (gc) => {
+        const crewName = await getCrewName(gc.id.split('_')[0]);
         const chatDate = getFormattedChatDate(gc.id);
-        const title = `${crewName} (${chatDate})`;
-        const iconUrl = getIconUrlForCrew(gc.id);
         const lastMsg = await fetchLastMessage(gc.id, 'group');
         const unreadCount = await fetchUnreadFromFirestore(gc.id, 'group');
-
         return {
           id: gc.id,
           type: 'group' as const,
-          title,
-          iconUrl,
+          title: `${crewName} (${chatDate})`,
+          iconUrl: getIconUrlForCrew(gc.id.split('_')[0]),
           lastMessage: lastMsg?.text,
           lastMessageTime: lastMsg?.createdAt,
           lastMessageSenderId: lastMsg?.senderId,
@@ -551,41 +475,50 @@ const ChatsListScreen: React.FC = () => {
         };
       });
 
-      const [directMessages, groupChatsData] = await Promise.all([
-        Promise.all(directMessagesPromises),
-        Promise.all(groupChatsPromises),
+      const crewChatPromises = crewChats.map(async (cc) => {
+        const lastMsg = await fetchLastMessage(cc.id, 'crew');
+        const unreadCount = await fetchUnreadFromFirestore(cc.id, 'crew');
+        return {
+          id: cc.id,
+          type: 'crew' as const,
+          title: cc.crewName,
+          iconUrl: cc.avatarUrl,
+          lastMessage: lastMsg?.text,
+          lastMessageTime: lastMsg?.createdAt,
+          lastMessageSenderId: lastMsg?.senderId,
+          lastMessageSenderName: lastMsg?.senderName,
+          lastMessageImageUrl: lastMsg?.imageUrl,
+          lastMessageIsPoll: lastMsg?.isPoll,
+          lastMessagePollQuestion: lastMsg?.pollQuestion,
+          unreadCount,
+        };
+      });
+
+      const [directData, groupData, crewData] = await Promise.all([
+        Promise.all(dmPromises),
+        Promise.all(groupChatPromises),
+        Promise.all(crewChatPromises),
       ]);
 
-      const combined = [...directMessages, ...groupChatsData];
-      combined.sort((a, b) => {
-        if (a.lastMessageTime && b.lastMessageTime) {
-          return b.lastMessageTime.getTime() - a.lastMessageTime.getTime();
-        } else if (a.lastMessageTime) {
-          return -1;
-        } else if (b.lastMessageTime) {
-          return 1;
-        } else {
-          return 0;
-        }
-      });
+      const combined = [...directData, ...groupData, ...crewData].sort(
+        (a, b) =>
+          (b.lastMessageTime?.getTime() || 0) -
+          (a.lastMessageTime?.getTime() || 0),
+      );
 
       setCombinedChats(combined);
       setFilteredChats(
         searchQuery.trim()
-          ? combined.filter((chat) =>
-              chat.title.toLowerCase().includes(searchQuery.toLowerCase()),
+          ? combined.filter((c) =>
+              c.title.toLowerCase().includes(searchQuery.toLowerCase()),
             )
           : combined,
       );
       saveCachedChatData(combined);
       recordFullLoad();
 
-      // Log performance metrics in development
-      if (__DEV__) {
-        const metrics = getMetrics();
-        console.log('🚀 Chats List Performance:', metrics);
-      }
-    } catch (error: unknown) {
+      if (__DEV__) console.log('🚀 Chats List Performance:', getMetrics());
+    } catch (error) {
       if (
         error instanceof Error ||
         (error instanceof FirebaseError && error.message.includes('offline'))
@@ -595,9 +528,9 @@ const ChatsListScreen: React.FC = () => {
           text2: 'Failed to load chats. Check your connection.',
           type: 'error',
         });
-        return;
+      } else {
+        console.error('Error combining chats:', error);
       }
-      console.error('Error combining chats:', error);
     } finally {
       setLoading(false);
     }
@@ -605,6 +538,7 @@ const ChatsListScreen: React.FC = () => {
     user,
     dms,
     groupChats,
+    crewChats,
     getCrewName,
     getFormattedChatDate,
     getIconUrlForCrew,
@@ -621,78 +555,66 @@ const ChatsListScreen: React.FC = () => {
     getMetrics,
   ]);
 
-  // Helper function to get typing indicator text
-  const getTypingIndicatorText = useCallback(
-    (chatId: string, chatType: 'direct' | 'group') => {
-      const typingUserIds = typingStatus[chatId] || [];
-
-      if (typingUserIds.length === 0) return null;
-
-      if (chatType === 'direct') {
-        // For direct messages, just show "typing..."
-        return 'typing...';
-      } else {
-        // For group chats, try to show name(s)
-        const typingNames = typingUserIds
-          .map((uid) => usersCache[uid]?.displayName || 'Someone')
-          .slice(0, 2); // Limit to 2 names
-
-        if (typingNames.length === 1) {
-          return `${typingNames[0]} is typing...`;
-        } else if (typingNames.length === 2) {
-          return `${typingNames[0]} and ${typingNames[1]} are typing...`;
-        } else {
-          const otherCount = typingUserIds.length - 1;
-          return `${typingNames[0]} and ${otherCount} others are typing...`;
-        }
-      }
-    },
-    [typingStatus, usersCache],
-  );
+  useEffect(() => {
+    combineChats();
+  }, [isFocused, dms, groupChats, crewChats, combineChats]);
 
   useEffect(() => {
     if (searchQuery.trim() === '') {
       setFilteredChats(combinedChats);
     } else {
-      const filtered = combinedChats.filter((chat) =>
-        chat.title.toLowerCase().includes(searchQuery.toLowerCase()),
+      setFilteredChats(
+        combinedChats.filter((chat) =>
+          chat.title.toLowerCase().includes(searchQuery.toLowerCase()),
+        ),
       );
-      setFilteredChats(filtered);
     }
   }, [searchQuery, combinedChats]);
 
   const handleNavigation = useCallback(
-    (chatId: string, chatType: 'direct' | 'group') => {
-      // Set loading state immediately for tap responsiveness
+    (chatId: string, chatType: 'direct' | 'group' | 'crew') => {
       setNavigatingChatId(chatId);
-      
       if (chatType === 'direct') {
         const otherUserId = chatId.split('_').find((uid) => uid !== user?.uid);
-        if (otherUserId) {
-          router.push({
-            pathname: '/chats/dm-chat',
-            params: { otherUserId },
-          });
-        }
-      } else {
-        const crewId = chatId.split('_')[0];
-        const date = chatId.split('_')[1];
+        if (otherUserId)
+          router.push({ pathname: '/chats/dm-chat', params: { otherUserId } });
+      } else if (chatType === 'group') {
+        const [crewId, date] = chatId.split('_');
         router.push({
           pathname: '/chats/crew-date-chat',
           params: { crewId, date, id: chatId },
         });
+      } else {
+        // 'crew'
+        router.push({
+          pathname: '/chats/crew-chat',
+          params: { crewId: chatId },
+        });
       }
-      
-      // Clear loading state after a brief delay
       setTimeout(() => setNavigatingChatId(null), 100);
     },
     [user?.uid],
   );
 
-  // Optimized render item with memoization
+  const getTypingIndicatorText = useCallback(
+    (chatId: string, chatType: 'direct' | 'group' | 'crew') => {
+      const typingUserIds = typingStatus[chatId] || [];
+      if (typingUserIds.length === 0) return null;
+      if (chatType === 'direct') return 'typing...';
+
+      const typingNames = typingUserIds
+        .map((uid) => usersCache[uid]?.displayName || 'Someone')
+        .slice(0, 2);
+      if (typingNames.length === 1) return `${typingNames[0]} is typing...`;
+      if (typingNames.length === 2)
+        return `${typingNames[0]} and ${typingNames[1]} are typing...`;
+      return `${typingNames[0]} and ${typingUserIds.length - 1} others are typing...`;
+    },
+    [typingStatus, usersCache],
+  );
+
   const renderItem = useCallback(
     ({ item }: { item: CombinedChat }) => {
-      // Check if someone is typing in this chat
       const typingIndicator = getTypingIndicatorText(item.id, item.type);
       const isNavigating = navigatingChatId === item.id;
 
@@ -730,94 +652,44 @@ const ChatsListScreen: React.FC = () => {
                 </View>
               )}
             </View>
-
-            {typingIndicator ? (
-              // Show typing indicator
-              <Text style={styles.typingText} numberOfLines={1}>
-                {typingIndicator}
-              </Text>
-            ) : (
-              // Show image indicator, poll indicator, or regular last message
-              <View>
-                {item.lastMessageImageUrl ? (
-                  // If last message was an image
-                  <Text style={styles.chatLastMessage} numberOfLines={2}>
-                    {item.lastMessageSenderName ? (
-                      <View
-                        style={{ flexDirection: 'row', alignItems: 'center' }}
-                      >
-                        <Text style={styles.senderName}>
-                          {item.lastMessageSenderName}:{' '}
-                        </Text>
-                        <Ionicons name="image-outline" size={14} color="#555" />
-                        <Text style={{ color: '#555' }}> Image</Text>
-                      </View>
-                    ) : (
-                      <View
-                        style={{ flexDirection: 'row', alignItems: 'center' }}
-                      >
-                        <Ionicons name="image-outline" size={14} color="#555" />
-                        <Text style={{ color: '#555' }}> Image</Text>
-                      </View>
-                    )}
-                  </Text>
+            <Text
+              style={
+                typingIndicator ? styles.typingText : styles.chatLastMessage
+              }
+              numberOfLines={2}
+            >
+              {typingIndicator ||
+                (item.lastMessageImageUrl ? (
+                  <>
+                    <Text style={styles.senderName}>
+                      {item.lastMessageSenderName}:{' '}
+                    </Text>
+                    <Ionicons name="image-outline" size={14} color="#555" />
+                    <Text> Image</Text>
+                  </>
                 ) : item.lastMessageIsPoll ? (
-                  // If last message was a poll
-                  <Text style={styles.chatLastMessage} numberOfLines={2}>
-                    {item.lastMessageSenderName ? (
-                      <View
-                        style={{ flexDirection: 'row', alignItems: 'center' }}
-                      >
-                        <Text style={styles.senderName}>
-                          {item.lastMessageSenderName}:{' '}
-                        </Text>
-                        <Ionicons
-                          name="stats-chart-outline"
-                          size={14}
-                          color="#555"
-                        />
-                        <Text style={{ color: '#555' }}>
-                          {' '}
-                          {item.lastMessagePollQuestion || 'Poll'}
-                        </Text>
-                      </View>
-                    ) : (
-                      <View
-                        style={{ flexDirection: 'row', alignItems: 'center' }}
-                      >
-                        <Ionicons
-                          name="stats-chart-outline"
-                          size={14}
-                          color="#555"
-                        />
-                        <Text style={{ color: '#555' }}>
-                          {' '}
-                          {item.lastMessagePollQuestion || 'Poll'}
-                        </Text>
-                      </View>
-                    )}
-                  </Text>
+                  <>
+                    <Text style={styles.senderName}>
+                      {item.lastMessageSenderName}:{' '}
+                    </Text>
+                    <Ionicons
+                      name="stats-chart-outline"
+                      size={14}
+                      color="#555"
+                    />
+                    <Text> {item.lastMessagePollQuestion || 'Poll'}</Text>
+                  </>
+                ) : item.lastMessage ? (
+                  <>
+                    <Text style={styles.senderName}>
+                      {item.lastMessageSenderName}:{' '}
+                    </Text>
+                    <Text>{item.lastMessage}</Text>
+                  </>
                 ) : (
-                  // Regular text message
-                  <Text style={styles.chatLastMessage} numberOfLines={2}>
-                    {item.lastMessage ? (
-                      item.lastMessageSenderName ? (
-                        <Text>
-                          <Text key="sender" style={styles.senderName}>
-                            {item.lastMessageSenderName}:{' '}
-                          </Text>
-                          <Text key="message">{item.lastMessage}</Text>
-                        </Text>
-                      ) : (
-                        item.lastMessage
-                      )
-                    ) : (
-                      'No messages yet.'
-                    )}
-                  </Text>
-                )}
-              </View>
-            )}
+                  'No messages yet.'
+                ))}
+            </Text>
           </View>
           {item.unreadCount > 0 && (
             <View style={styles.unreadBadge}>
@@ -832,27 +704,18 @@ const ChatsListScreen: React.FC = () => {
     [getTypingIndicatorText, handleNavigation, navigatingChatId],
   );
 
-  // Memoized key extractor for better performance
   const keyExtractor = useCallback(
     (item: CombinedChat) => `${item.type}_${item.id}`,
     [],
   );
-
-  // Memoized separator component
   const ItemSeparatorComponent = useCallback(
     () => <View style={styles.separator} />,
     [],
   );
-
-  // Memoized empty component
   const ListEmptyComponent = useCallback(
     () => <Text style={styles.emptyText}>No chats available.</Text>,
     [],
   );
-
-  useEffect(() => {
-    combineChats();
-  }, [isFocused, dms, groupChats, combineChats]);
 
   if (loading) {
     return (
@@ -875,12 +738,12 @@ const ChatsListScreen: React.FC = () => {
         renderItem={renderItem}
         ItemSeparatorComponent={ItemSeparatorComponent}
         ListEmptyComponent={ListEmptyComponent}
-        removeClippedSubviews={true}
+        removeClippedSubviews
         maxToRenderPerBatch={10}
         windowSize={10}
         initialNumToRender={10}
         getItemLayout={(data, index) => ({
-          length: 85, // Approximate height of each chat item
+          length: 85,
           offset: 85 * index,
           index,
         })}
@@ -896,20 +759,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     position: 'relative',
   },
-  chatItemPressed: {
-    opacity: 0.6,
-    backgroundColor: '#f0f0f0',
-  },
-  navigatingIndicator: {
-    position: 'absolute',
-    right: 0,
-  },
-  avatar: {
-    marginRight: 15,
-  },
-  chatDetails: {
-    flex: 1,
-  },
+  chatItemPressed: { opacity: 0.6, backgroundColor: '#f0f0f0' },
+  navigatingIndicator: { position: 'absolute', right: 0 },
+  avatar: { marginRight: 15 },
+  chatDetails: { flex: 1 },
   chatHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -922,46 +775,23 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 0,
   },
-  chatTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    maxWidth: '80%',
-  },
-  chatLastMessage: {
-    fontSize: 14,
-    color: '#555',
-    marginTop: 4,
-    flexDirection: 'row',
-    flex: 1,
-  },
+  chatTitle: { fontSize: 16, fontWeight: '600', maxWidth: '80%' },
+  chatLastMessage: { fontSize: 14, color: '#555', marginTop: 4 },
   typingText: {
     fontSize: 14,
-    color: '#555',
+    color: '#0a84ff',
     fontStyle: 'italic',
     marginTop: 4,
-    flexDirection: 'row',
-    flex: 1,
   },
-  senderName: {
-    color: '#555',
-    fontWeight: '500',
-  },
-  separator: {
-    height: 1,
-    backgroundColor: '#eee',
-    marginLeft: 85,
-  },
+  senderName: { color: '#555', fontWeight: '500' },
+  separator: { height: 1, backgroundColor: '#eee', marginLeft: 85 },
   emptyText: {
     textAlign: 'center',
     marginTop: 50,
     fontSize: 16,
     color: '#999',
   },
-  loaderContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   unreadBadge: {
     position: 'absolute',
     right: 0,
@@ -974,11 +804,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  unreadText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
+  unreadText: { color: '#fff', fontSize: 12, fontWeight: '600' },
 });
 
 export default ChatsListScreen;
