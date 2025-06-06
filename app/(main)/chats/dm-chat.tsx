@@ -89,6 +89,8 @@ const DMChatScreen: React.FC = () => {
   const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isImageMenuVisible, setIsImageMenuVisible] = useState(false);
+  // Add loading states for initial load and navigation
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   // Generate conversationId from current and other user IDs.
   const conversationId = useMemo(() => {
@@ -375,15 +377,35 @@ const DMChatScreen: React.FC = () => {
     updateLastRead,
   ]);
 
+  // Listen for messages and handle loading states
   useEffect(() => {
     if (!conversationId) return;
+
+    console.log('[DMChat] Setting up message listener for:', conversationId);
+    setIsInitialLoading(true);
     const unsubscribeMessages = listenToDMMessages(conversationId);
-    return () => unsubscribeMessages();
+
+    // Set a timeout to clear loading state even if no messages
+    const loadingTimeout = setTimeout(() => {
+      console.log('[DMChat] Clearing loading state via timeout');
+      setIsInitialLoading(false);
+    }, 1500); // Reduced from 2000ms to 1500ms
+
+    return () => {
+      unsubscribeMessages();
+      clearTimeout(loadingTimeout);
+    };
   }, [conversationId, listenToDMMessages]);
 
   // 💾 Cache messages for instant loading on next visit
   useEffect(() => {
     if (conversationId && conversationMessages.length > 0) {
+      // Add a small delay before clearing loading to ensure spinner shows
+      setTimeout(() => {
+        console.log('[DMChat] Clearing loading state - messages received');
+        setIsInitialLoading(false);
+      }, 500); // Show spinner for at least 500ms
+
       const componentCacheKey = `dm_messages_${conversationId}`;
       setCachedData(componentCacheKey, {
         messages: conversationMessages.slice(-50), // Cache last 50 messages
@@ -672,6 +694,7 @@ const DMChatScreen: React.FC = () => {
   );
 
   if (!conversationId) return <LoadingOverlay />;
+
   return (
     <View style={styles.container}>
       <GiftedChat
@@ -727,6 +750,11 @@ const DMChatScreen: React.FC = () => {
         }}
         inverted={true}
       />
+      {isInitialLoading && (
+        <View style={styles.loadingOverlay}>
+          <LoadingOverlay />
+        </View>
+      )}
     </View>
   );
 };
@@ -735,6 +763,14 @@ export default DMChatScreen;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
+  },
   footerContainer: {
     marginTop: 5,
     marginLeft: 10,

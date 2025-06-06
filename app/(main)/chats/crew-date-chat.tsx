@@ -164,6 +164,7 @@ const useChatState = (
   const [isUploading, setIsUploading] = useState(false);
   const [isImageMenuVisible, setIsImageMenuVisible] = useState(false);
   const [isPollModalVisible, setIsPollModalVisible] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   // Cache crew data when it changes
   useEffect(() => {
@@ -209,6 +210,8 @@ const useChatState = (
     setIsImageMenuVisible,
     isPollModalVisible,
     setIsPollModalVisible,
+    isInitialLoading,
+    setIsInitialLoading,
   };
 };
 
@@ -263,12 +266,21 @@ const CrewDateChatScreen: React.FC = () => {
     setIsImageMenuVisible,
     isPollModalVisible,
     setIsPollModalVisible,
+    isInitialLoading,
+    setIsInitialLoading,
   } = useChatState(chatId, user, recordCacheLoad);
 
   const conversationMessages = useMemo(() => {
     if (!chatId || !messages || !messages[chatId]) return [];
     return ensureMessagesArray(messages[chatId], chatId);
   }, [chatId, messages]);
+
+  // Clear loading state when messages are received
+  useEffect(() => {
+    if (conversationMessages.length > 0) {
+      setIsInitialLoading(false);
+    }
+  }, [conversationMessages.length]);
 
   const paginationInfo = chatId ? messagePaginationInfo[chatId] : undefined;
 
@@ -499,12 +511,23 @@ const CrewDateChatScreen: React.FC = () => {
     }
   }, [navigation, crew, date, insets.top]);
 
-  // Listen to messages
+  // Listen to messages and handle loading states
   useEffect(() => {
     if (!chatId) return;
+
     console.log('[CrewDateChat] Setting up message listener for:', chatId);
+    setIsInitialLoading(true);
     const unsubscribeMessages = listenToMessages(chatId);
-    return () => unsubscribeMessages();
+
+    // Set a timeout to clear loading state even if no messages
+    const loadingTimeout = setTimeout(() => {
+      setIsInitialLoading(false);
+    }, 2000);
+
+    return () => {
+      unsubscribeMessages();
+      clearTimeout(loadingTimeout);
+    };
   }, [chatId]); // Remove listenToMessages from dependencies
 
   // Cache warming & background prefetching
@@ -1075,6 +1098,11 @@ const CrewDateChatScreen: React.FC = () => {
           onEndReached: () => handleLoadEarlier(),
         }}
       />
+      {isInitialLoading && (
+        <View style={styles.loadingOverlay}>
+          <LoadingOverlay />
+        </View>
+      )}
     </View>
   );
 };
@@ -1083,6 +1111,14 @@ export default CrewDateChatScreen;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
+  },
   footerContainer: {
     marginTop: 5,
     marginLeft: 10,

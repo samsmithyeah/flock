@@ -1,6 +1,12 @@
 // // app/(main)/chats/index.tsx
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, {
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+  useMemo,
+} from 'react';
 import {
   View,
   Text,
@@ -13,7 +19,6 @@ import { useDirectMessages } from '@/context/DirectMessagesContext';
 import { useCrewDateChat } from '@/context/CrewDateChatContext';
 import { useCrews } from '@/context/CrewsContext';
 import {
-  getDoc,
   doc,
   collection,
   getDocs,
@@ -29,12 +34,21 @@ import { useUser } from '@/context/UserContext';
 import ScreenTitle from '@/components/ScreenTitle';
 import CustomSearchInput from '@/components/CustomSearchInput';
 import ProfilePicturePicker from '@/components/ProfilePicturePicker';
-import { storage } from '@/storage';
 import useGlobalStyles from '@/styles/globalStyles';
 import { router, useNavigation } from 'expo-router';
 import { FirebaseError } from 'firebase/app';
 import Toast from 'react-native-toast-message';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { debounce } from 'lodash';
+// Performance utilities
+import {
+  getCacheKey,
+  getCachedData,
+  setCachedData,
+  usePerformanceMonitoring,
+  TYPING_TIMEOUT,
+} from '@/utils/chatUtils';
+import { UserBatchFetcher } from '@/utils/chatContextUtils';
 
 // Define the typing status interface
 interface TypingStatus {
@@ -72,11 +86,21 @@ const ChatsListScreen: React.FC = () => {
   const { dms, fetchUnreadCount: fetchDMUnreadCount } = useDirectMessages();
   const { chats: groupChats, fetchUnreadCount: fetchGroupUnreadCount } =
     useCrewDateChat();
-  const { crews, usersCache, fetchCrew } = useCrews();
+  const { crews, usersCache, setUsersCache, fetchCrew } = useCrews();
   const { user } = useUser();
   const globalStyles = useGlobalStyles();
   const navigation = useNavigation();
   const isFocused = navigation.isFocused();
+
+  // Performance monitoring
+  const { recordCacheLoad, recordFullLoad, getMetrics, resetMetrics } =
+    usePerformanceMonitoring('chats_list');
+
+  // Initialize UserBatchFetcher for efficient user fetching
+  const userBatchFetcher = useMemo(
+    () => new UserBatchFetcher(usersCache, setUsersCache),
+    [usersCache, setUsersCache],
+  );
 
   const [combinedChats, setCombinedChats] = useState<CombinedChat[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -84,71 +108,96 @@ const ChatsListScreen: React.FC = () => {
   const [filteredChats, setFilteredChats] = useState<CombinedChat[]>([]);
   // Add state for typing indicators
   const [typingStatus, setTypingStatus] = useState<TypingStatus>({});
+  // Add state for chat navigation loading
+  const [navigatingChatId, setNavigatingChatId] = useState<string | null>(null);
 
   const senderNameCache = useRef<{ [senderId: string]: string }>({});
   // Ref to store unsubscribe functions
   const typingListenersRef = useRef<{ [key: string]: () => void }>({});
 
+  // Optimized user name fetching using batch fetcher
   const getSenderName = useCallback(
     async (senderId: string): Promise<string> => {
+      // Check local cache first
       if (senderNameCache.current[senderId]) {
+        recordCacheLoad(true);
         return senderNameCache.current[senderId];
-      } else if (usersCache[senderId]) {
-        senderNameCache.current[senderId] = usersCache[senderId].displayName;
-        return usersCache[senderId].displayName;
       }
+
+      // Try to get from user batch fetcher
       try {
-        const senderDoc = await getDoc(doc(db, 'users', senderId));
-        if (senderDoc.exists()) {
-          const senderData = senderDoc.data();
-          const senderName = senderData.displayName || 'Unknown';
-          senderNameCache.current[senderId] = senderName;
-          return senderName;
-        } else {
-          return 'Unknown';
+        const users = await userBatchFetcher.fetchUserDetailsBatch(
+          new Set([senderId]),
+        );
+        const user = users.find((u) => u.uid === senderId);
+
+        if (user) {
+          const name = user.displayName || 'Unknown';
+          senderNameCache.current[senderId] = name;
+          recordCacheLoad(false);
+          return name;
         }
-      } catch {
+
+        recordCacheLoad(false);
+        return 'Unknown';
+      } catch (error) {
+        console.warn('Failed to fetch sender name:', error);
+        recordCacheLoad(false);
         return 'Unknown';
       }
     },
-    [usersCache],
+    [userBatchFetcher, recordCacheLoad],
   );
 
-  // Other existing functions...
+  // Optimized cached chat data with TTL validation
   const loadCachedChatData = useCallback((): CombinedChat[] => {
-    const cachedDataString = storage.getString('combinedChats');
-    if (!cachedDataString) return [];
-    try {
-      const cachedData = JSON.parse(cachedDataString) as CombinedChat[];
-      return cachedData.map((chat) => ({
+    const cacheKey = getCacheKey('combined', 'chats');
+    const cachedData = getCachedData<{ data: CombinedChat[] }>(cacheKey);
+
+    if (cachedData?.data) {
+      recordCacheLoad(true);
+      return cachedData.data.map((chat) => ({
         ...chat,
         lastMessageTime: chat.lastMessageTime
           ? new Date(chat.lastMessageTime)
           : undefined,
       }));
-    } catch {
-      return [];
     }
-  }, []);
+
+    recordCacheLoad(false);
+    return [];
+  }, [recordCacheLoad]);
 
   const saveCachedChatData = useCallback((chats: CombinedChat[]) => {
+    const cacheKey = getCacheKey('combined', 'chats');
     const dataToCache = chats.map((chat) => ({
       ...chat,
       lastMessageTime: chat.lastMessageTime
         ? chat.lastMessageTime.toISOString()
         : null,
     }));
-    storage.set('combinedChats', JSON.stringify(dataToCache));
+    setCachedData(cacheKey, { data: dataToCache });
   }, []);
 
-  const getChatMetadata = useCallback((chatId: string): ChatMetadata | null => {
-    const dataString = storage.getString(`chatMetadata_${chatId}`);
-    if (!dataString) return null;
-    return JSON.parse(dataString) as ChatMetadata;
-  }, []);
+  const getChatMetadata = useCallback(
+    (chatId: string): ChatMetadata | null => {
+      const cacheKey = getCacheKey('metadata', chatId);
+      const cachedData = getCachedData<ChatMetadata>(cacheKey);
+
+      if (cachedData) {
+        recordCacheLoad(true);
+        return cachedData;
+      }
+
+      recordCacheLoad(false);
+      return null;
+    },
+    [recordCacheLoad],
+  );
 
   const saveChatMetadata = useCallback((chatId: string, data: ChatMetadata) => {
-    storage.set(`chatMetadata_${chatId}`, JSON.stringify(data));
+    const cacheKey = getCacheKey('metadata', chatId);
+    setCachedData(cacheKey, data);
   }, []);
 
   const fetchLastMessageFromFirestore = useCallback(
@@ -305,7 +354,19 @@ const ChatsListScreen: React.FC = () => {
     [crews],
   );
 
-  // Set up typing listeners for all chats
+  // Optimized typing status management with debouncing
+  const debouncedUpdateTypingStatus = useMemo(
+    () =>
+      debounce((chatId: string, typingUsers: string[]) => {
+        setTypingStatus((prev) => ({
+          ...prev,
+          [chatId]: typingUsers,
+        }));
+      }, 300),
+    [],
+  );
+
+  // Set up typing listeners for all chats with optimized cleanup
   const setupTypingListeners = useCallback(() => {
     if (!user?.uid) return;
 
@@ -335,13 +396,13 @@ const ChatsListScreen: React.FC = () => {
 
               const now = Date.now();
               const lastUpdateTime = (lastUpdate as Timestamp).toMillis();
-              return data.typingStatus[uid] && now - lastUpdateTime < 10000; // 10s timeout
+              return (
+                data.typingStatus[uid] &&
+                now - lastUpdateTime < TYPING_TIMEOUT * 10
+              ); // 10s timeout
             });
 
-          setTypingStatus((prev) => ({
-            ...prev,
-            [chatId]: typingUsers.length > 0 ? typingUsers : [],
-          }));
+          debouncedUpdateTypingStatus(chatId, typingUsers);
         }
       });
 
@@ -368,48 +429,73 @@ const ChatsListScreen: React.FC = () => {
 
               const now = Date.now();
               const lastUpdateTime = (lastUpdate as Timestamp).toMillis();
-              return data.typingStatus[uid] && now - lastUpdateTime < 10000; // 10s timeout
+              return (
+                data.typingStatus[uid] &&
+                now - lastUpdateTime < TYPING_TIMEOUT * 10
+              ); // 10s timeout
             });
 
-          setTypingStatus((prev) => ({
-            ...prev,
-            [chatId]: typingUsers.length > 0 ? typingUsers : [],
-          }));
+          debouncedUpdateTypingStatus(chatId, typingUsers);
         }
       });
 
       typingListenersRef.current[`group_${chatId}`] = unsubscribe;
     });
-  }, [user?.uid, dms, groupChats]);
+  }, [user?.uid, dms, groupChats, debouncedUpdateTypingStatus]);
 
-  // Call setupTypingListeners when dms or groupChats change
+  // Call setupTypingListeners when dms or groupChats change with cleanup
   useEffect(() => {
     if (isFocused) {
       setupTypingListeners();
     }
 
     return () => {
-      // Clean up listeners when component unmounts or loses focus
+      // Clean up listeners and debounced functions when component unmounts or loses focus
       Object.values(typingListenersRef.current).forEach((unsubscribe) =>
         unsubscribe(),
       );
       typingListenersRef.current = {};
+      debouncedUpdateTypingStatus.cancel();
     };
-  }, [setupTypingListeners, isFocused, dms.length, groupChats.length]);
+  }, [
+    setupTypingListeners,
+    isFocused,
+    dms.length,
+    groupChats.length,
+    debouncedUpdateTypingStatus,
+  ]);
 
   const combineChats = useCallback(async () => {
     if (!user) return;
+
+    resetMetrics(); // Reset performance metrics at start
+
     const cachedCombined = loadCachedChatData();
     if (cachedCombined.length > 0 && !isFocused) {
       setCombinedChats(cachedCombined);
       setFilteredChats(cachedCombined);
       setLoading(false);
+      recordFullLoad();
+      return;
     }
 
     try {
-      // For direct messages, we now resolve participant UIDs using usersCache.
+      // Collect all unique user IDs needed for batch fetching
+      const allUserIds = new Set<string>();
+
+      // Add user IDs from DM participants
+      dms.forEach((dm) => {
+        dm.participants.forEach((uid) => allUserIds.add(uid));
+      });
+
+      // Pre-fetch all user details in one batch operation
+      if (allUserIds.size > 0) {
+        await userBatchFetcher.fetchUserDetailsBatch(allUserIds);
+      }
+
+      // For direct messages, we now resolve participant UIDs using the batch-fetched cache
       const directMessagesPromises = dms.map(async (dm) => {
-        // dm.participants is now an array of UIDs. Resolve each:
+        // dm.participants is now an array of UIDs. Resolve each from the updated cache:
         const resolvedParticipants = dm.participants.map(
           (uid) =>
             usersCache[uid] || {
@@ -433,9 +519,9 @@ const ChatsListScreen: React.FC = () => {
           lastMessageTime: lastMsg?.createdAt,
           lastMessageSenderId: lastMsg?.senderId,
           lastMessageSenderName: lastMsg?.senderName,
-          lastMessageImageUrl: lastMsg?.imageUrl, // Include image URL in chat list data
-          lastMessageIsPoll: lastMsg?.isPoll, // Add poll flag
-          lastMessagePollQuestion: lastMsg?.pollQuestion, // Include poll question
+          lastMessageImageUrl: lastMsg?.imageUrl,
+          lastMessageIsPoll: lastMsg?.isPoll,
+          lastMessagePollQuestion: lastMsg?.pollQuestion,
           unreadCount,
           isOnline,
         };
@@ -458,9 +544,9 @@ const ChatsListScreen: React.FC = () => {
           lastMessageTime: lastMsg?.createdAt,
           lastMessageSenderId: lastMsg?.senderId,
           lastMessageSenderName: lastMsg?.senderName,
-          lastMessageImageUrl: lastMsg?.imageUrl, // Include image URL in chat list data
-          lastMessageIsPoll: lastMsg?.isPoll, // Add poll flag
-          lastMessagePollQuestion: lastMsg?.pollQuestion, // Include poll question
+          lastMessageImageUrl: lastMsg?.imageUrl,
+          lastMessageIsPoll: lastMsg?.isPoll,
+          lastMessagePollQuestion: lastMsg?.pollQuestion,
           unreadCount,
         };
       });
@@ -492,6 +578,13 @@ const ChatsListScreen: React.FC = () => {
           : combined,
       );
       saveCachedChatData(combined);
+      recordFullLoad();
+
+      // Log performance metrics in development
+      if (__DEV__) {
+        const metrics = getMetrics();
+        console.log('🚀 Chats List Performance:', metrics);
+      }
     } catch (error: unknown) {
       if (
         error instanceof Error ||
@@ -509,6 +602,7 @@ const ChatsListScreen: React.FC = () => {
       setLoading(false);
     }
   }, [
+    user,
     dms,
     groupChats,
     getCrewName,
@@ -520,8 +614,11 @@ const ChatsListScreen: React.FC = () => {
     saveCachedChatData,
     searchQuery,
     isFocused,
-    user,
     usersCache,
+    userBatchFetcher,
+    resetMetrics,
+    recordFullLoad,
+    getMetrics,
   ]);
 
   // Helper function to get typing indicator text
@@ -566,6 +663,9 @@ const ChatsListScreen: React.FC = () => {
 
   const handleNavigation = useCallback(
     (chatId: string, chatType: 'direct' | 'group') => {
+      // Set loading state immediately for tap responsiveness
+      setNavigatingChatId(chatId);
+      
       if (chatType === 'direct') {
         const otherUserId = chatId.split('_').find((uid) => uid !== user?.uid);
         if (otherUserId) {
@@ -582,8 +682,172 @@ const ChatsListScreen: React.FC = () => {
           params: { crewId, date, id: chatId },
         });
       }
+      
+      // Clear loading state after a brief delay
+      setTimeout(() => setNavigatingChatId(null), 100);
     },
-    [navigation, user?.uid],
+    [user?.uid],
+  );
+
+  // Optimized render item with memoization
+  const renderItem = useCallback(
+    ({ item }: { item: CombinedChat }) => {
+      // Check if someone is typing in this chat
+      const typingIndicator = getTypingIndicatorText(item.id, item.type);
+      const isNavigating = navigatingChatId === item.id;
+
+      return (
+        <TouchableOpacity
+          style={[styles.chatItem, isNavigating && styles.chatItemPressed]}
+          onPress={() => handleNavigation(item.id, item.type)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.avatar}>
+            <ProfilePicturePicker
+              size={55}
+              imageUrl={item.iconUrl ?? null}
+              iconName={
+                item.type === 'direct' ? 'person-outline' : 'people-outline'
+              }
+              editable={false}
+              onImageUpdate={() => {}}
+              isOnline={item.isOnline ?? false}
+            />
+          </View>
+          <View style={styles.chatDetails}>
+            <View style={styles.chatHeader}>
+              <Text style={styles.chatTitle} numberOfLines={1}>
+                {item.title}
+              </Text>
+              {item.lastMessageTime && !typingIndicator && !isNavigating && (
+                <Text style={styles.chatTimestamp}>
+                  {moment(item.lastMessageTime).fromNow()}
+                </Text>
+              )}
+              {isNavigating && (
+                <View style={styles.navigatingIndicator}>
+                  <ActivityIndicator size="small" color="#0a84ff" />
+                </View>
+              )}
+            </View>
+
+            {typingIndicator ? (
+              // Show typing indicator
+              <Text style={styles.typingText} numberOfLines={1}>
+                {typingIndicator}
+              </Text>
+            ) : (
+              // Show image indicator, poll indicator, or regular last message
+              <View>
+                {item.lastMessageImageUrl ? (
+                  // If last message was an image
+                  <Text style={styles.chatLastMessage} numberOfLines={2}>
+                    {item.lastMessageSenderName ? (
+                      <View
+                        style={{ flexDirection: 'row', alignItems: 'center' }}
+                      >
+                        <Text style={styles.senderName}>
+                          {item.lastMessageSenderName}:{' '}
+                        </Text>
+                        <Ionicons name="image-outline" size={14} color="#555" />
+                        <Text style={{ color: '#555' }}> Image</Text>
+                      </View>
+                    ) : (
+                      <View
+                        style={{ flexDirection: 'row', alignItems: 'center' }}
+                      >
+                        <Ionicons name="image-outline" size={14} color="#555" />
+                        <Text style={{ color: '#555' }}> Image</Text>
+                      </View>
+                    )}
+                  </Text>
+                ) : item.lastMessageIsPoll ? (
+                  // If last message was a poll
+                  <Text style={styles.chatLastMessage} numberOfLines={2}>
+                    {item.lastMessageSenderName ? (
+                      <View
+                        style={{ flexDirection: 'row', alignItems: 'center' }}
+                      >
+                        <Text style={styles.senderName}>
+                          {item.lastMessageSenderName}:{' '}
+                        </Text>
+                        <Ionicons
+                          name="stats-chart-outline"
+                          size={14}
+                          color="#555"
+                        />
+                        <Text style={{ color: '#555' }}>
+                          {' '}
+                          {item.lastMessagePollQuestion || 'Poll'}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View
+                        style={{ flexDirection: 'row', alignItems: 'center' }}
+                      >
+                        <Ionicons
+                          name="stats-chart-outline"
+                          size={14}
+                          color="#555"
+                        />
+                        <Text style={{ color: '#555' }}>
+                          {' '}
+                          {item.lastMessagePollQuestion || 'Poll'}
+                        </Text>
+                      </View>
+                    )}
+                  </Text>
+                ) : (
+                  // Regular text message
+                  <Text style={styles.chatLastMessage} numberOfLines={2}>
+                    {item.lastMessage ? (
+                      item.lastMessageSenderName ? (
+                        <Text>
+                          <Text key="sender" style={styles.senderName}>
+                            {item.lastMessageSenderName}:{' '}
+                          </Text>
+                          <Text key="message">{item.lastMessage}</Text>
+                        </Text>
+                      ) : (
+                        item.lastMessage
+                      )
+                    ) : (
+                      'No messages yet.'
+                    )}
+                  </Text>
+                )}
+              </View>
+            )}
+          </View>
+          {item.unreadCount > 0 && (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadText}>
+                {item.unreadCount > 99 ? '99+' : item.unreadCount}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      );
+    },
+    [getTypingIndicatorText, handleNavigation, navigatingChatId],
+  );
+
+  // Memoized key extractor for better performance
+  const keyExtractor = useCallback(
+    (item: CombinedChat) => `${item.type}_${item.id}`,
+    [],
+  );
+
+  // Memoized separator component
+  const ItemSeparatorComponent = useCallback(
+    () => <View style={styles.separator} />,
+    [],
+  );
+
+  // Memoized empty component
+  const ListEmptyComponent = useCallback(
+    () => <Text style={styles.emptyText}>No chats available.</Text>,
+    [],
   );
 
   useEffect(() => {
@@ -598,138 +862,6 @@ const ChatsListScreen: React.FC = () => {
     );
   }
 
-  const renderItem = ({ item }: { item: CombinedChat }) => {
-    // Check if someone is typing in this chat
-    const typingIndicator = getTypingIndicatorText(item.id, item.type);
-
-    return (
-      <TouchableOpacity
-        style={styles.chatItem}
-        onPress={() => handleNavigation(item.id, item.type)}
-      >
-        <View style={styles.avatar}>
-          <ProfilePicturePicker
-            size={55}
-            imageUrl={item.iconUrl ?? null}
-            iconName={
-              item.type === 'direct' ? 'person-outline' : 'people-outline'
-            }
-            editable={false}
-            onImageUpdate={() => {}}
-            isOnline={item.isOnline ?? false}
-          />
-        </View>
-        <View style={styles.chatDetails}>
-          <View style={styles.chatHeader}>
-            <Text style={styles.chatTitle} numberOfLines={1}>
-              {item.title}
-            </Text>
-            {item.lastMessageTime && !typingIndicator && (
-              <Text style={styles.chatTimestamp}>
-                {moment(item.lastMessageTime).fromNow()}
-              </Text>
-            )}
-          </View>
-
-          {typingIndicator ? (
-            // Show typing indicator
-            <Text style={styles.typingText} numberOfLines={1}>
-              {typingIndicator}
-            </Text>
-          ) : (
-            // Show image indicator, poll indicator, or regular last message
-            <View>
-              {item.lastMessageImageUrl ? (
-                // If last message was an image
-                <Text style={styles.chatLastMessage} numberOfLines={2}>
-                  {item.lastMessageSenderName ? (
-                    <View
-                      style={{ flexDirection: 'row', alignItems: 'center' }}
-                    >
-                      <Text style={styles.senderName}>
-                        {item.lastMessageSenderName}:{' '}
-                      </Text>
-                      <Ionicons name="image-outline" size={14} color="#555" />
-                      <Text style={{ color: '#555' }}> Image</Text>
-                    </View>
-                  ) : (
-                    <View
-                      style={{ flexDirection: 'row', alignItems: 'center' }}
-                    >
-                      <Ionicons name="image-outline" size={14} color="#555" />
-                      <Text style={{ color: '#555' }}> Image</Text>
-                    </View>
-                  )}
-                </Text>
-              ) : item.lastMessageIsPoll ? (
-                // If last message was a poll
-                <Text style={styles.chatLastMessage} numberOfLines={2}>
-                  {item.lastMessageSenderName ? (
-                    <View
-                      style={{ flexDirection: 'row', alignItems: 'center' }}
-                    >
-                      <Text style={styles.senderName}>
-                        {item.lastMessageSenderName}:{' '}
-                      </Text>
-                      <Ionicons
-                        name="stats-chart-outline"
-                        size={14}
-                        color="#555"
-                      />
-                      <Text style={{ color: '#555' }}>
-                        {' '}
-                        {item.lastMessagePollQuestion || 'Poll'}
-                      </Text>
-                    </View>
-                  ) : (
-                    <View
-                      style={{ flexDirection: 'row', alignItems: 'center' }}
-                    >
-                      <Ionicons
-                        name="stats-chart-outline"
-                        size={14}
-                        color="#555"
-                      />
-                      <Text style={{ color: '#555' }}>
-                        {' '}
-                        {item.lastMessagePollQuestion || 'Poll'}
-                      </Text>
-                    </View>
-                  )}
-                </Text>
-              ) : (
-                // Regular text message
-                <Text style={styles.chatLastMessage} numberOfLines={2}>
-                  {item.lastMessage ? (
-                    item.lastMessageSenderName ? (
-                      <Text>
-                        <Text key="sender" style={styles.senderName}>
-                          {item.lastMessageSenderName}:{' '}
-                        </Text>
-                        <Text key="message">{item.lastMessage}</Text>
-                      </Text>
-                    ) : (
-                      item.lastMessage
-                    )
-                  ) : (
-                    'No messages yet.'
-                  )}
-                </Text>
-              )}
-            </View>
-          )}
-        </View>
-        {item.unreadCount > 0 && (
-          <View style={styles.unreadBadge}>
-            <Text style={styles.unreadText}>
-              {item.unreadCount > 99 ? '99+' : item.unreadCount}
-            </Text>
-          </View>
-        )}
-      </TouchableOpacity>
-    );
-  };
-
   return (
     <View style={globalStyles.container}>
       <ScreenTitle title="Chats" />
@@ -739,12 +871,19 @@ const ChatsListScreen: React.FC = () => {
       />
       <FlatList
         data={filteredChats}
-        keyExtractor={(item) => item.title + item.id}
+        keyExtractor={keyExtractor}
         renderItem={renderItem}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        ListEmptyComponent={
-          <Text style={styles.emptyText}>No chats available.</Text>
-        }
+        ItemSeparatorComponent={ItemSeparatorComponent}
+        ListEmptyComponent={ListEmptyComponent}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={10}
+        windowSize={10}
+        initialNumToRender={10}
+        getItemLayout={(data, index) => ({
+          length: 85, // Approximate height of each chat item
+          offset: 85 * index,
+          index,
+        })}
       />
     </View>
   );
@@ -756,6 +895,14 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     alignItems: 'center',
     position: 'relative',
+  },
+  chatItemPressed: {
+    opacity: 0.6,
+    backgroundColor: '#f0f0f0',
+  },
+  navigatingIndicator: {
+    position: 'absolute',
+    right: 0,
   },
   avatar: {
     marginRight: 15,
