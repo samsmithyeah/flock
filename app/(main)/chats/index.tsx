@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { useDirectMessages } from '@/context/DirectMessagesContext';
 import { useCrewDateChat } from '@/context/CrewDateChatContext';
-import { useCrewChat } from '@/context/CrewChatContext'; // Import the new context
+import { useCrewChat } from '@/context/CrewChatContext';
 import { useCrews } from '@/context/CrewsContext';
 import {
   collection,
@@ -87,14 +87,14 @@ const ChatsListScreen: React.FC = () => {
   const { chats: groupChats, fetchUnreadCount: fetchGroupUnreadCount } =
     useCrewDateChat();
   const { chats: crewChats, fetchUnreadCount: fetchCrewUnreadCount } =
-    useCrewChat(); // Use the new context
+    useCrewChat();
   const { crews, usersCache, setUsersCache, fetchCrew } = useCrews();
   const { user } = useUser();
   const globalStyles = useGlobalStyles();
   const navigation = useNavigation();
   const isFocused = navigation.isFocused();
 
-  const { recordCacheLoad, recordFullLoad, getMetrics, resetMetrics } =
+  const { recordCacheLoad, recordFullLoad, getMetrics } =
     usePerformanceMonitoring('chats_list');
 
   const userBatchFetcher = useMemo(
@@ -105,12 +105,12 @@ const ChatsListScreen: React.FC = () => {
   const [combinedChats, setCombinedChats] = useState<CombinedChat[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [filteredChats, setFilteredChats] = useState<CombinedChat[]>([]);
   const [typingStatus, setTypingStatus] = useState<TypingStatus>({});
   const [navigatingChatId, setNavigatingChatId] = useState<string | null>(null);
 
   const senderNameCache = useRef<{ [senderId: string]: string }>({});
   const typingListenersRef = useRef<{ [key: string]: () => void }>({});
+  const initialLoadCompleted = useRef<boolean>(false);
 
   const getSenderName = useCallback(
     async (senderId: string): Promise<string> => {
@@ -342,82 +342,102 @@ const ChatsListScreen: React.FC = () => {
     [],
   );
 
-  const setupTypingListeners = useCallback(() => {
-    if (!user?.uid) return;
+  const allChatItems = useMemo(
+    () => [
+      ...dms.map((dm) => ({ id: dm.id, type: 'direct' as const })),
+      ...groupChats.map((gc) => ({ id: gc.id, type: 'group' as const })),
+      ...crewChats.map((cc) => ({ id: cc.id, type: 'crew' as const })),
+    ],
+    [dms, groupChats, crewChats],
+  );
 
-    Object.values(typingListenersRef.current).forEach((unsubscribe) =>
-      unsubscribe(),
-    );
-    typingListenersRef.current = {};
-
-    const allChatItems = [
-      ...dms.map((dm) => ({ id: dm.id, type: 'direct' })),
-      ...groupChats.map((gc) => ({ id: gc.id, type: 'group' })),
-      ...crewChats.map((cc) => ({ id: cc.id, type: 'crew' })),
-    ];
-
-    allChatItems.forEach((chat) => {
-      let collectionPath;
-      if (chat.type === 'direct') collectionPath = 'direct_messages';
-      else if (chat.type === 'group') collectionPath = 'crew_date_chats';
-      else collectionPath = 'crews';
-
-      const docPath =
-        chat.type === 'crew'
-          ? doc(db, collectionPath, chat.id, 'messages', 'metadata')
-          : doc(db, collectionPath, chat.id);
-
-      const unsubscribe = onSnapshot(docPath, (docSnap) => {
-        if (!docSnap.exists() || !user?.uid) return;
-        const data = docSnap.data();
-        if (data.typingStatus) {
-          const typingUsers = Object.keys(data.typingStatus)
-            .filter((key) => !key.endsWith('LastUpdate') && key !== user.uid)
-            .filter((uid) => {
-              const lastUpdate = data.typingStatus[`${uid}LastUpdate`];
-              return (
-                data.typingStatus[uid] &&
-                lastUpdate &&
-                Date.now() - (lastUpdate as Timestamp).toMillis() <
-                  TYPING_TIMEOUT * 10
-              );
-            });
-          debouncedUpdateTypingStatus(chat.id, typingUsers);
-        }
-      });
-      typingListenersRef.current[`${chat.type}_${chat.id}`] = unsubscribe;
-    });
-  }, [user?.uid, dms, groupChats, crewChats, debouncedUpdateTypingStatus]);
-
+  // FIX: This useEffect now intelligently manages listeners instead of resetting them on every render.
   useEffect(() => {
-    if (isFocused) {
-      setupTypingListeners();
-    }
-    return () => {
-      Object.values(typingListenersRef.current).forEach((unsubscribe) =>
-        unsubscribe(),
-      );
+    if (!user?.uid || !isFocused) {
+      // If not focused, clean up all listeners.
+      Object.values(typingListenersRef.current).forEach((unsub) => unsub());
       typingListenersRef.current = {};
+      return;
+    }
+
+    const currentListenerKeys = new Set(
+      Object.keys(typingListenersRef.current),
+    );
+    const allChatItemMap = new Map(
+      allChatItems.map((chat) => [`${chat.type}_${chat.id}`, chat]),
+    );
+
+    // Subscribe to new chats that don't have a listener yet.
+    allChatItemMap.forEach((chat, key) => {
+      if (!currentListenerKeys.has(key)) {
+        let collectionPath;
+        if (chat.type === 'direct') collectionPath = 'direct_messages';
+        else if (chat.type === 'group') collectionPath = 'crew_date_chats';
+        else collectionPath = 'crews';
+
+        const docPath =
+          chat.type === 'crew'
+            ? doc(db, collectionPath, chat.id, 'messages', 'metadata')
+            : doc(db, collectionPath, chat.id);
+
+        const unsubscribe = onSnapshot(docPath, (docSnap) => {
+          if (!docSnap.exists() || !user?.uid) return;
+          const data = docSnap.data();
+          if (data.typingStatus) {
+            const typingUsers = Object.keys(data.typingStatus)
+              .filter((k) => !k.endsWith('LastUpdate') && k !== user.uid)
+              .filter((uid) => {
+                const lastUpdate = data.typingStatus[`${uid}LastUpdate`];
+                return (
+                  data.typingStatus[uid] &&
+                  lastUpdate &&
+                  Date.now() - (lastUpdate as Timestamp).toMillis() <
+                    TYPING_TIMEOUT * 10
+                );
+              });
+            debouncedUpdateTypingStatus(chat.id, typingUsers);
+          } else {
+            debouncedUpdateTypingStatus(chat.id, []);
+          }
+        });
+        typingListenersRef.current[key] = unsubscribe;
+      }
+    });
+
+    // Unsubscribe from chats that are no longer in the user's list.
+    currentListenerKeys.forEach((key) => {
+      if (!allChatItemMap.has(key)) {
+        typingListenersRef.current[key]();
+        delete typingListenersRef.current[key];
+        const chatId = key.split('_').slice(1).join('_');
+        setTypingStatus((prev) => {
+          const newState = { ...prev };
+          delete newState[chatId];
+          return newState;
+        });
+      }
+    });
+
+    return () => {
       debouncedUpdateTypingStatus.cancel();
     };
-  }, [
-    isFocused,
-    dms,
-    groupChats,
-    crewChats,
-    setupTypingListeners,
-    debouncedUpdateTypingStatus,
-  ]);
+  }, [isFocused, user?.uid, allChatItems, debouncedUpdateTypingStatus]);
 
   const combineChats = useCallback(async () => {
     if (!user) return;
-    resetMetrics();
+
+    if (!initialLoadCompleted.current) {
+      // Only reset metrics on the very first load
+    }
+
     const cachedCombined = loadCachedChatData();
-    if (cachedCombined.length > 0 && !isFocused) {
+    if (
+      cachedCombined.length > 0 &&
+      !isFocused &&
+      initialLoadCompleted.current
+    ) {
       setCombinedChats(cachedCombined);
-      setFilteredChats(cachedCombined);
       setLoading(false);
-      recordFullLoad();
       return;
     }
 
@@ -507,17 +527,7 @@ const ChatsListScreen: React.FC = () => {
       );
 
       setCombinedChats(combined);
-      setFilteredChats(
-        searchQuery.trim()
-          ? combined.filter((c) =>
-              c.title.toLowerCase().includes(searchQuery.toLowerCase()),
-            )
-          : combined,
-      );
       saveCachedChatData(combined);
-      recordFullLoad();
-
-      if (__DEV__) console.log('🚀 Chats List Performance:', getMetrics());
     } catch (error) {
       if (
         error instanceof Error ||
@@ -532,6 +542,11 @@ const ChatsListScreen: React.FC = () => {
         console.error('Error combining chats:', error);
       }
     } finally {
+      if (!initialLoadCompleted.current) {
+        recordFullLoad();
+        if (__DEV__) console.log('🚀 Chats List Performance:', getMetrics());
+        initialLoadCompleted.current = true;
+      }
       setLoading(false);
     }
   }, [
@@ -546,11 +561,9 @@ const ChatsListScreen: React.FC = () => {
     fetchUnreadFromFirestore,
     loadCachedChatData,
     saveCachedChatData,
-    searchQuery,
     isFocused,
     usersCache,
     userBatchFetcher,
-    resetMetrics,
     recordFullLoad,
     getMetrics,
   ]);
@@ -559,16 +572,13 @@ const ChatsListScreen: React.FC = () => {
     combineChats();
   }, [isFocused, dms, groupChats, crewChats, combineChats]);
 
-  useEffect(() => {
+  const filteredChats = useMemo(() => {
     if (searchQuery.trim() === '') {
-      setFilteredChats(combinedChats);
-    } else {
-      setFilteredChats(
-        combinedChats.filter((chat) =>
-          chat.title.toLowerCase().includes(searchQuery.toLowerCase()),
-        ),
-      );
+      return combinedChats;
     }
+    return combinedChats.filter((chat) =>
+      chat.title.toLowerCase().includes(searchQuery.toLowerCase()),
+    );
   }, [searchQuery, combinedChats]);
 
   const handleNavigation = useCallback(
