@@ -16,6 +16,7 @@ import { CrewsProvider } from '@/context/CrewsContext';
 import { InvitationsProvider } from '@/context/InvitationsContext';
 import { CrewDateChatProvider } from '@/context/CrewDateChatContext';
 import { DirectMessagesProvider } from '@/context/DirectMessagesContext';
+import { CrewChatProvider } from '@/context/CrewChatContext';
 import { BadgeCountProvider } from '@/context/BadgeCountContext';
 import { SignalProvider } from '@/context/SignalContext';
 import GlobalSetup from './GlobalSetup';
@@ -75,7 +76,9 @@ function Providers({ children }: { children: ReactNode }) {
             <InvitationsProvider>
               <CrewDateChatProvider>
                 <DirectMessagesProvider>
-                  <BadgeCountProvider>{children}</BadgeCountProvider>
+                  <CrewChatProvider>
+                    <BadgeCountProvider>{children}</BadgeCountProvider>
+                  </CrewChatProvider>
                 </DirectMessagesProvider>
               </CrewDateChatProvider>
             </InvitationsProvider>

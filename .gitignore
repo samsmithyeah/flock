@@ -54,3 +54,5 @@ converter.py
 # yarn
 yarn-error.log
 .yarn/*
+
+repomix-output.xml
