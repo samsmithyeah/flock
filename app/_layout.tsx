@@ -101,7 +101,8 @@ function AppContent() {
   // OR
   // 2. The user is logged in, but we are still performing the initial fetch of their contacts or crews.
   const showLoadingScreen =
-    isAuthInitializing || (user && (isContactsInitialLoading || isCrewsLoading));
+    isAuthInitializing ||
+    (user && (isContactsInitialLoading || isCrewsLoading));
 
   return (
     <>
