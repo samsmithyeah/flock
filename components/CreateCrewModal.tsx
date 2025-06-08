@@ -74,6 +74,12 @@ const CreateCrewModal: React.FC<CreateCrewModalProps> = ({
 
       // Notify parent component of the new crew creation
       onCrewCreated(crewRef.id);
+
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: `Crew ${newCrewName.trim()} has been created!`,
+      });
     } catch (error) {
       console.error('Error creating crew:', error);
       Toast.show({
