@@ -17,7 +17,6 @@ import {
   getDocs,
   doc,
   getDoc,
-  writeBatch,
   onSnapshot,
   Unsubscribe,
   setDoc,
@@ -147,24 +146,79 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
   const setStatusForCrew = useCallback(
     async (crewId: string, selectedDate: string, status: boolean | null) => {
       if (!user?.uid) throw new Error('User not authenticated');
-      const userStatusRef = doc(
-        db,
-        'crews',
-        crewId,
-        'statuses',
-        selectedDate,
-        'userStatuses',
-        user.uid,
-      );
-      await setDoc(
-        userStatusRef,
-        {
-          date: selectedDate,
-          upForGoingOutTonight: status,
-          timestamp: serverTimestamp(),
-        },
-        { merge: true },
-      );
+
+      try {
+        const userStatusRef = doc(
+          db,
+          'crews',
+          crewId,
+          'statuses',
+          selectedDate,
+          'userStatuses',
+          user.uid,
+        );
+
+        await setDoc(
+          userStatusRef,
+          {
+            date: selectedDate,
+            upForGoingOutTonight: status,
+            timestamp: serverTimestamp(),
+          },
+          { merge: true },
+        );
+
+        // Update local state immediately for better UX
+        setDateCounts((prev) => {
+          const newDateCounts = { ...prev };
+          const currentDate = newDateCounts[selectedDate];
+
+          if (!currentDate) {
+            newDateCounts[selectedDate] = {
+              available: status === true ? 1 : 0,
+              unavailable: status === false ? 1 : 0,
+            };
+          } else {
+            // Determine the change needed based on current and new status
+            let availableDiff = 0;
+            let unavailableDiff = 0;
+
+            if (status === true) {
+              availableDiff = 1;
+              // If this crew was previously marked unavailable, subtract from unavailable
+              if (currentDate.unavailable > 0) {
+                unavailableDiff = -1;
+              }
+            } else if (status === false) {
+              unavailableDiff = 1;
+              // If this crew was previously marked available, subtract from available
+              if (currentDate.available > 0) {
+                availableDiff = -1;
+              }
+            } else {
+              // Setting to null - might remove from either count
+              if (currentDate.available > 0) {
+                availableDiff = -1;
+              } else if (currentDate.unavailable > 0) {
+                unavailableDiff = -1;
+              }
+            }
+
+            newDateCounts[selectedDate] = {
+              available: Math.max(0, currentDate.available + availableDiff),
+              unavailable: Math.max(
+                0,
+                currentDate.unavailable + unavailableDiff,
+              ),
+            };
+          }
+
+          return newDateCounts;
+        });
+      } catch (error) {
+        console.error('Error updating status for crew:', error);
+        throw error;
+      }
     },
     [user?.uid],
   );
@@ -172,29 +226,79 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
   const setStatusForDateAllCrews = useCallback(
     async (date: string, toggleTo: boolean | null) => {
       if (!user?.uid || crewIds.length === 0) return;
-      const batch = writeBatch(db);
-      crewIds.forEach((crewId) => {
-        const userStatusRef = doc(
-          db,
-          'crews',
-          crewId,
-          'statuses',
-          date,
-          'userStatuses',
-          user.uid,
-        );
-        batch.set(
-          userStatusRef,
-          { upForGoingOutTonight: toggleTo, timestamp: serverTimestamp() },
-          { merge: true },
-        );
-      });
-      await batch.commit();
-      Toast.show({
-        type: 'success',
-        text1: 'Success',
-        text2: 'Availability updated for all crews.',
-      });
+
+      try {
+        // Use individual setDoc operations instead of batch to avoid permissions issues
+        const promises = crewIds.map((crewId) => {
+          const userStatusRef = doc(
+            db,
+            'crews',
+            crewId,
+            'statuses',
+            date,
+            'userStatuses',
+            user.uid,
+          );
+          return setDoc(
+            userStatusRef,
+            {
+              date: date,
+              upForGoingOutTonight: toggleTo,
+              timestamp: serverTimestamp(),
+            },
+            { merge: true },
+          );
+        });
+
+        await Promise.all(promises);
+
+        // Update local state immediately for better UX
+        setDateCounts((prev) => {
+          const newDateCounts = { ...prev };
+          const currentAvailable = newDateCounts[date]?.available || 0;
+          const currentUnavailable = newDateCounts[date]?.unavailable || 0;
+
+          // Calculate the difference based on what the previous status was and what it's being set to
+          let availableDiff = 0;
+          let unavailableDiff = 0;
+
+          if (toggleTo === true) {
+            // User is now available for all crews
+            availableDiff = crewIds.length;
+            // Remove from unavailable count if they were previously unavailable
+            unavailableDiff = -Math.min(currentUnavailable, crewIds.length);
+          } else if (toggleTo === false) {
+            // User is now unavailable for all crews
+            unavailableDiff = crewIds.length;
+            // Remove from available count if they were previously available
+            availableDiff = -Math.min(currentAvailable, crewIds.length);
+          } else {
+            // Setting to null - remove from both counts
+            availableDiff = -Math.min(currentAvailable, crewIds.length);
+            unavailableDiff = -Math.min(currentUnavailable, crewIds.length);
+          }
+
+          newDateCounts[date] = {
+            available: Math.max(0, currentAvailable + availableDiff),
+            unavailable: Math.max(0, currentUnavailable + unavailableDiff),
+          };
+
+          return newDateCounts;
+        });
+
+        Toast.show({
+          type: 'success',
+          text1: 'Success',
+          text2: 'Availability updated for all crews.',
+        });
+      } catch (error) {
+        console.error('Error updating status for all crews:', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Failed to update availability. Please try again.',
+        });
+      }
     },
     [user?.uid, crewIds],
   );
