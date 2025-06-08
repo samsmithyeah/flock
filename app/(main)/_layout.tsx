@@ -4,15 +4,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { useInvitations } from '@/context/InvitationsContext';
 import { useDirectMessages } from '@/context/DirectMessagesContext';
 import { useCrewDateChat } from '@/context/CrewDateChatContext';
+import { useCrewChat } from '@/context/CrewChatContext';
 import { useSignal } from '@/context/SignalContext';
 
 export default function MainLayout() {
   const { pendingCount } = useInvitations();
   const { totalUnread: totalDMUnread } = useDirectMessages();
-  const { totalUnread: totalGroupUnread } = useCrewDateChat();
+  const { totalUnread: totalCrewDateUnread } = useCrewDateChat();
+  const { totalUnread: totalCrewUnread } = useCrewChat();
   const { unansweredSignalCount } = useSignal();
 
-  const getTotalUnread = () => totalDMUnread + totalGroupUnread;
+  const getTotalUnread = () =>
+    totalDMUnread + totalCrewDateUnread + totalCrewUnread;
 
   return (
     <Tabs screenOptions={{ headerShown: false }}>

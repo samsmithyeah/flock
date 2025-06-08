@@ -197,18 +197,31 @@ const CrewChatScreen: React.FC = () => {
     return ensureMessagesArray(messages[chatId], chatId);
   }, [chatId, messages]);
 
-  // One-time cache cleanup on mount
+  // One-time legacy cache cleanup on mount
   useEffect(() => {
     if (chatId) cleanupLegacyCache(chatId);
   }, [chatId]);
 
-  // Clear loading state when messages are received
+  // Clear loading state when messages are received or after a timeout for empty chats
   useEffect(() => {
-    if (conversationMessages.length > 0) {
-      setTimeout(() => setIsInitialLoading(false), 500);
-      recordFullLoad();
+    if (!isInitialLoading) {
+      return; // Already loaded
     }
-  }, [conversationMessages.length, recordFullLoad]);
+
+    if (conversationMessages.length > 0) {
+      setIsInitialLoading(false);
+      recordFullLoad();
+      return;
+    }
+
+    // Fallback for empty chats or slow networks
+    const timer = setTimeout(() => {
+      setIsInitialLoading(false);
+      recordFullLoad(); // Record that the "full load" is complete, even if empty
+    }, 2500); // Give it 2.5 seconds
+
+    return () => clearTimeout(timer); // Clean up on unmount or re-render
+  }, [isInitialLoading, conversationMessages.length, recordFullLoad]);
 
   // Fetch crew and member details with caching
   useEffect(() => {
