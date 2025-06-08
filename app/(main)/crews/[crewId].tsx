@@ -124,7 +124,7 @@ const CrewLandingScreen: React.FC = () => {
 
   return (
     <ScrollView style={globalStyles.containerWithHeader}>
-      <View style={styles.navigationCards}>
+      <View>
         <NavigationCard
           icon="calendar-outline"
           iconColor="#1e90ff"
@@ -157,10 +157,31 @@ const CrewLandingScreen: React.FC = () => {
           title="Signal"
           description="Send a signal to your crew to meet up right now!"
           onPress={() =>
-            router.push({
-              pathname: '/signal/send',
-              params: { crewId },
-            })
+            router.push(
+              {
+                pathname: '/signal/send',
+                params: { crewId },
+              },
+              { withAnchor: true },
+            )
+          }
+        />
+
+        <NavigationCard
+          icon="chatbubbles-outline"
+          iconColor="#673ab7"
+          title="Crew chat"
+          description="Chat with your crew members."
+          onPress={() =>
+            router.push(
+              {
+                pathname: '/chats/crew-chat',
+                params: { crewId },
+              },
+              {
+                withAnchor: true,
+              },
+            )
           }
         />
       </View>
@@ -170,8 +191,4 @@ const CrewLandingScreen: React.FC = () => {
 
 export default CrewLandingScreen;
 
-const styles = StyleSheet.create({
-  navigationCards: {
-    marginTop: vs(16),
-  },
-});
+const styles = StyleSheet.create({});

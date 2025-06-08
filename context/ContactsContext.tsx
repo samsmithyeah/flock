@@ -35,6 +35,7 @@ interface ContactsContextValue {
   matchedUsersFromCrews: User[];
   allContacts: User[]; // Combined list
   loading: boolean;
+  isInitialLoad: boolean;
   error: string | null;
   refreshContacts: () => Promise<void>;
   refreshCrewContacts: () => Promise<void>; // New function
@@ -56,6 +57,7 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
   );
   const [allContacts, setAllContacts] = useState<User[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isInitialLoad, setIsInitialLoad] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [country, setCountry] = useState<CountryCode>('GB');
   const { user } = useUser();
@@ -275,6 +277,7 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
       setError('Failed to load contacts.');
     } finally {
       setLoading(false);
+      setIsInitialLoad(false);
       console.log('🔄 Finished loading contacts.');
     }
   };
@@ -415,6 +418,7 @@ export const ContactsProvider: React.FC<{ children: ReactNode }> = ({
         matchedUsersFromCrews,
         allContacts,
         loading,
+        isInitialLoad,
         error,
         refreshContacts,
         refreshCrewContacts,

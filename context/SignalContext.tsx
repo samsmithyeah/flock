@@ -165,12 +165,6 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
       checkLocationPermissions();
       checkBackgroundLocationTrackingStatus();
       checkForegroundLocationTrackingStatus();
-
-      // The user preference is already loaded in UserContext
-      // No need to load it here as it's handled by UserContext
-    } else {
-      // Don't reset the preference when user logs out - it's handled by UserContext
-      // setUserDisabledBackgroundTracking(false);
     }
   }, [user]);
 

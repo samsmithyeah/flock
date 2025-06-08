@@ -10,15 +10,17 @@ import Toast, {
   InfoToast,
   ToastProps,
 } from 'react-native-toast-message';
-import { UserProvider } from '@/context/UserContext';
-import { ContactsProvider } from '@/context/ContactsContext';
-import { CrewsProvider } from '@/context/CrewsContext';
+import { UserProvider, useUser } from '@/context/UserContext';
+import { ContactsProvider, useContacts } from '@/context/ContactsContext';
+import { CrewsProvider, useCrews } from '@/context/CrewsContext';
 import { InvitationsProvider } from '@/context/InvitationsContext';
 import { CrewDateChatProvider } from '@/context/CrewDateChatContext';
 import { DirectMessagesProvider } from '@/context/DirectMessagesContext';
+import { CrewChatProvider } from '@/context/CrewChatContext';
 import { BadgeCountProvider } from '@/context/BadgeCountContext';
 import { SignalProvider } from '@/context/SignalContext';
 import GlobalSetup from './GlobalSetup';
+import InitialLoadingScreen from '@/components/InitialLoadingScreen';
 
 // Import background location task to register it
 import '@/services/BackgroundLocationTask';
@@ -75,7 +77,9 @@ function Providers({ children }: { children: ReactNode }) {
             <InvitationsProvider>
               <CrewDateChatProvider>
                 <DirectMessagesProvider>
-                  <BadgeCountProvider>{children}</BadgeCountProvider>
+                  <CrewChatProvider>
+                    <BadgeCountProvider>{children}</BadgeCountProvider>
+                  </CrewChatProvider>
                 </DirectMessagesProvider>
               </CrewDateChatProvider>
             </InvitationsProvider>
@@ -86,14 +90,36 @@ function Providers({ children }: { children: ReactNode }) {
   );
 }
 
+// Manages the main app view and the initial loading screen
+function AppContent() {
+  const { user, isInitializing: isAuthInitializing } = useUser();
+  const { isInitialLoad: isContactsInitialLoading } = useContacts();
+  const { loadingCrews: isCrewsLoading } = useCrews();
+
+  // The loading screen should be shown if:
+  // 1. We are still checking the initial authentication state.
+  // OR
+  // 2. The user is logged in, but we are still performing the initial fetch of their contacts or crews.
+  const showLoadingScreen =
+    isAuthInitializing ||
+    (user && (isContactsInitialLoading || isCrewsLoading));
+
+  return (
+    <>
+      <GlobalSetup />
+      <View style={styles.container}>
+        <Slot />
+      </View>
+      {showLoadingScreen && <InitialLoadingScreen />}
+    </>
+  );
+}
+
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <Providers>
-        <GlobalSetup />
-        <View style={styles.container}>
-          <Slot />
-        </View>
+        <AppContent />
       </Providers>
       <StatusBar style="dark" />
       <Toast config={toastConfig} />

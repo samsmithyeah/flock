@@ -19,7 +19,6 @@ import {
 } from 'react-native';
 import {
   GiftedChat,
-  IMessage,
   Bubble,
   Send,
   SendProps,
@@ -27,7 +26,6 @@ import {
   InputToolbar,
   Actions,
   MessageImageProps,
-  // Add MessageProps type for properly typing renderCustomView
   MessageProps,
 } from 'react-native-gifted-chat';
 import { useUser } from '@/context/UserContext';
@@ -60,22 +58,162 @@ import ChatImageViewer from '@/components/ChatImageViewer';
 import ImageOptionsMenu from '@/components/ImageOptionsMenu';
 import PollCreationModal from '@/components/PollCreationModal';
 import PollMessage from '@/components/PollMessage';
+import {
+  getCacheKey,
+  getCachedData,
+  setCachedData,
+  usePerformanceMonitoring,
+  useTypingHandler,
+  useOptimisticMessages,
+  ensureMessagesArray,
+  cleanupLegacyCache,
+  ExtendedMessage,
+  CachedMemberData,
+  TYPING_TIMEOUT,
+  READ_UPDATE_DEBOUNCE,
+} from '@/utils/chatUtils';
 
-// Add Poll interface and extend IMessage
-interface Poll {
-  question: string;
-  options: string[];
-  votes: { [optionIndex: number]: string[] };
-  totalVotes: number;
+// ============================================================================
+// CREW-SPECIFIC CACHE INTERFACES
+// ============================================================================
+
+interface CachedCrewData {
+  name: string;
+  iconUrl?: string;
+  timestamp: number;
 }
 
-// Extend IMessage to include our poll property
-interface ExtendedMessage extends IMessage {
-  poll?: Poll;
+// ============================================================================
+// CREW-SPECIFIC CACHE INTERFACES
+// ============================================================================
+
+interface CachedCrewData {
+  name: string;
+  iconUrl?: string;
+  timestamp: number;
 }
 
-const TYPING_TIMEOUT = 1000;
-const READ_UPDATE_DEBOUNCE = 1000; // 1 second debounce for read status updates
+// ============================================================================
+// CREW-SPECIFIC CACHE INTERFACES
+// ============================================================================
+
+interface CachedCrewData {
+  name: string;
+  iconUrl?: string;
+  timestamp: number;
+}
+
+// Custom hooks for crew-specific state management with MMKV caching
+const useChatState = (
+  chatId: string | null,
+  user: any,
+  recordCacheLoad: (isHit: boolean) => void,
+) => {
+  // Initialize with cached data for instant loading using crew-specific cache keys
+  const [otherMembers, setOtherMembers] = useState<User[]>(() => {
+    if (!chatId) return [];
+    const cachedMembers = getCachedData<CachedMemberData>(
+      `crew_chat_members_${chatId}`, // Use crew-specific cache key
+    );
+    const hasCache = Boolean(
+      cachedMembers?.members && cachedMembers.members.length > 0,
+    );
+    recordCacheLoad(hasCache);
+    return cachedMembers?.members || [];
+  });
+
+  const [crew, setCrew] = useState<{ name: string; iconUrl?: string } | null>(
+    () => {
+      if (!chatId) return null;
+      const cachedCrew = getCachedData<CachedCrewData>(
+        `crew_chat_crew_${chatId}`, // Use crew-specific cache key
+      );
+      const hasCache = Boolean(cachedCrew && cachedCrew.name);
+      recordCacheLoad(hasCache);
+      return cachedCrew
+        ? { name: cachedCrew.name, iconUrl: cachedCrew.iconUrl }
+        : null;
+    },
+  );
+
+  const [otherUsersTyping, setOtherUsersTyping] = useState<
+    Record<string, boolean>
+  >(() => {
+    if (!chatId) return {};
+    const cachedState = getCachedData<any>(
+      `crew_chat_state_${chatId}`, // Use crew-specific cache key
+    );
+    const hasCache = Boolean(cachedState?.otherUsersTyping);
+    recordCacheLoad(hasCache);
+    return cachedState?.otherUsersTyping || {};
+  });
+
+  const [lastReadByUsers, setLastReadByUsers] = useState<Record<string, Date>>(
+    () => {
+      if (!chatId) return {};
+      const cachedState = getCachedData<any>(
+        `crew_chat_state_${chatId}`, // Use crew-specific cache key
+      );
+      const hasCache = Boolean(cachedState?.lastReadByUsers);
+      recordCacheLoad(hasCache);
+      return cachedState?.lastReadByUsers || {};
+    },
+  );
+
+  const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isImageMenuVisible, setIsImageMenuVisible] = useState(false);
+  const [isPollModalVisible, setIsPollModalVisible] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+
+  // Cache crew data when it changes
+  useEffect(() => {
+    if (chatId && crew) {
+      setCachedData(`crew_chat_crew_${chatId}`, {
+        name: crew.name,
+        iconUrl: crew.iconUrl,
+      });
+    }
+  }, [chatId, crew]);
+
+  // Cache members when they change
+  useEffect(() => {
+    if (chatId && otherMembers.length > 0) {
+      setCachedData(`crew_chat_members_${chatId}`, { members: otherMembers });
+    }
+  }, [chatId, otherMembers]);
+
+  // Cache chat state when it changes
+  useEffect(() => {
+    if (chatId) {
+      setCachedData(`crew_chat_state_${chatId}`, {
+        lastReadByUsers,
+        otherUsersTyping,
+      });
+    }
+  }, [chatId, lastReadByUsers, otherUsersTyping]);
+
+  return {
+    otherMembers,
+    setOtherMembers,
+    crew,
+    setCrew,
+    otherUsersTyping,
+    setOtherUsersTyping,
+    lastReadByUsers,
+    setLastReadByUsers,
+    isLoadingEarlier,
+    setIsLoadingEarlier,
+    isUploading,
+    setIsUploading,
+    isImageMenuVisible,
+    setIsImageMenuVisible,
+    isPollModalVisible,
+    setIsPollModalVisible,
+    isInitialLoading,
+    setIsInitialLoading,
+  };
+};
 
 const CrewDateChatScreen: React.FC = () => {
   const { crewId, date, id } = useLocalSearchParams<{
@@ -83,8 +221,14 @@ const CrewDateChatScreen: React.FC = () => {
     date: string;
     id?: string;
   }>();
+
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
+  const tabBarHeight = useBottomTabBarHeight();
+
+  const { user, addActiveChat, removeActiveChat } = useUser();
+  const { crews, usersCache, setUsersCache } = useCrews();
   const {
     sendMessage,
     updateLastRead,
@@ -95,29 +239,6 @@ const CrewDateChatScreen: React.FC = () => {
     createPoll,
     votePoll,
   } = useCrewDateChat();
-  const { crews, usersCache, setUsersCache } = useCrews();
-  const isFocused = useIsFocused();
-  const tabBarHeight = useBottomTabBarHeight();
-  const { user, addActiveChat, removeActiveChat } = useUser();
-  const [otherMembers, setOtherMembers] = useState<User[]>([]);
-  const [crew, setCrew] = useState<{ name: string; iconUrl?: string } | null>(
-    null,
-  );
-  const [otherUsersTyping, setOtherUsersTyping] = useState<{
-    [key: string]: boolean;
-  }>({});
-  const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
-  // Add states for optimistic messages and reading status
-  const [optimisticMessages, setOptimisticMessages] = useState<
-    ExtendedMessage[]
-  >([]);
-  const [lastReadByUsers, setLastReadByUsers] = useState<{
-    [uid: string]: Date;
-  }>({});
-  const [isUploading, setIsUploading] = useState(false);
-  const [isImageMenuVisible, setIsImageMenuVisible] = useState(false);
-  // Add state for poll creation modal
-  const [isPollModalVisible, setIsPollModalVisible] = useState(false);
 
   const chatId = useMemo(() => {
     if (id) return id;
@@ -125,154 +246,90 @@ const CrewDateChatScreen: React.FC = () => {
     return null;
   }, [crewId, date, id]);
 
-  // Get pagination info for this chat
+  // Performance monitoring
+  const { recordCacheLoad, recordFullLoad } = usePerformanceMonitoring(chatId);
+
+  const {
+    otherMembers,
+    setOtherMembers,
+    crew,
+    setCrew,
+    otherUsersTyping,
+    setOtherUsersTyping,
+    lastReadByUsers,
+    setLastReadByUsers,
+    isLoadingEarlier,
+    setIsLoadingEarlier,
+    isUploading,
+    setIsUploading,
+    isImageMenuVisible,
+    setIsImageMenuVisible,
+    isPollModalVisible,
+    setIsPollModalVisible,
+    isInitialLoading,
+    setIsInitialLoading,
+  } = useChatState(chatId, user, recordCacheLoad);
+
+  const conversationMessages = useMemo(() => {
+    if (!chatId || !messages || !messages[chatId]) return [];
+    return ensureMessagesArray(messages[chatId], chatId);
+  }, [chatId, messages]);
+
+  // Clear loading state when messages are received
+  useEffect(() => {
+    if (conversationMessages.length > 0) {
+      setIsInitialLoading(false);
+    }
+  }, [conversationMessages.length]);
+
   const paginationInfo = chatId ? messagePaginationInfo[chatId] : undefined;
 
-  // Handle loading earlier messages with debugging
-  const handleLoadEarlier = useCallback(async () => {
-    if (!chatId || isLoadingEarlier) {
-      console.log(
-        "[CrewDateChat] Can't load earlier messages:",
-        !chatId ? 'Invalid chatId' : 'Already loading',
+  // ============================================================================
+  // ONE-TIME CACHE CLEANUP
+  // ============================================================================
+
+  // Clean up any legacy cache entries that might be causing conflicts
+  useEffect(() => {
+    if (!chatId) return;
+    cleanupLegacyCache(chatId);
+  }, [chatId]);
+
+  // ============================================================================
+  // INSTANT LOADING STATE MANAGEMENT
+  // ============================================================================
+
+  // Cache messages for instant loading on next visit
+  useEffect(() => {
+    if (chatId && conversationMessages.length > 0) {
+      const componentCacheKey = `component_messages_${chatId}`;
+      setCachedData(componentCacheKey, { messages: conversationMessages });
+      recordFullLoad();
+    }
+  }, [chatId, conversationMessages.length, recordFullLoad]);
+
+  const { giftedChatMessages, setOptimisticMessages } = useOptimisticMessages(
+    conversationMessages,
+    user,
+    (userId: string) => {
+      return (
+        otherMembers.find((m) => m.uid === userId)?.displayName || 'Unknown'
       );
-      return;
-    }
-
-    if (!paginationInfo?.hasMore) {
-      console.log('[CrewDateChat] No more earlier messages available');
-      return;
-    }
-
-    console.log('[CrewDateChat] Loading earlier messages...');
-    setIsLoadingEarlier(true);
-
-    try {
-      const hasMore = await loadEarlierMessages(chatId);
-      console.log('[CrewDateChat] Loaded earlier messages, has more:', hasMore);
-    } catch (error) {
-      console.error('[CrewDateChat] Error loading earlier messages:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Could not load earlier messages',
-        position: 'bottom',
-      });
-    } finally {
-      setIsLoadingEarlier(false);
-    }
-  }, [chatId, paginationInfo, loadEarlierMessages, isLoadingEarlier]);
-
-  // Fetch crew details from crews context.
-  useEffect(() => {
-    if (!crewId || !user?.uid) {
-      setCrew({ name: 'Unknown Crew', iconUrl: undefined });
-      return;
-    }
-
-    const fetchCrew = async () => {
-      const crewData = crews.find((c) => c.id === crewId);
-      if (crewData) {
-        setCrew({ name: crewData.name, iconUrl: crewData.iconUrl });
-      } else {
-        try {
-          const crewDoc = await getDoc(doc(db, 'crews', crewId));
-          if (crewDoc.exists()) {
-            const data = crewDoc.data();
-            setCrew({
-              name: data.name || 'Unknown Crew',
-              iconUrl: data.iconUrl,
-            });
-          } else {
-            setCrew({ name: 'Unknown Crew', iconUrl: undefined });
-          }
-        } catch (error) {
-          console.error('Error fetching crew details:', error);
-          setCrew({ name: 'Unknown Crew', iconUrl: undefined });
-        }
+    },
+    (userId: string) => {
+      return otherMembers.find((m) => m.uid === userId)?.photoURL;
+    },
+    (messageTimestamp: Date) => {
+      if (!otherMembers.length || !Object.keys(lastReadByUsers).length) {
+        return false;
       }
-    };
-
-    fetchCrew();
-  }, [crewId, crews, user?.uid]);
-
-  // Fetch other members details using the global usersCache.
-  useEffect(() => {
-    if (!chatId || !user?.uid) return;
-    const fetchMembers = async () => {
-      try {
-        const chatRef = doc(db, 'crew_date_chats', chatId);
-        const chatSnap = await getDoc(chatRef);
-        if (chatSnap.exists()) {
-          const chatData = chatSnap.data();
-          const memberIds: string[] = chatData.memberIds || [];
-          const otherMemberIds = memberIds.filter((id) => id !== user?.uid);
-          // For each member, try to use the cache; if not present, fallback to a one-time fetch.
-          const fetchedMembers = await Promise.all(
-            otherMemberIds.map(async (uid) => {
-              if (usersCache[uid]) return usersCache[uid];
-              try {
-                const userDoc = await getDoc(doc(db, 'users', uid));
-                if (userDoc.exists()) {
-                  const data = userDoc.data() as User;
-                  setUsersCache((prev) => ({ ...prev, [uid]: data }));
-                  return data;
-                } else {
-                  return {
-                    uid,
-                    displayName: 'Unknown',
-                    email: '',
-                    photoURL: undefined,
-                  } as User;
-                }
-              } catch (error) {
-                console.error(`Error fetching user ${uid}:`, error);
-                return {
-                  uid,
-                  displayName: 'Unknown',
-                  email: '',
-                  photoURL: undefined,
-                } as User;
-              }
-            }),
-          );
-          setOtherMembers(fetchedMembers);
-        } else {
-          setOtherMembers([]);
-        }
-      } catch (error) {
-        console.error('Error fetching chat members:', error);
-        setOtherMembers([]);
-      }
-    };
-
-    fetchMembers();
-  }, [chatId, user?.uid]);
-
-  // Log when pagination info changes
-  useEffect(() => {
-    if (paginationInfo) {
-      console.log('[CrewDateChat] Pagination info updated:', {
-        hasMore: paginationInfo.hasMore,
-        loading: paginationInfo.loading,
+      return otherMembers.every((member) => {
+        const lastReadTime = lastReadByUsers[member.uid];
+        return lastReadTime && messageTimestamp < lastReadTime;
       });
-    }
-  }, [paginationInfo]);
+    },
+  );
 
-  useLayoutEffect(() => {
-    if (crew) {
-      navigation.setOptions({
-        headerTitle: `${crew.name} (${moment(date).format('MMM Do')})`,
-        headerStatusBarHeight: insets.top,
-      });
-    }
-  }, [navigation, crew, date, insets.top]);
-
-  // Typing status for group chat.
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  // Track previous typing state to prevent unnecessary updates
-  const prevTypingStateRef = useRef<boolean>(false);
-
-  // Function to immediately update typing status when typing starts
+  // Typing status management
   const updateTypingStatusImmediately = useCallback(
     async (isTyping: boolean) => {
       if (!chatId || !user?.uid) return;
@@ -305,159 +362,221 @@ const CrewDateChatScreen: React.FC = () => {
     [chatId, user?.uid],
   );
 
-  // Only debounce the "stop typing" signal to reduce Firebase operations
-  const debouncedStopTyping = useMemo(
-    () =>
-      debounce(() => {
-        updateTypingStatusImmediately(false);
-        prevTypingStateRef.current = false;
-      }, 500),
-    [updateTypingStatusImmediately],
+  const { handleInputTextChanged } = useTypingHandler(
+    updateTypingStatusImmediately,
   );
 
-  // Optimize the input text change handler
-  const handleInputTextChanged = useCallback(
-    (text: string) => {
-      const isTyping = text.length > 0;
-
-      // Clear any existing timeout
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = null;
-      }
-
-      // Only send updates when typing state changes to avoid unnecessary writes
-      if (isTyping !== prevTypingStateRef.current) {
-        // If typing started, update immediately
-        if (isTyping) {
-          updateTypingStatusImmediately(true);
-          prevTypingStateRef.current = true;
-        } else {
-          // If typing stopped, use debounce to avoid flickering when
-          // user is just pausing between words
-          debouncedStopTyping();
-        }
-      }
-
-      // Set timeout to clear typing status after inactivity
-      if (isTyping) {
-        typingTimeoutRef.current = setTimeout(() => {
-          updateTypingStatusImmediately(false);
-          prevTypingStateRef.current = false;
-          typingTimeoutRef.current = null;
-        }, TYPING_TIMEOUT);
-      }
-    },
-    [updateTypingStatusImmediately, debouncedStopTyping],
-  );
-
-  // Make sure to cancel debounced function on unmount
+  // Fetch crew details with instant loading from cache
   useEffect(() => {
-    return () => {
-      debouncedStopTyping.cancel();
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-    };
-  }, [debouncedStopTyping]);
-
-  const conversationMessages = messages[chatId || ''] || [];
-
-  // Function to check if a message has been read by all participants
-  const isMessageReadByAll = useCallback(
-    (messageTimestamp: Date) => {
-      // If we don't have member data or timestamp data, assume not read
-      if (!otherMembers.length || !Object.keys(lastReadByUsers).length) {
-        return false;
-      }
-
-      // Check if all other members have read the message
-      return otherMembers.every((member) => {
-        const lastReadTime = lastReadByUsers[member.uid];
-        return lastReadTime && messageTimestamp < lastReadTime;
-      });
-    },
-    [otherMembers, lastReadByUsers],
-  );
-
-  // Modified to include optimistic messages and read status
-  const giftedChatMessages: ExtendedMessage[] = useMemo(() => {
-    // Get messages from server
-    const serverMessages = conversationMessages
-      .map((message) => {
-        // Determine if message has been read by all other participants
-        const messageTime =
-          message.createdAt instanceof Date
-            ? message.createdAt
-            : new Date(message.createdAt);
-
-        const isReadByAll =
-          message.senderId === user?.uid && isMessageReadByAll(messageTime);
-
-        return {
-          _id: message.id,
-          text: message.text,
-          createdAt: messageTime,
-          user: {
-            _id: message.senderId,
-            name:
-              message.senderId === user?.uid
-                ? user?.displayName || 'You'
-                : otherMembers.find((m) => m.uid === message.senderId)
-                    ?.displayName || 'Unknown',
-            avatar:
-              message.senderId === user?.uid
-                ? user?.photoURL
-                : otherMembers.find((m) => m.uid === message.senderId)
-                    ?.photoURL,
-          },
-          sent: true, // All server messages were successfully sent
-          received: isReadByAll || false, // Received when read by all members
-          image: message.imageUrl, // Add image URL if it exists
-          poll: message.poll, // Add poll data if it exists
-        };
-      })
-      .reverse();
-
-    // Filter out optimistic messages that have been confirmed by the server
-    const newOptimisticMessages = optimisticMessages.filter((optMsg) => {
-      return !serverMessages.some(
-        (serverMsg) =>
-          serverMsg.text === optMsg.text &&
-          Math.abs(
-            new Date(serverMsg.createdAt).getTime() -
-              new Date(optMsg.createdAt).getTime(),
-          ) < 5000,
-      );
-    });
-
-    // Update optimistic messages if any were confirmed
-    if (newOptimisticMessages.length !== optimisticMessages.length) {
-      setOptimisticMessages(newOptimisticMessages);
+    if (!crewId || !user?.uid) {
+      setCrew({ name: 'Unknown Crew', iconUrl: undefined });
+      return;
     }
 
-    // Combine optimistic and server messages
-    return [...newOptimisticMessages, ...serverMessages];
-  }, [
-    conversationMessages,
-    user?.uid,
-    user?.displayName,
-    user?.photoURL,
-    otherMembers,
-    optimisticMessages,
-    isMessageReadByAll,
-  ]);
+    const fetchCrew = async () => {
+      // First check if we already have cached crew data (from useChatState initialization)
+      if (crew && crew.name !== 'Unknown Crew') {
+        return; // Already have valid cached data
+      }
 
-  useEffect(() => {
-    if (!chatId) return;
-    console.log('[CrewDateChat] Setting up message listener for:', chatId);
-    const unsubscribeMessages = listenToMessages(chatId);
-    return () => unsubscribeMessages();
-  }, [chatId]);
+      // Check crews context
+      const crewData = crews.find((c) => c.id === crewId);
+      if (crewData) {
+        setCrew({ name: crewData.name, iconUrl: crewData.iconUrl });
+        return;
+      }
 
-  // Listen for last read timestamps from all members
+      // If not in context, check cache for this specific crew
+      const cachedCrew = getCachedData<CachedCrewData>(
+        getCacheKey('crew', chatId!),
+      );
+      if (cachedCrew) {
+        setCrew({ name: cachedCrew.name, iconUrl: cachedCrew.iconUrl });
+        // Still fetch from Firestore in background to update cache
+      }
+
+      // Fetch from Firestore (either as fallback or to update cache)
+      try {
+        const crewDoc = await getDoc(doc(db, 'crews', crewId));
+        if (crewDoc.exists()) {
+          const data = crewDoc.data();
+          const crewInfo = {
+            name: data.name || 'Unknown Crew',
+            iconUrl: data.iconUrl,
+          };
+          setCrew(crewInfo);
+        } else {
+          setCrew({ name: 'Unknown Crew', iconUrl: undefined });
+        }
+      } catch (error) {
+        console.error('Error fetching crew details:', error);
+        // Only set error state if we don't have cached data
+        if (!cachedCrew) {
+          setCrew({ name: 'Unknown Crew', iconUrl: undefined });
+        }
+      }
+    };
+
+    fetchCrew();
+  }, [crewId, crews, user?.uid, setCrew, crew, chatId]);
+
+  // Fetch other members with instant loading from cache
   useEffect(() => {
     if (!chatId || !user?.uid) return;
+
+    const fetchMembers = async () => {
+      // Return early if we already have cached members (from useChatState initialization)
+      if (otherMembers.length > 0) {
+        return; // Already have cached data
+      }
+
+      try {
+        const chatRef = doc(db, 'crew_date_chats', chatId);
+        const chatSnap = await getDoc(chatRef);
+
+        if (chatSnap.exists()) {
+          const chatData = chatSnap.data();
+          const memberIds: string[] = chatData.memberIds || [];
+          const otherMemberIds = memberIds.filter((id) => id !== user?.uid);
+
+          // Check if we have all members in usersCache for instant loading
+          const cachedMembers = otherMemberIds
+            .map((uid) => usersCache[uid])
+            .filter(Boolean);
+
+          // If we have all members cached, use them immediately
+          if (cachedMembers.length === otherMemberIds.length) {
+            setOtherMembers(cachedMembers);
+            return;
+          }
+
+          // For missing members, fetch from Firestore
+          const fetchedMembers = await Promise.all(
+            otherMemberIds.map(async (uid) => {
+              if (usersCache[uid]) return usersCache[uid];
+
+              try {
+                const userDoc = await getDoc(doc(db, 'users', uid));
+                if (userDoc.exists()) {
+                  const data = userDoc.data() as User;
+                  setUsersCache((prev) => ({ ...prev, [uid]: data }));
+                  return data;
+                } else {
+                  return {
+                    uid,
+                    displayName: 'Unknown',
+                    email: '',
+                    photoURL: undefined,
+                  } as User;
+                }
+              } catch (error) {
+                console.error(`Error fetching user ${uid}:`, error);
+                return {
+                  uid,
+                  displayName: 'Unknown',
+                  email: '',
+                  photoURL: undefined,
+                } as User;
+              }
+            }),
+          );
+
+          setOtherMembers(fetchedMembers);
+        } else {
+          setOtherMembers([]);
+        }
+      } catch (error) {
+        console.error('Error fetching chat members:', error);
+        setOtherMembers([]);
+      }
+    };
+
+    fetchMembers();
+  }, [
+    chatId,
+    user?.uid,
+    usersCache,
+    setUsersCache,
+    setOtherMembers,
+    otherMembers.length,
+  ]);
+
+  // Set navigation title
+  useLayoutEffect(() => {
+    if (crew) {
+      navigation.setOptions({
+        headerTitle: `${crew.name} (${moment(date).format('MMM Do')})`,
+        headerStatusBarHeight: insets.top,
+      });
+    }
+  }, [navigation, crew, date, insets.top]);
+
+  // Listen to messages and handle loading states
+  useEffect(() => {
+    if (!chatId) return;
+
+    console.log('[CrewDateChat] Setting up message listener for:', chatId);
+    setIsInitialLoading(true);
+    const unsubscribeMessages = listenToMessages(chatId);
+
+    // Set a timeout to clear loading state even if no messages
+    const loadingTimeout = setTimeout(() => {
+      setIsInitialLoading(false);
+    }, 2000);
+
+    return () => {
+      unsubscribeMessages();
+      clearTimeout(loadingTimeout);
+    };
+  }, [chatId]); // Remove listenToMessages from dependencies
+
+  // Cache warming & background prefetching
+  useEffect(() => {
+    if (!crewId || !date || !crew) return;
+
+    const warmupAdjacentChats = async () => {
+      try {
+        const currentDate = moment(date);
+        const prevDate = currentDate
+          .clone()
+          .subtract(1, 'day')
+          .format('YYYY-MM-DD');
+        const nextDate = currentDate.clone().add(1, 'day').format('YYYY-MM-DD');
+
+        const adjacentChatIds = [
+          generateChatId(crewId, prevDate),
+          generateChatId(crewId, nextDate),
+        ];
+
+        // Prefetch crew data for adjacent chats (they'll be the same crew)
+        const crewCacheKey = getCacheKey('crew', chatId!);
+        if (!getCachedData(crewCacheKey)) {
+          setCachedData(crewCacheKey, {
+            name: crew.name,
+            iconUrl: crew.iconUrl,
+          });
+        }
+
+        // Prefetch member data for adjacent chats (likely similar members)
+        for (const adjChatId of adjacentChatIds) {
+          const membersCacheKey = getCacheKey('members', adjChatId);
+          if (otherMembers.length > 0 && !getCachedData(membersCacheKey)) {
+            setCachedData(membersCacheKey, { members: otherMembers });
+          }
+        }
+      } catch (error) {
+        console.warn('Cache warming failed:', error);
+      }
+    };
+
+    // Warm cache after component has rendered
+    setTimeout(warmupAdjacentChats, 1000);
+  }, [crewId, date, chatId, crew, otherMembers]);
+
+  // Listen for typing status and read receipts
+  useEffect(() => {
+    if (!chatId || !user?.uid) return;
+
     const chatRef = doc(db, 'crew_date_chats', chatId);
     const unsubscribe = onSnapshot(
       chatRef,
@@ -465,6 +584,8 @@ const CrewDateChatScreen: React.FC = () => {
         if (!user?.uid) return;
         if (docSnapshot.exists()) {
           const data = docSnapshot.data();
+
+          // Handle read receipts
           if (data.lastRead) {
             const lastReadData: { [uid: string]: Date } = {};
             Object.keys(data.lastRead).forEach((uid) => {
@@ -476,7 +597,7 @@ const CrewDateChatScreen: React.FC = () => {
             setLastReadByUsers(lastReadData);
           }
 
-          // Continue with typing status handling
+          // Handle typing status
           if (data.typingStatus) {
             const updatedTypingStatus: { [key: string]: boolean } = {};
             Object.keys(data.typingStatus).forEach((key) => {
@@ -507,13 +628,42 @@ const CrewDateChatScreen: React.FC = () => {
       },
     );
     return () => unsubscribe();
-  }, [chatId, user?.uid]);
+  }, [chatId, user?.uid, setLastReadByUsers, setOtherUsersTyping]);
 
+  // Handle loading earlier messages
+  const handleLoadEarlier = useCallback(async () => {
+    if (!chatId || isLoadingEarlier || !paginationInfo?.hasMore) return;
+
+    console.log('[CrewDateChat] Loading earlier messages...');
+    setIsLoadingEarlier(true);
+
+    try {
+      const hasMore = await loadEarlierMessages(chatId);
+      console.log('[CrewDateChat] Loaded earlier messages, has more:', hasMore);
+    } catch (error) {
+      console.error('[CrewDateChat] Error loading earlier messages:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Could not load earlier messages',
+        position: 'bottom',
+      });
+    } finally {
+      setIsLoadingEarlier(false);
+    }
+  }, [
+    chatId,
+    paginationInfo,
+    loadEarlierMessages,
+    isLoadingEarlier,
+    setIsLoadingEarlier,
+  ]);
+
+  // Message handling
   const onSend = useCallback(
     async (msgs: ExtendedMessage[] = []) => {
       const text = msgs[0].text;
       if (text && text.trim() !== '' && chatId) {
-        // Create optimistic message
         const optimisticMsg: ExtendedMessage = {
           _id: `temp-${Date.now()}`,
           text: text.trim(),
@@ -526,15 +676,11 @@ const CrewDateChatScreen: React.FC = () => {
           pending: true,
         };
 
-        // Add to optimistic messages
         setOptimisticMessages((prev) => [...prev, optimisticMsg]);
 
-        // Send to server
         try {
           await sendMessage(chatId, text.trim());
-          // Explicitly set typing status to false when sending a message
           updateTypingStatusImmediately(false);
-          prevTypingStateRef.current = false;
           await updateLastRead(chatId);
         } catch (error) {
           console.error('Failed to send message:', error);
@@ -546,10 +692,17 @@ const CrewDateChatScreen: React.FC = () => {
         }
       }
     },
-    [chatId, sendMessage, updateTypingStatusImmediately, updateLastRead, user],
+    [
+      chatId,
+      sendMessage,
+      updateTypingStatusImmediately,
+      updateLastRead,
+      user,
+      setOptimisticMessages,
+    ],
   );
 
-  // Handle image picking and sending
+  // Image handling
   const handlePickImage = useCallback(async () => {
     if (!chatId || !user?.uid) return;
 
@@ -558,16 +711,9 @@ const CrewDateChatScreen: React.FC = () => {
       if (!imageUri) return;
 
       setIsUploading(true);
-
-      // Upload image to Firebase Storage
       const imageUrl = await uploadImage(imageUri, user.uid, chatId);
-
-      // Send message with image
       await sendMessage(chatId, '', imageUrl);
-
-      // Explicitly set typing status to false when sending a message
       updateTypingStatusImmediately(false);
-      prevTypingStateRef.current = false;
       await updateLastRead(chatId);
     } catch (error) {
       console.error('Error sending image:', error);
@@ -585,9 +731,9 @@ const CrewDateChatScreen: React.FC = () => {
     sendMessage,
     updateTypingStatusImmediately,
     updateLastRead,
+    setIsUploading,
   ]);
 
-  // New function to handle taking a photo
   const handleTakePhoto = useCallback(async () => {
     if (!chatId || !user?.uid) return;
 
@@ -596,16 +742,9 @@ const CrewDateChatScreen: React.FC = () => {
       if (!photoUri) return;
 
       setIsUploading(true);
-
-      // Upload image to Firebase Storage
       const imageUrl = await uploadImage(photoUri, user.uid, chatId);
-
-      // Send message with image
       await sendMessage(chatId, '', imageUrl);
-
-      // Explicitly set typing status to false
       updateTypingStatusImmediately(false);
-      prevTypingStateRef.current = false;
       await updateLastRead(chatId);
     } catch (error) {
       console.error('Error sending photo:', error);
@@ -623,9 +762,10 @@ const CrewDateChatScreen: React.FC = () => {
     sendMessage,
     updateTypingStatusImmediately,
     updateLastRead,
+    setIsUploading,
   ]);
 
-  // Handle poll creation
+  // Poll handling
   const handleCreatePoll = useCallback(
     async (question: string, options: string[]) => {
       if (!chatId) return;
@@ -643,7 +783,6 @@ const CrewDateChatScreen: React.FC = () => {
     [chatId, createPoll],
   );
 
-  // Handle voting in a poll
   const handleVotePoll = useCallback(
     async (messageId: string, optionIndex: number) => {
       if (!chatId) return;
@@ -661,7 +800,7 @@ const CrewDateChatScreen: React.FC = () => {
     [chatId, votePoll],
   );
 
-  // Modified render actions function to show menu
+  // Render functions
   const renderActions = useCallback(() => {
     return (
       <>
@@ -721,9 +860,10 @@ const CrewDateChatScreen: React.FC = () => {
     isUploading,
     isImageMenuVisible,
     isPollModalVisible,
+    setIsImageMenuVisible,
+    setIsPollModalVisible,
   ]);
 
-  // Custom render for poll messages - fixed with proper typing
   const renderCustomView = useCallback(
     (props: MessageProps<ExtendedMessage>) => {
       const { currentMessage } = props;
@@ -734,7 +874,7 @@ const CrewDateChatScreen: React.FC = () => {
             options={currentMessage.poll.options}
             votes={currentMessage.poll.votes || {}}
             totalVotes={currentMessage.poll.totalVotes || 0}
-            messageId={String(currentMessage._id)} // Convert to string for consistency
+            messageId={String(currentMessage._id)}
             onVote={(optionIndex) =>
               handleVotePoll(String(currentMessage._id), optionIndex)
             }
@@ -746,7 +886,102 @@ const CrewDateChatScreen: React.FC = () => {
     [handleVotePoll],
   );
 
-  // Manage active chat state when screen gains/loses focus.
+  const renderAvatar = useCallback(
+    (props: AvatarProps<ExtendedMessage>) => {
+      const messageUserId = props.currentMessage.user._id;
+      const messageUser = otherMembers.find((m) => m.uid === messageUserId);
+      return (
+        <ProfilePicturePicker
+          imageUrl={messageUser?.photoURL || null}
+          onImageUpdate={() => {}}
+          editable={false}
+          size={36}
+        />
+      );
+    },
+    [otherMembers],
+  );
+
+  const renderTicks = useCallback(
+    (message: ExtendedMessage) => {
+      if (message.user._id !== user?.uid) return null;
+
+      if (message.pending) {
+        return (
+          <View style={styles.tickContainer}>
+            <Ionicons name="time-outline" size={10} color="#92AAB0" />
+          </View>
+        );
+      }
+
+      if (message.received) {
+        return (
+          <View style={styles.tickContainer}>
+            <Ionicons name="checkmark-done" size={14} color="#4FC3F7" />
+          </View>
+        );
+      } else if (message.sent) {
+        return (
+          <View style={styles.tickContainer}>
+            <Ionicons name="checkmark" size={14} color="#92AAB0" />
+          </View>
+        );
+      }
+
+      return null;
+    },
+    [user?.uid],
+  );
+
+  const renderMessageImage = useCallback(
+    (props: MessageImageProps<ExtendedMessage>) => {
+      return <ChatImageViewer {...props} imageStyle={styles.messageImage} />;
+    },
+    [],
+  );
+
+  const renderInputToolbar = (props: any) => (
+    <InputToolbar {...props} containerStyle={styles.inputToolbarContainer} />
+  );
+
+  // Computed values with memoization for performance
+  const typingUserIds = useMemo(
+    () => Object.keys(otherUsersTyping).filter((uid) => otherUsersTyping[uid]),
+    [otherUsersTyping],
+  );
+
+  const typingDisplayNames = useMemo(() => {
+    return typingUserIds.map((uid) => {
+      const member = otherMembers.find((m) => m.uid === uid);
+      return member ? member.displayName : 'Someone';
+    });
+  }, [typingUserIds, otherMembers]);
+
+  // Memoize GiftedChat user prop to prevent unnecessary re-renders
+  const giftedChatUser = useMemo(
+    () => ({
+      _id: user?.uid || '',
+      name: user?.displayName || 'You',
+      avatar: user?.photoURL || undefined,
+    }),
+    [user?.uid, user?.displayName, user?.photoURL],
+  );
+
+  const renderFooter = useCallback(() => {
+    if (typingDisplayNames.length > 0) {
+      return (
+        <View style={styles.footerContainer}>
+          <Text style={styles.footerText}>
+            {typingDisplayNames.join(', ')}{' '}
+            {typingDisplayNames.length === 1 ? 'is' : 'are'} typing...
+          </Text>
+        </View>
+      );
+    }
+    return null;
+  }, [typingDisplayNames]);
+
+  // Focus and app state management
   useFocusEffect(
     useCallback(() => {
       if (chatId) {
@@ -761,7 +996,6 @@ const CrewDateChatScreen: React.FC = () => {
     }, [chatId, updateLastRead, addActiveChat, removeActiveChat]),
   );
 
-  // Handle AppState changes.
   const appState = useRef<AppStateStatus>(AppState.currentState);
   useEffect(() => {
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
@@ -785,148 +1019,48 @@ const CrewDateChatScreen: React.FC = () => {
     return () => subscription.remove();
   }, [chatId, isFocused, addActiveChat, removeActiveChat]);
 
-  // Create a ref to track the previous message count for comparison
+  // Auto-mark messages as read
   const previousMessageCountRef = useRef<number>(0);
-
-  // Debounced function to update last read status
   const debouncedUpdateLastRead = useMemo(
     () =>
-      debounce((chatId: string) => {
-        updateLastRead(chatId);
-      }, READ_UPDATE_DEBOUNCE),
+      debounce(
+        (chatId: string) => updateLastRead(chatId),
+        READ_UPDATE_DEBOUNCE,
+      ),
     [updateLastRead],
   );
 
-  // Effect to auto-mark messages as read when receiving new messages while screen is focused
   useEffect(() => {
     if (!chatId || !isFocused) return;
 
     const currentMessageCount = conversationMessages.length;
-
-    // Only update if we received new messages (not on initial load)
     if (
       previousMessageCountRef.current > 0 &&
       currentMessageCount > previousMessageCountRef.current
     ) {
-      // New messages arrived while screen is focused - mark as read
       debouncedUpdateLastRead(chatId);
     }
-
-    // Update the ref with current count for next comparison
     previousMessageCountRef.current = currentMessageCount;
   }, [conversationMessages, chatId, isFocused, debouncedUpdateLastRead]);
 
-  // Reset the counter when changing chats
   useEffect(() => {
     previousMessageCountRef.current = 0;
   }, [chatId]);
 
-  const typingUserIds = useMemo(
-    () => Object.keys(otherUsersTyping).filter((uid) => otherUsersTyping[uid]),
-    [otherUsersTyping],
-  );
+  // ============================================================================
+  // INSTANT LOADING RENDER LOGIC - SIMPLIFIED FOR INSTANT DISPLAY
+  // ============================================================================
 
-  const typingDisplayNames = useMemo(() => {
-    return typingUserIds.map((uid) => {
-      const member = otherMembers.find((m) => m.uid === uid);
-      return member ? member.displayName : 'Someone';
-    });
-  }, [typingUserIds, otherMembers]);
-
-  const renderAvatar = useCallback(
-    (props: AvatarProps<ExtendedMessage>) => {
-      const messageUserId = props.currentMessage.user._id;
-      const messageUser = otherMembers.find((m) => m.uid === messageUserId);
-      return (
-        <ProfilePicturePicker
-          imageUrl={messageUser?.photoURL || null}
-          onImageUpdate={() => {}}
-          editable={false}
-          size={36}
-        />
-      );
-    },
-    [otherMembers],
-  );
-
-  // Custom input toolbar styled to resemble iOS.
-  const renderInputToolbar = (props: any) => (
-    <InputToolbar {...props} containerStyle={styles.inputToolbarContainer} />
-  );
-
-  // Custom render function for message ticks (WhatsApp style)
-  const renderTicks = useCallback(
-    (message: ExtendedMessage) => {
-      // Only show ticks for the current user's messages
-      if (message.user._id !== user?.uid) {
-        return null;
-      }
-
-      // For pending/optimistic messages
-      if (message.pending) {
-        return (
-          <View style={styles.tickContainer}>
-            <Ionicons name="time-outline" size={10} color="#92AAB0" />
-          </View>
-        );
-      }
-
-      // For sent messages
-      if (message.received) {
-        // Double blue ticks for read by all members
-        return (
-          <View style={styles.tickContainer}>
-            <Ionicons name="checkmark-done" size={14} color="#4FC3F7" />
-          </View>
-        );
-      } else if (message.sent) {
-        // Single gray tick for delivered but not read by all
-        return (
-          <View style={styles.tickContainer}>
-            <Ionicons name="checkmark" size={14} color="#92AAB0" />
-          </View>
-        );
-      }
-
-      return null;
-    },
-    [user?.uid],
-  );
-
-  // Only show typing indicator in footer, not loading earlier messages
-  const renderFooter = useCallback(() => {
-    if (typingDisplayNames.length > 0) {
-      return (
-        <View style={styles.footerContainer}>
-          <Text style={styles.footerText}>
-            {typingDisplayNames.join(', ')}{' '}
-            {typingDisplayNames.length === 1 ? 'is' : 'are'} typing...
-          </Text>
-        </View>
-      );
-    }
-    return null;
-  }, [typingDisplayNames]);
-
-  // Custom render for image messages
-  const renderMessageImage = useCallback(
-    (props: MessageImageProps<ExtendedMessage>) => {
-      return <ChatImageViewer {...props} imageStyle={styles.messageImage} />;
-    },
-    [],
-  );
-
+  // Only show loading if we don't have a valid chatId
   if (!chatId) return <LoadingOverlay />;
+
+  // Always show the chat interface immediately - let data load in background
   return (
     <View style={styles.container}>
       <GiftedChat
         messages={giftedChatMessages}
         onSend={(messages) => onSend(messages)}
-        user={{
-          _id: user?.uid || '',
-          name: user?.displayName || 'You',
-          avatar: user?.photoURL || undefined,
-        }}
+        user={giftedChatUser}
         bottomOffset={tabBarHeight - insets.bottom}
         isTyping={false}
         onInputTextChanged={handleInputTextChanged}
@@ -964,6 +1098,11 @@ const CrewDateChatScreen: React.FC = () => {
           onEndReached: () => handleLoadEarlier(),
         }}
       />
+      {isInitialLoading && (
+        <View style={styles.loadingOverlay}>
+          <LoadingOverlay />
+        </View>
+      )}
     </View>
   );
 };
@@ -972,6 +1111,14 @@ export default CrewDateChatScreen;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
+  },
   footerContainer: {
     marginTop: 5,
     marginLeft: 10,
