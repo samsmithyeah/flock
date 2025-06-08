@@ -1,3 +1,4 @@
+// context/UserContext.tsx
 import React, {
   createContext,
   useState,
@@ -83,6 +84,7 @@ const clearLocationPreferences = (): void => {
 interface UserContextType {
   user: User | null;
   setUser: (user: User | null) => void;
+  isInitializing: boolean; // New state to track initial auth check
   logout: () => Promise<void>;
   activeChats: Set<string>;
   addActiveChat: (chatId: string) => void;
@@ -112,6 +114,7 @@ type UserProviderProps = {
 
 export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true); // Start as true
   const [activeChats, setActiveChats] = useState<Set<string>>(new Set());
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
@@ -175,6 +178,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         setUser(null);
         setActiveChats(new Set());
       }
+      setIsInitializing(false); // Set to false after auth check is complete
     });
     return () => unsubscribe();
   }, []);
@@ -415,6 +419,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
       value={{
         user,
         setUser,
+        isInitializing,
         logout,
         activeChats: memoizedActiveChats,
         addActiveChat,
