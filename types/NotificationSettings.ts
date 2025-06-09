@@ -49,7 +49,7 @@ export const NOTIFICATION_CATEGORIES = {
   signalsAndLocation: {
     title: 'Signals & location',
     description: 'Location-based signals and responses',
-    icon: 'navigate-circle-outline' as const,
+    icon: 'radio-outline' as const,
   },
   socialAndDiscovery: {
     title: 'Social & discovery',

@@ -14,7 +14,7 @@ export default function SettingsStackLayout() {
       />
       <Stack.Screen
         name="notification-preferences"
-        options={{ title: 'Notification preferences', presentation: 'modal' }}
+        options={{ title: 'Notification preferences' }}
       />
     </Stack>
   );

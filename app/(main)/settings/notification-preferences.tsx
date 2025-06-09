@@ -1,12 +1,5 @@
-import React, { useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Switch,
-  TouchableOpacity,
-} from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, ScrollView, Switch } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { useGlobalStyles } from '@/styles/globalStyles';
@@ -17,35 +10,10 @@ import {
   NOTIFICATION_CATEGORIES,
 } from '@/types/NotificationSettings';
 import { useNotificationSettings } from '@/context/NotificationSettingsContext';
-import { router, useNavigation } from 'expo-router';
 
 const NotificationPreferencesScreen: React.FC = () => {
   const globalStyles = useGlobalStyles();
-  const navigation = useNavigation();
   const { settings, loading, updateSettings } = useNotificationSettings();
-
-  useEffect(() => {
-    navigation.setOptions({
-      headerRight: () => (
-        <TouchableOpacity
-          onPress={() => router.back()}
-          accessibilityLabel="Close"
-          accessibilityHint="Close the modal"
-        >
-          <Text
-            style={{
-              color: '#1e90ff',
-              fontSize: 16,
-            }}
-          >
-            Close
-          </Text>
-        </TouchableOpacity>
-      ),
-      title: 'Edit profile',
-      presentation: 'modal',
-    });
-  }, [navigation, router]);
 
   const handleToggleCategory = async (category: keyof NotificationSettings) => {
     try {
