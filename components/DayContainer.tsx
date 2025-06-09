@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { User } from '@/types/User';
+import { Crew } from '@/types/Crew';
 import { useUser } from '@/context/UserContext';
 import CustomButton from '@/components/CustomButton';
 import MemberList from '@/components/MemberList';
@@ -18,6 +19,7 @@ import IconButton from '@/components/IconButton';
 
 interface DayContainerProps {
   day: string;
+  crew?: Crew;
   userStatus?: boolean | null;
   upForItMembers: User[];
   unavailableMembers: User[];
@@ -38,6 +40,7 @@ interface DayContainerProps {
 
 const DayContainer: React.FC<DayContainerProps> = ({
   day,
+  crew,
   userStatus,
   upForItMembers,
   unavailableMembers,
@@ -222,8 +225,9 @@ const DayContainer: React.FC<DayContainerProps> = ({
         </View>
         <View style={styles.divider} />
 
-        {/* Only show the joinPrompt when userStatus is undefined/null */}
-        {userStatus === undefined || userStatus === null ? (
+        {/* Check if user should see statuses based on crew settings */}
+        {(userStatus === undefined || userStatus === null) &&
+        !crew?.alwaysShowStatuses ? (
           <Text style={styles.joinPrompt}>
             Respond to see who's up for {getCrewActivity()} on this day.
           </Text>

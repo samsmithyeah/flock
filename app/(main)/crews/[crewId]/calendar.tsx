@@ -809,6 +809,7 @@ const CrewCalendarScreen: React.FC = () => {
             <View key={day} style={styles.dayContainer}>
               <DayContainer
                 day={day}
+                crew={crew}
                 userStatus={userStatus}
                 upForItMembers={upForItMembers}
                 unavailableMembers={unavailableMembers}

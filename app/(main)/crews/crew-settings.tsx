@@ -8,6 +8,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Switch,
 } from 'react-native';
 import { arrayRemove, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { deleteCrew, db } from '@/firebase';
@@ -50,6 +51,7 @@ const CrewSettingsScreen: React.FC = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdatingName, setIsUpdatingName] = useState(false);
   const [isUpdatingActivity, setIsUpdatingActivity] = useState(false);
+  const [isUpdatingSettings, setIsUpdatingSettings] = useState(false);
 
   // Fetch crew data and listen for real-time updates
   useEffect(() => {
@@ -418,6 +420,45 @@ const CrewSettingsScreen: React.FC = () => {
     }
   };
 
+  // Function to handle always show statuses toggle
+  const handleToggleAlwaysShowStatuses = async (value: boolean) => {
+    if (!crew || !user?.uid) return;
+
+    // Only allow crew owner to change this setting
+    if (user.uid !== crew.ownerId) {
+      Toast.show({
+        type: 'error',
+        text1: 'Permission denied',
+        text2: 'Only the crew owner can change this setting',
+      });
+      return;
+    }
+
+    setIsUpdatingSettings(true);
+
+    try {
+      await updateDoc(doc(db, 'crews', crewId), {
+        alwaysShowStatuses: value,
+        updatedBy: user.uid,
+      });
+      setCrew((prev) => (prev ? { ...prev, alwaysShowStatuses: value } : prev));
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: 'Setting updated successfully',
+      });
+    } catch (error) {
+      console.error('Error updating always show statuses setting:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Could not update setting',
+      });
+    } finally {
+      setIsUpdatingSettings(false);
+    }
+  };
+
   if (!crew) {
     return <LoadingOverlay />;
   }
@@ -489,6 +530,31 @@ const CrewSettingsScreen: React.FC = () => {
             >
               <Ionicons name="pencil" size={20} color="#1e90ff" />
             </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Crew Settings Section */}
+        <View style={styles.sectionContainer}>
+          <Text style={styles.sectionTitle}>Status visibility:</Text>
+          <View style={styles.settingRow}>
+            <View style={styles.settingTextContainer}>
+              <Text style={styles.settingDescription}>
+                Members can see who's available even if they haven't set their
+                own status
+              </Text>
+              {user?.uid !== crew.ownerId && (
+                <Text style={styles.adminOnlyText}>
+                  (Only crew admins can change this setting)
+                </Text>
+              )}
+            </View>
+            <Switch
+              value={crew.alwaysShowStatuses ?? false}
+              onValueChange={handleToggleAlwaysShowStatuses}
+              disabled={isUpdatingSettings || user?.uid !== crew.ownerId}
+              trackColor={{ false: '#767577', true: '#1e90ff' }}
+              thumbColor={crew.alwaysShowStatuses ? '#ffffff' : '#f4f3f4'}
+            />
           </View>
         </View>
 
@@ -684,5 +750,26 @@ const styles = StyleSheet.create({
     color: 'red',
     alignSelf: 'flex-start',
     marginBottom: 10,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  settingTextContainer: {
+    flex: 1,
+    marginRight: 15,
+  },
+  settingDescription: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 18,
+  },
+  adminOnlyText: {
+    fontSize: 12,
+    color: '#999',
+    fontStyle: 'italic',
+    marginTop: 4,
   },
 });
