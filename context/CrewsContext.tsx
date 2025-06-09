@@ -308,165 +308,210 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
   const eventListenersRef = useRef<{ [key: string]: Unsubscribe }>({});
 
   // Helper function to process status data and calculate matches
-  const processStatusData = useCallback((statusData: { [key: string]: { [crewId: string]: { [userId: string]: boolean | null } } }, crewIds: string[]) => {
-    const newDateCounts: {
-      [key: string]: { available: number; unavailable: number };
-    } = {};
-    const newDateMatches: { [key: string]: number } = {};
-    const newDateMatchingCrews: { [key: string]: string[] } = {};
+  const processStatusData = useCallback(
+    (
+      statusData: {
+        [key: string]: {
+          [crewId: string]: { [userId: string]: boolean | null };
+        };
+      },
+      crewIds: string[],
+    ) => {
+      const newDateCounts: {
+        [key: string]: { available: number; unavailable: number };
+      } = {};
+      const newDateMatches: { [key: string]: number } = {};
+      const newDateMatchingCrews: { [key: string]: string[] } = {};
 
-    weekDates.forEach((date) => {
-      newDateCounts[date] = { available: 0, unavailable: 0 };
-      newDateMatches[date] = 0;
-      newDateMatchingCrews[date] = [];
-
-      for (const crewId of crewIds) {
-        const crewStatuses = statusData[date]?.[crewId] || {};
-        let userIsUp = false;
-        let otherMembersUp = false;
-
-        Object.entries(crewStatuses).forEach(([userId, status]) => {
-          if (userId === user?.uid) {
-            if (status === true) {
-              newDateCounts[date].available++;
-              userIsUp = true;
-            } else if (status === false) {
-              newDateCounts[date].unavailable++;
-            }
-          } else if (status === true) {
-            otherMembersUp = true;
-          }
-        });
-
-        if (userIsUp && otherMembersUp) {
-          newDateMatches[date]++;
-          if (!newDateMatchingCrews[date].includes(crewId)) {
-            newDateMatchingCrews[date].push(crewId);
-          }
-        }
-      }
-    });
-
-    setDateCounts(newDateCounts);
-    setDateMatches(newDateMatches);
-    setDateMatchingCrews(newDateMatchingCrews);
-  }, [user?.uid, weekDates]);
-
-  // Helper function to process event data
-  const processEventData = useCallback((eventData: { [crewId: string]: any[] }, crewIds: string[]) => {
-    const newDateEvents: { [key: string]: number } = {};
-    const newDateEventCrews: { [key: string]: string[] } = {};
-
-    weekDates.forEach((date) => {
-      newDateEvents[date] = 0;
-      newDateEventCrews[date] = [];
-    });
-
-    crewIds.forEach((crewId) => {
-      const events = eventData[crewId] || [];
-      events.forEach((event) => {
-        const start = moment(event.startDate, 'YYYY-MM-DD');
-        const end = moment(event.endDate, 'YYYY-MM-DD');
-        weekDates.forEach((day) => {
-          if (
-            moment(day, 'YYYY-MM-DD').isBetween(start, end, 'day', '[]')
-          ) {
-            newDateEvents[day]++;
-            if (!newDateEventCrews[day].includes(crewId)) {
-              newDateEventCrews[day].push(crewId);
-            }
-          }
-        });
-      });
-    });
-
-    setDateEvents(newDateEvents);
-    setDateEventCrews(newDateEventCrews);
-  }, [weekDates]);
-
-  // Set up real-time listeners for status changes
-  const setupStatusListeners = useCallback((crewIds: string[]) => {
-    // Clean up existing listeners
-    Object.values(statusListenersRef.current).forEach((unsub) => unsub());
-    statusListenersRef.current = {};
-
-    const statusData: { [key: string]: { [crewId: string]: { [userId: string]: boolean | null } } } = {};
-
-    // Initialize status data structure
-    weekDates.forEach((date) => {
-      statusData[date] = {};
-      crewIds.forEach((crewId) => {
-        statusData[date][crewId] = {};
-      });
-    });
-
-    // Set up listeners for each crew and date combination
-    crewIds.forEach((crewId) => {
       weekDates.forEach((date) => {
-        const key = `${crewId}_${date}`;
-        const statusQuery = collection(db, 'crews', crewId, 'statuses', date, 'userStatuses');
-        
-        const unsubscribe = onSnapshot(statusQuery, (snapshot) => {
-          // Update status data for this crew/date combination
-          statusData[date][crewId] = {};
-          snapshot.forEach((doc) => {
-            const data = doc.data();
-            statusData[date][crewId][doc.id] = data.upForGoingOutTonight !== undefined ? data.upForGoingOutTonight : null;
+        newDateCounts[date] = { available: 0, unavailable: 0 };
+        newDateMatches[date] = 0;
+        newDateMatchingCrews[date] = [];
+
+        for (const crewId of crewIds) {
+          const crewStatuses = statusData[date]?.[crewId] || {};
+          let userIsUp = false;
+          let otherMembersUp = false;
+
+          Object.entries(crewStatuses).forEach(([userId, status]) => {
+            if (userId === user?.uid) {
+              if (status === true) {
+                newDateCounts[date].available++;
+                userIsUp = true;
+              } else if (status === false) {
+                newDateCounts[date].unavailable++;
+              }
+            } else if (status === true) {
+              otherMembersUp = true;
+            }
           });
 
-          // Reprocess all status data to update counts and matches
-          processStatusData(statusData, crewIds);
-        }, (error) => {
-          if (error.code !== 'permission-denied') {
-            console.error(`Error listening to statuses for ${key}:`, error);
+          if (userIsUp && otherMembersUp) {
+            newDateMatches[date]++;
+            if (!newDateMatchingCrews[date].includes(crewId)) {
+              newDateMatchingCrews[date].push(crewId);
+            }
           }
-        });
-
-        statusListenersRef.current[key] = unsubscribe;
-      });
-    });
-
-    setLoadingStatuses(false);
-    setLoadingMatches(false);
-  }, [weekDates, processStatusData]);
-
-  // Set up real-time listeners for event changes
-  const setupEventListeners = useCallback((crewIds: string[]) => {
-    // Clean up existing listeners
-    Object.values(eventListenersRef.current).forEach((unsub) => unsub());
-    eventListenersRef.current = {};
-
-    const eventData: { [crewId: string]: any[] } = {};
-
-    // Initialize event data structure
-    crewIds.forEach((crewId) => {
-      eventData[crewId] = [];
-    });
-
-    // Set up listeners for each crew's events
-    crewIds.forEach((crewId) => {
-      const eventsQuery = query(collection(db, 'crews', crewId, 'events'), orderBy('startDate'));
-      
-      const unsubscribe = onSnapshot(eventsQuery, (snapshot) => {
-        // Update event data for this crew
-        eventData[crewId] = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-
-        // Reprocess all event data to update counts
-        processEventData(eventData, crewIds);
-      }, (error) => {
-        if (error.code !== 'permission-denied') {
-          console.error(`Error listening to events for crew ${crewId}:`, error);
         }
       });
 
-      eventListenersRef.current[crewId] = unsubscribe;
-    });
+      setDateCounts(newDateCounts);
+      setDateMatches(newDateMatches);
+      setDateMatchingCrews(newDateMatchingCrews);
+    },
+    [user?.uid, weekDates],
+  );
 
-    setLoadingEvents(false);
-  }, [processEventData]);
+  // Helper function to process event data
+  const processEventData = useCallback(
+    (eventData: { [crewId: string]: any[] }, crewIds: string[]) => {
+      const newDateEvents: { [key: string]: number } = {};
+      const newDateEventCrews: { [key: string]: string[] } = {};
+
+      weekDates.forEach((date) => {
+        newDateEvents[date] = 0;
+        newDateEventCrews[date] = [];
+      });
+
+      crewIds.forEach((crewId) => {
+        const events = eventData[crewId] || [];
+        events.forEach((event) => {
+          const start = moment(event.startDate, 'YYYY-MM-DD');
+          const end = moment(event.endDate, 'YYYY-MM-DD');
+          weekDates.forEach((day) => {
+            if (moment(day, 'YYYY-MM-DD').isBetween(start, end, 'day', '[]')) {
+              newDateEvents[day]++;
+              if (!newDateEventCrews[day].includes(crewId)) {
+                newDateEventCrews[day].push(crewId);
+              }
+            }
+          });
+        });
+      });
+
+      setDateEvents(newDateEvents);
+      setDateEventCrews(newDateEventCrews);
+    },
+    [weekDates],
+  );
+
+  // Set up real-time listeners for status changes
+  const setupStatusListeners = useCallback(
+    (crewIds: string[]) => {
+      // Clean up existing listeners
+      Object.values(statusListenersRef.current).forEach((unsub) => unsub());
+      statusListenersRef.current = {};
+
+      const statusData: {
+        [key: string]: {
+          [crewId: string]: { [userId: string]: boolean | null };
+        };
+      } = {};
+
+      // Initialize status data structure
+      weekDates.forEach((date) => {
+        statusData[date] = {};
+        crewIds.forEach((crewId) => {
+          statusData[date][crewId] = {};
+        });
+      });
+
+      // Set up listeners for each crew and date combination
+      crewIds.forEach((crewId) => {
+        weekDates.forEach((date) => {
+          const key = `${crewId}_${date}`;
+          const statusQuery = collection(
+            db,
+            'crews',
+            crewId,
+            'statuses',
+            date,
+            'userStatuses',
+          );
+
+          const unsubscribe = onSnapshot(
+            statusQuery,
+            (snapshot) => {
+              // Update status data for this crew/date combination
+              statusData[date][crewId] = {};
+              snapshot.forEach((doc) => {
+                const data = doc.data();
+                statusData[date][crewId][doc.id] =
+                  data.upForGoingOutTonight !== undefined
+                    ? data.upForGoingOutTonight
+                    : null;
+              });
+
+              // Reprocess all status data to update counts and matches
+              processStatusData(statusData, crewIds);
+            },
+            (error) => {
+              if (error.code !== 'permission-denied') {
+                console.error(`Error listening to statuses for ${key}:`, error);
+              }
+            },
+          );
+
+          statusListenersRef.current[key] = unsubscribe;
+        });
+      });
+
+      setLoadingStatuses(false);
+      setLoadingMatches(false);
+    },
+    [weekDates, processStatusData],
+  );
+
+  // Set up real-time listeners for event changes
+  const setupEventListeners = useCallback(
+    (crewIds: string[]) => {
+      // Clean up existing listeners
+      Object.values(eventListenersRef.current).forEach((unsub) => unsub());
+      eventListenersRef.current = {};
+
+      const eventData: { [crewId: string]: any[] } = {};
+
+      // Initialize event data structure
+      crewIds.forEach((crewId) => {
+        eventData[crewId] = [];
+      });
+
+      // Set up listeners for each crew's events
+      crewIds.forEach((crewId) => {
+        const eventsQuery = query(
+          collection(db, 'crews', crewId, 'events'),
+          orderBy('startDate'),
+        );
+
+        const unsubscribe = onSnapshot(
+          eventsQuery,
+          (snapshot) => {
+            // Update event data for this crew
+            eventData[crewId] = snapshot.docs.map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+            }));
+
+            // Reprocess all event data to update counts
+            processEventData(eventData, crewIds);
+          },
+          (error) => {
+            if (error.code !== 'permission-denied') {
+              console.error(
+                `Error listening to events for crew ${crewId}:`,
+                error,
+              );
+            }
+          },
+        );
+
+        eventListenersRef.current[crewId] = unsubscribe;
+      });
+
+      setLoadingEvents(false);
+    },
+    [processEventData],
+  );
 
   useEffect(() => {
     if (!user?.uid) {
@@ -488,41 +533,45 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       collection(db, 'crews'),
       where('memberIds', 'array-contains', user.uid),
     );
-    
-    const unsubscribe = onSnapshot(crewsQuery, (snapshot) => {
-      const fetchedCrews = snapshot.docs.map(
-        (doc) => ({ id: doc.id, ...doc.data() }) as Crew,
-      );
-      const fetchedCrewIds = fetchedCrews.map((c) => c.id);
 
-      setCrews(fetchedCrews);
-      setCrewIds(fetchedCrewIds);
-      setLoadingCrews(false);
-
-      if (fetchedCrewIds.length > 0) {
-        const allMemberIds = new Set<string>();
-        fetchedCrews.forEach((crew) =>
-          crew.memberIds.forEach((id) => allMemberIds.add(id)),
+    const unsubscribe = onSnapshot(
+      crewsQuery,
+      (snapshot) => {
+        const fetchedCrews = snapshot.docs.map(
+          (doc) => ({ id: doc.id, ...doc.data() }) as Crew,
         );
-        subscribeToUsers(Array.from(allMemberIds));
+        const fetchedCrewIds = fetchedCrews.map((c) => c.id);
 
-        // Set up real-time listeners for status and event changes
-        setupStatusListeners(fetchedCrewIds);
-        setupEventListeners(fetchedCrewIds);
-      } else {
+        setCrews(fetchedCrews);
+        setCrewIds(fetchedCrewIds);
+        setLoadingCrews(false);
+
+        if (fetchedCrewIds.length > 0) {
+          const allMemberIds = new Set<string>();
+          fetchedCrews.forEach((crew) =>
+            crew.memberIds.forEach((id) => allMemberIds.add(id)),
+          );
+          subscribeToUsers(Array.from(allMemberIds));
+
+          // Set up real-time listeners for status and event changes
+          setupStatusListeners(fetchedCrewIds);
+          setupEventListeners(fetchedCrewIds);
+        } else {
+          setLoadingStatuses(false);
+          setLoadingMatches(false);
+          setLoadingEvents(false);
+        }
+      },
+      (error) => {
+        if (error.code !== 'permission-denied') {
+          console.error('Error listening to crews:', error);
+        }
+        setLoadingCrews(false);
         setLoadingStatuses(false);
         setLoadingMatches(false);
         setLoadingEvents(false);
-      }
-    }, (error) => {
-      if (error.code !== 'permission-denied') {
-        console.error('Error listening to crews:', error);
-      }
-      setLoadingCrews(false);
-      setLoadingStatuses(false);
-      setLoadingMatches(false);
-      setLoadingEvents(false);
-    });
+      },
+    );
 
     return () => {
       unsubscribe();
@@ -533,7 +582,13 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       statusListenersRef.current = {};
       eventListenersRef.current = {};
     };
-  }, [user?.uid, weekDates, subscribeToUsers, setupStatusListeners, setupEventListeners]);
+  }, [
+    user?.uid,
+    weekDates,
+    subscribeToUsers,
+    setupStatusListeners,
+    setupEventListeners,
+  ]);
 
   return (
     <CrewsContext.Provider
