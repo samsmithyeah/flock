@@ -2,6 +2,7 @@ import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
+import { shouldSendNotification } from '../utils/notificationSettings';
 
 // Define interfaces for poll data types
 interface PollOption {
@@ -141,6 +142,13 @@ export const notifyCrewMembersOnPollEdit = onDocumentUpdated(
 
       usersSnapshot.forEach((doc) => {
         const memberData = doc.data();
+
+        // Check notification preferences
+        if (!shouldSendNotification(memberData.notificationSettings, 'poll_updated')) {
+          console.log(`User ${doc.id} has disabled poll_updated notifications. Skipping.`);
+          return;
+        }
+
         const singleToken = memberData?.expoPushToken;
         const tokensArray = memberData?.expoPushTokens;
 

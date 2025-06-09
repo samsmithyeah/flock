@@ -4,6 +4,7 @@ import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
+import { shouldSendNotification } from '../utils/notificationSettings';
 
 // Notify crew members when a user leaves the crew
 export const notifyCrewMembersOnMemberLeave = onDocumentUpdated(
@@ -69,6 +70,13 @@ export const notifyCrewMembersOnMemberLeave = onDocumentUpdated(
 
       usersSnapshot.forEach((doc) => {
         const userData = doc.data();
+
+        // Check notification preferences
+        if (!shouldSendNotification(userData.notificationSettings, 'crew_member_left')) {
+          console.log(`User ${doc.id} has disabled crew_member_left notifications. Skipping.`);
+          return;
+        }
+
         const token = userData?.expoPushToken;
         const tokensArray = userData?.expoPushTokens;
 

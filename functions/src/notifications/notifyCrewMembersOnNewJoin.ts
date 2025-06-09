@@ -4,6 +4,7 @@ import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
+import { shouldSendNotification } from '../utils/notificationSettings';
 
 // Notify crew members when a new user joins the crew
 export const notifyCrewMembersOnNewJoin = onDocumentUpdated(
@@ -70,6 +71,13 @@ export const notifyCrewMembersOnNewJoin = onDocumentUpdated(
 
       usersSnapshot.forEach((doc) => {
         const userData = doc.data();
+
+        // Check if user wants to receive crew member notifications
+        if (!shouldSendNotification(userData?.notificationSettings, 'crew_member_joined')) {
+          console.log(`User ${doc.id} has disabled crew member notifications. Skipping.`);
+          return;
+        }
+
         const token = userData?.expoPushToken;
         const tokensArray = userData?.expoPushTokens;
 

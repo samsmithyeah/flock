@@ -2,6 +2,7 @@ import { onDocumentDeleted } from 'firebase-functions/v2/firestore';
 import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
+import { shouldSendNotification } from '../utils/notificationSettings';
 
 // Notify crew members when the crew is deleted
 export const notifyCrewMembersOnCrewDeletion = onDocumentDeleted(
@@ -56,6 +57,13 @@ export const notifyCrewMembersOnCrewDeletion = onDocumentDeleted(
 
       usersSnapshot.forEach((doc) => {
         const userData = doc.data();
+
+        // Check notification preferences
+        if (!shouldSendNotification(userData.notificationSettings, 'crew_disbanded')) {
+          console.log(`User ${doc.id} has disabled crew_disbanded notifications. Skipping.`);
+          return;
+        }
+
         const token = userData?.expoPushToken;
         const tokensArray = userData?.expoPushTokens;
 

@@ -134,6 +134,18 @@ const PhoneVerificationScreen: React.FC = () => {
 
     setLoading(true);
     try {
+      // Test case: Skip actual verification for test phone number
+      if (fullPhoneNumber === '+447777777777') {
+        setIsVerificationCodeSent(true);
+        Toast.show({
+          type: 'success',
+          text1: 'Test verification code sent',
+          text2: 'Use code 123456 to verify this test number.',
+        });
+        setLoading(false);
+        return;
+      }
+
       const result = await sendCodeFn({ phone: fullPhoneNumber });
       if (result.data.success) {
         setIsVerificationCodeSent(true);
@@ -167,6 +179,50 @@ const PhoneVerificationScreen: React.FC = () => {
 
     setLoading(true);
     try {
+      // Test case: Handle test phone number with test code
+      if (fullPhoneNumber === '+447777777777') {
+        if (verificationCode === '123456') {
+          // Simulate successful verification for test number
+          const userDocRef = doc(db, 'users', uid!);
+          const userDoc = await getDoc(userDocRef);
+
+          if (userDoc.exists()) {
+            // Update the country field (do not store the raw phone number if you wish to keep it private)
+            await updateDoc(userDocRef, {
+              phoneNumber: fullPhoneNumber, // Leave this temporarily until hashing is rolled out
+              country: selectedCountry.country_code,
+            });
+            // Call the secure Cloud Function to compute and store the hashed phone number
+            const hashResult = await updatePhoneNumberHashFn({
+              phoneNumber: fullPhoneNumber,
+            });
+            console.log('Update phone number hash result:', hashResult.data);
+            // Optionally refresh the user context by fetching the updated document
+            const updatedUserDoc = await getDoc(userDocRef);
+            if (updatedUserDoc.exists()) {
+              setUser(updatedUserDoc.data() as User);
+            }
+
+            Toast.show({
+              type: 'success',
+              text1: 'Success',
+              text2: 'Test phone number verified',
+            });
+
+            await requestLocationPermission();
+            await requestBackgroundLocationPermission();
+          } else {
+            setFormError('User not found.');
+          }
+          setLoading(false);
+          return;
+        } else {
+          setFormError('Invalid test code. Use 123456 for the test number.');
+          setLoading(false);
+          return;
+        }
+      }
+
       const result = await verifyCodeFn({
         phone: fullPhoneNumber,
         code: verificationCode,

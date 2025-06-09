@@ -187,6 +187,30 @@ const SettingsScreen: React.FC = () => {
           />
         </View>
 
+        {/* Notifications Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Notifications</Text>
+
+          <TouchableOpacity
+            style={styles.settingsItem}
+            onPress={() => router.push('/settings/notification-preferences')}
+            accessibilityLabel="Notification preferences"
+            accessibilityHint="Manage your notification settings"
+          >
+            <View style={styles.settingsItemLeft}>
+              <Ionicons
+                name="notifications-outline"
+                size={24}
+                color={Colors.primary}
+              />
+              <Text style={styles.settingsItemText}>
+                Notification preferences
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={Colors.gray} />
+          </TouchableOpacity>
+        </View>
+
         {/* Account Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>

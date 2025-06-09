@@ -2,6 +2,7 @@ import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
+import { shouldSendNotification } from '../utils/notificationSettings';
 
 export const notifyCrewMembersOnCrewActivityUpdate = onDocumentUpdated(
   'crews/{crewId}',
@@ -66,6 +67,13 @@ export const notifyCrewMembersOnCrewActivityUpdate = onDocumentUpdated(
 
       usersSnapshot.forEach((doc) => {
         const userData = doc.data();
+
+        // Check notification preferences
+        if (!shouldSendNotification(userData.notificationSettings, 'crew_updated')) {
+          console.log(`User ${doc.id} has disabled crew_updated notifications. Skipping.`);
+          return;
+        }
+
         const token = userData?.expoPushToken;
         const tokensArray = userData?.expoPushTokens;
 

@@ -5,6 +5,7 @@ import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
 import { getDateDescription } from '../utils/dateHelpers';
+import { shouldSendNotification } from '../utils/notificationSettings';
 
 export const notifyCrewOnThreeUp = onDocumentWritten(
   'crews/{crewId}/statuses/{date}/userStatuses/{userId}',
@@ -135,6 +136,13 @@ export const notifyCrewOnThreeUp = onDocumentWritten(
 
           usersSnapshot.docs.forEach((doc) => {
             const userData = doc.data();
+
+            // Check notification preferences
+            if (!shouldSendNotification(userData.notificationSettings, 'user_status_changed')) {
+              console.log(`User ${doc.id} has disabled user_status_changed notifications. Skipping.`);
+              return;
+            }
+
             const token = userData?.expoPushToken;
             const tokensArray = userData?.expoPushTokens;
 

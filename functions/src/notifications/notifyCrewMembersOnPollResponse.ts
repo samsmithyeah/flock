@@ -2,6 +2,7 @@ import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
+import { shouldSendNotification } from '../utils/notificationSettings';
 
 export const notifyCrewMembersOnPollResponse = onDocumentUpdated(
   'event_polls/{pollId}',
@@ -138,6 +139,13 @@ export const notifyCrewMembersOnPollResponse = onDocumentUpdated(
 
       usersSnapshot.forEach((doc) => {
         const memberData = doc.data();
+
+        // Check notification preferences
+        if (!shouldSendNotification(memberData.notificationSettings, 'poll_vote_cast')) {
+          console.log(`User ${doc.id} has disabled poll_vote_cast notifications. Skipping.`);
+          return;
+        }
+
         const singleToken = memberData?.expoPushToken;
         const tokensArray = memberData?.expoPushTokens;
 

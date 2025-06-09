@@ -3,6 +3,7 @@ import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
 import { getFormattedDate } from '../utils/dateHelpers';
+import { shouldSendNotification } from '../utils/notificationSettings';
 
 export const notifyCrewMembersOnPollFinalization = onDocumentUpdated(
   'event_polls/{pollId}',
@@ -111,6 +112,13 @@ export const notifyCrewMembersOnPollFinalization = onDocumentUpdated(
 
       usersSnapshot.forEach((doc) => {
         const memberData = doc.data();
+
+        // Check notification preferences
+        if (!shouldSendNotification(memberData.notificationSettings, 'poll_completed')) {
+          console.log(`User ${doc.id} has disabled poll_completed notifications. Skipping.`);
+          return;
+        }
+
         const singleToken = memberData?.expoPushToken;
         const tokensArray = memberData?.expoPushTokens;
 

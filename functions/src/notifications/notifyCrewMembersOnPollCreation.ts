@@ -2,6 +2,7 @@ import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
+import { shouldSendNotification } from '../utils/notificationSettings';
 
 export const notifyCrewMembersOnPollCreation = onDocumentCreated(
   'event_polls/{pollId}',
@@ -85,6 +86,13 @@ export const notifyCrewMembersOnPollCreation = onDocumentCreated(
 
       usersSnapshot.forEach((doc) => {
         const memberData = doc.data();
+
+        // Check notification preferences
+        if (!shouldSendNotification(memberData.notificationSettings, 'poll_created')) {
+          console.log(`User ${doc.id} has disabled poll_created notifications. Skipping.`);
+          return;
+        }
+
         const singleToken = memberData?.expoPushToken;
         const tokensArray = memberData?.expoPushTokens;
 

@@ -3,6 +3,7 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
+import { shouldSendNotification } from '../utils/notificationSettings';
 
 export const notifyContactsOnNewUser = functions.firestore
   .onDocumentUpdated('users/{uid}', async (event) => {
@@ -35,6 +36,13 @@ export const notifyContactsOnNewUser = functions.firestore
       querySnapshot.forEach((doc) => {
         if (doc.id !== event.params.uid) {
           const userData = doc.data();
+
+          // Check notification preferences
+          if (!shouldSendNotification(userData.notificationSettings, 'friend_request')) {
+            console.log(`User ${doc.id} has disabled friend_request notifications. Skipping.`);
+            return;
+          }
+
           if (userData.displayName) {
             contactNames.push(userData.displayName);
           }

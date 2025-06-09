@@ -4,6 +4,7 @@ import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
+import { shouldSendNotification } from '../utils/notificationSettings';
 
 /**
  * Notify user when they receive a new Direct Message (DM)
@@ -104,6 +105,12 @@ export const notifyUserOnNewDMMessage = onDocumentCreated(
 
       if (!recipientData) {
         console.log(`Recipient data for user ${recipientId} is undefined after transaction.`);
+        return null;
+      }
+
+      // Check notification preferences
+      if (!shouldSendNotification(recipientData.notificationSettings, 'new_message')) {
+        console.log(`User ${recipientId} has disabled new_message notifications. Skipping.`);
         return null;
       }
 

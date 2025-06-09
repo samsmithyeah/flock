@@ -2,6 +2,7 @@ import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import * as admin from 'firebase-admin';
 import { ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
+import { shouldSendNotification } from '../utils/notificationSettings';
 
 /**
  * Notify crew members when a new message is posted in a Crew Chat
@@ -110,6 +111,12 @@ export const notifyCrewMembersOnNewMessage = onDocumentCreated(
         // Skip if user doesn't have a pushToken
         if (!userData.expoPushToken) {
           console.log(`User ${userId} does not have a pushToken. Skipping notification.`);
+          continue;
+        }
+
+        // Check notification preferences
+        if (!shouldSendNotification(userData.notificationSettings, 'crew_chat_message')) {
+          console.log(`User ${userId} has disabled crew_chat_message notifications. Skipping.`);
           continue;
         }
 

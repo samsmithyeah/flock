@@ -3,6 +3,7 @@ import { CallableRequest } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
+import { shouldSendNotification } from '../utils/notificationSettings';
 
 interface RemindPollData {
   pollId: string;
@@ -139,6 +140,13 @@ export const notifyNonRespondingPollMembers = functions.https.onCall(
 
         usersSnapshot.docs.forEach((doc) => {
           const userData = doc.data();
+
+          // Check notification preferences
+          if (!shouldSendNotification(userData.notificationSettings, 'poll_reminder')) {
+            console.log(`User ${doc.id} has disabled poll_reminder notifications. Skipping.`);
+            return;
+          }
+
           const token = userData?.expoPushToken;
           const tokensArray = userData?.expoPushTokens;
 

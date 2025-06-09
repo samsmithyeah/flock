@@ -13,7 +13,10 @@
     "test": "jest --watchAll",
     "test:ci": "jest --ci --coverage --passWithNoTests",
     "lint": "expo lint",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "deploy:functions": "firebase deploy --only functions",
+    "deploy:firestore:rules": "firebase deploy --only firestore:rules",
+    "type-check": "tsc --noEmit"
   },
   "jest": {
     "preset": "jest-expo"
