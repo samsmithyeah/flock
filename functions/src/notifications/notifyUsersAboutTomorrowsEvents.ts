@@ -2,6 +2,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import * as admin from 'firebase-admin';
 import { Expo } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
+import { shouldSendNotification } from '../utils/notificationSettings';
 import moment from 'moment-timezone';
 import { countryToTimezone } from '../utils/timezoneHelper';
 
@@ -73,6 +74,12 @@ export const notifyUsersAboutTomorrowsEvents = onSchedule({
             continue;
           }
           const userData = userDoc.data();
+
+          // Check notification preferences
+          if (!shouldSendNotification(userData?.notificationSettings, 'event_reminder')) {
+            console.log(`User ${memberId} has disabled event_reminder notifications. Skipping.`);
+            continue;
+          }
 
           // Timezone Check (8am-12pm)
           // TODO: Convert this whole thing to use cloud tasks

@@ -5,6 +5,7 @@ import { CallableRequest } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
+import { shouldSendNotification } from '../utils/notificationSettings';
 import { getDateDescription } from '../utils/dateHelpers';
 
 interface PokeCrewData {
@@ -128,6 +129,13 @@ export const pokeCrew = functions.https.onCall(
           .get();
         usersSnapshot.docs.forEach((doc) => {
           const userData = doc.data();
+
+          // Check notification preferences
+          if (!shouldSendNotification(userData.notificationSettings, 'poke_crew')) {
+            console.log(`User ${doc.id} has disabled poke_crew notifications. Skipping.`);
+            return;
+          }
+
           const token = userData?.expoPushToken;
           const tokensArray = userData?.expoPushTokens;
           if (token && Expo.isExpoPushToken(token)) {

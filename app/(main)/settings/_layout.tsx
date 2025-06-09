@@ -9,8 +9,12 @@ export default function SettingsStackLayout() {
         options={{ title: 'Profile', headerShown: false }}
       />
       <Stack.Screen
-        name="edit"
+        name="edit-profile"
         options={{ title: 'Edit profile', presentation: 'modal' }}
+      />
+      <Stack.Screen
+        name="notification-preferences"
+        options={{ title: 'Notification preferences', presentation: 'modal' }}
       />
     </Stack>
   );

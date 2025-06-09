@@ -7,11 +7,12 @@ import {
   addUserToFirestore,
   registerForPushNotificationsAsync,
 } from '@/utils/AddUserToFirestore';
+import { DEFAULT_NOTIFICATION_SETTINGS } from '@/types/NotificationSettings';
 import CustomButton from '@/components/CustomButton';
 import Toast from 'react-native-toast-message';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { User } from '@/types/User';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { useUser } from '@/context/UserContext';
 import { router } from 'expo-router';
 
@@ -41,6 +42,15 @@ const GoogleLoginButton: React.FC = () => {
 
         if (userDoc.exists()) {
           const userData = userDoc.data() as User;
+
+          // Migration: Set default notification settings for existing users
+          if (!userData.notificationSettings) {
+            await updateDoc(userDocRef, {
+              notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
+            });
+            userData.notificationSettings = DEFAULT_NOTIFICATION_SETTINGS;
+          }
+
           await registerForPushNotificationsAsync(userData);
 
           if (!userData.phoneNumber) {
@@ -60,6 +70,7 @@ const GoogleLoginButton: React.FC = () => {
             lastName: firebaseUser.displayName?.split(' ')[1] || '',
             photoURL: firebaseUser.photoURL || '',
             badgeCount: 0,
+            notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
           };
           await addUserToFirestore(firestoreUser);
           await registerForPushNotificationsAsync(firestoreUser);

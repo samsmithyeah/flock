@@ -23,6 +23,7 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { User } from '@/types/User';
 import { FirebaseError } from 'firebase/app';
 import { registerForPushNotificationsAsync } from '@/utils/AddUserToFirestore';
+import { DEFAULT_NOTIFICATION_SETTINGS } from '@/types/NotificationSettings';
 import { router } from 'expo-router';
 import { useSignal } from '@/context/SignalContext';
 
@@ -77,6 +78,14 @@ const LoginScreen: React.FC = () => {
             locationTrackingEnabled: true,
           });
           userData.locationTrackingEnabled = true;
+        }
+
+        // Migration: Set default notification settings for existing users
+        if (!userData.notificationSettings) {
+          await updateDoc(userDocRef, {
+            notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
+          });
+          userData.notificationSettings = DEFAULT_NOTIFICATION_SETTINGS;
         }
 
         await registerForPushNotificationsAsync(userData);

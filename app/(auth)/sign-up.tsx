@@ -16,6 +16,7 @@ import {
   addUserToFirestore,
   registerForPushNotificationsAsync,
 } from '@/utils/AddUserToFirestore';
+import { DEFAULT_NOTIFICATION_SETTINGS } from '@/types/NotificationSettings';
 import CustomButton from '@/components/CustomButton';
 import CustomTextInput from '@/components/CustomTextInput';
 import zxcvbn from 'zxcvbn';
@@ -103,6 +104,7 @@ const SignUpScreen: React.FC = () => {
         lastName: lastName.trim(),
         photoURL: thisUser.photoURL || '',
         badgeCount: 0,
+        notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
         // phoneNumber is optional and not set here
       };
 

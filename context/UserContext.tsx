@@ -15,6 +15,7 @@ import Toast from 'react-native-toast-message';
 import * as Notifications from 'expo-notifications';
 import { getIdTokenResult } from 'firebase/auth';
 import { User } from '@/types/User';
+import { DEFAULT_NOTIFICATION_SETTINGS } from '@/types/NotificationSettings';
 import { router } from 'expo-router';
 import { storage } from '@/storage';
 
@@ -142,6 +143,14 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
                 locationTrackingEnabled: true,
               });
               userData.locationTrackingEnabled = true;
+            }
+
+            // Migration: Set default notification settings for existing users
+            if (!userData.notificationSettings) {
+              await updateDoc(userDocRef, {
+                notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
+              });
+              userData.notificationSettings = DEFAULT_NOTIFICATION_SETTINGS;
             }
 
             if (userData.phoneNumber) setUser(userData);

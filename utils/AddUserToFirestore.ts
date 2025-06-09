@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { db } from '@/firebase';
 import { User } from '@/types/User';
+import { DEFAULT_NOTIFICATION_SETTINGS } from '@/types/NotificationSettings';
 import Toast from 'react-native-toast-message';
 
 export const registerForPushNotificationsAsync = async (user: User) => {
@@ -100,6 +101,7 @@ export const addUserToFirestore = async (user: User, phoneNumber?: string) => {
       badgeCount: 0,
       phoneNumber: phoneNumber || '', // Add this line
       locationTrackingEnabled: true, // Default to enabled for new users
+      notificationSettings: DEFAULT_NOTIFICATION_SETTINGS, // Add default notification settings
     };
     const userExists = (await getDoc(userDocRef)).exists();
     if (userExists) {

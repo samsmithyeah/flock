@@ -19,6 +19,7 @@ import { DirectMessagesProvider } from '@/context/DirectMessagesContext';
 import { CrewChatProvider } from '@/context/CrewChatContext';
 import { BadgeCountProvider } from '@/context/BadgeCountContext';
 import { SignalProvider } from '@/context/SignalContext';
+import { NotificationSettingsProvider } from '@/context/NotificationSettingsContext';
 import GlobalSetup from './GlobalSetup';
 import InitialLoadingScreen from '@/components/InitialLoadingScreen';
 
@@ -71,21 +72,23 @@ const toastConfig = {
 function Providers({ children }: { children: ReactNode }) {
   return (
     <UserProvider>
-      <ContactsProvider>
-        <CrewsProvider>
-          <SignalProvider>
-            <InvitationsProvider>
-              <CrewDateChatProvider>
-                <DirectMessagesProvider>
-                  <CrewChatProvider>
-                    <BadgeCountProvider>{children}</BadgeCountProvider>
-                  </CrewChatProvider>
-                </DirectMessagesProvider>
-              </CrewDateChatProvider>
-            </InvitationsProvider>
-          </SignalProvider>
-        </CrewsProvider>
-      </ContactsProvider>
+      <NotificationSettingsProvider>
+        <ContactsProvider>
+          <CrewsProvider>
+            <SignalProvider>
+              <InvitationsProvider>
+                <CrewDateChatProvider>
+                  <DirectMessagesProvider>
+                    <CrewChatProvider>
+                      <BadgeCountProvider>{children}</BadgeCountProvider>
+                    </CrewChatProvider>
+                  </DirectMessagesProvider>
+                </CrewDateChatProvider>
+              </InvitationsProvider>
+            </SignalProvider>
+          </CrewsProvider>
+        </ContactsProvider>
+      </NotificationSettingsProvider>
     </UserProvider>
   );
 }

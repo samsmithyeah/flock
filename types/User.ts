@@ -1,4 +1,5 @@
 import { Timestamp } from 'firebase/firestore';
+import { NotificationSettings } from './NotificationSettings';
 
 export interface User {
   uid: string;
@@ -16,4 +17,5 @@ export interface User {
   lastSeen?: Timestamp;
   crewOrder?: string[];
   locationTrackingEnabled?: boolean;
+  notificationSettings?: NotificationSettings;
 }

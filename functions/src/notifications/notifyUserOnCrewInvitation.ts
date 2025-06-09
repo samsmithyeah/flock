@@ -4,6 +4,7 @@ import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
+import { shouldSendNotification } from '../utils/notificationSettings';
 
 /**
  * Notify user when invited to a crew
@@ -72,6 +73,12 @@ export const notifyUserOnCrewInvitation = onDocumentCreated(
 
       if (!invitedUserData) {
         console.log(`Invited user data for ${toUserId} is undefined after transaction.`);
+        return null;
+      }
+
+      // Check if user wants to receive crew invitation notifications
+      if (!shouldSendNotification(invitedUserData.notificationSettings, 'crew_invitation')) {
+        console.log(`User ${toUserId} has disabled crew invitation notifications. Skipping notification.`);
         return null;
       }
 

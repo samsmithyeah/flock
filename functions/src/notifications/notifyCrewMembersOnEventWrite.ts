@@ -5,6 +5,7 @@ import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
 import { getFormattedDate } from '../utils/dateHelpers';
+import { shouldSendNotification } from '../utils/notificationSettings';
 
 const getEventDateRangeString = (startDate: string, endDate: string): string => {
   if (!startDate || !endDate) return '';
@@ -134,6 +135,13 @@ export const notifyCrewMembersOnEventWrite = onDocumentWritten(
 
       usersSnapshot.forEach((doc) => {
         const memberData = doc.data();
+
+        // Check notification preferences
+        if (!shouldSendNotification(memberData.notificationSettings, 'event_created')) {
+          console.log(`User ${doc.id} has disabled event_created notifications. Skipping.`);
+          return;
+        }
+
         const singleToken = memberData?.expoPushToken;
         const tokensArray = memberData?.expoPushTokens;
 

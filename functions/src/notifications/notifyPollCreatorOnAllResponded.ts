@@ -2,6 +2,7 @@ import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { sendExpoNotifications } from '../utils/sendExpoNotifications';
+import { shouldSendNotification } from '../utils/notificationSettings';
 
 // Define interfaces for poll option and response types
 interface PollOption {
@@ -128,6 +129,13 @@ export const notifyPollCreatorOnAllResponded = onDocumentUpdated(
     }
 
     const userData = userDoc.data();
+
+    // Check notification preferences
+    if (!shouldSendNotification(userData?.notificationSettings, 'poll_completed')) {
+      console.log(`Poll creator ${createdBy} has disabled poll_completed notifications. Skipping.`);
+      return null;
+    }
+
     const expoPushTokens: string[] = [];
 
     const singleToken = userData?.expoPushToken;
