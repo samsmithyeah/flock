@@ -108,7 +108,7 @@ const DateCard: React.FC<DateCardProps> = ({
             accessibilityLabel={`Options for ${getFormattedDate(date)}`}
             accessibilityHint="Tap to open options for marking availability"
           >
-            <Ionicons name="ellipsis-vertical" size={24} color="#555" />
+            <Ionicons name="ellipsis-horizontal" size={24} color="#555" />
           </TouchableOpacity>
         )}
       </View>
