@@ -32,6 +32,7 @@ import { notifyUsersAboutTomorrowsEvents } from './notifications/notifyUsersAbou
 import { processSignal, updateUserLocation } from './signals/sendSignal';
 import { respondToSignal, getLocationSharing, modifySignalResponse } from './signals/signalResponse';
 import { notifyCrewMembersOnNewMessage } from './notifications/notifyCrewMembersOnNewMessage';
+import { notifyCrewMembersOnSignalAccept } from './notifications/notifyCrewMembersOnSignalAccept';
 
 export {
   notifyCrewMembersOnEventWrite,
@@ -71,6 +72,7 @@ export {
   getLocationSharing,
   modifySignalResponse,
   notifyCrewMembersOnNewMessage,
+  notifyCrewMembersOnSignalAccept,
 };
 
 // Initialize Firebase Admin SDK
