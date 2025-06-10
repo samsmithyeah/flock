@@ -28,6 +28,7 @@ import moment from 'moment';
 import Toast from 'react-native-toast-message';
 import { Crew } from '@/types/Crew';
 import { User } from '@/types/User';
+import { CrewEvent } from '@/types/CrewEvent'; // Added for eventDataRef
 
 interface CrewsContextProps {
   crewIds: string[];
@@ -87,6 +88,14 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
   const [loadingEvents, setLoadingEvents] = useState<boolean>(true);
 
   const userSubscriptionsRef = useRef<{ [uid: string]: Unsubscribe }>({});
+  const statusListenersRef = useRef<{ [key: string]: Unsubscribe }>({});
+  const eventListenersRef = useRef<{ [key: string]: Unsubscribe }>({});
+
+  // Refs for aggregated data
+  const statusDataRef = useRef<{
+    [date: string]: { [crewId: string]: { [userId: string]: boolean | null } };
+  }>({});
+  const eventDataRef = useRef<{ [crewId: string]: CrewEvent[] }>({});
 
   const weekDates = useMemo(
     () =>
@@ -111,11 +120,12 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       });
       userSubscriptionsRef.current[uid] = unsubscribe;
     },
-    [user],
+    [user], // user?.uid not needed as the !user check handles it
   );
 
   const subscribeToUsers = useCallback(
-    async (uids: string[]) => {
+    (uids: string[]) => {
+      // Removed async as subscribeToUser is not async
       uids.forEach((uid) => subscribeToUser(uid));
     },
     [subscribeToUser],
@@ -140,85 +150,30 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       }
       return { uid, displayName: 'Unknown User', email: '' };
     },
-    [usersCache],
+    [usersCache], // Removed setUsersCache as it's stable
   );
 
   const setStatusForCrew = useCallback(
     async (crewId: string, selectedDate: string, status: boolean | null) => {
       if (!user?.uid) throw new Error('User not authenticated');
-
-      try {
-        const userStatusRef = doc(
-          db,
-          'crews',
-          crewId,
-          'statuses',
-          selectedDate,
-          'userStatuses',
-          user.uid,
-        );
-
-        await setDoc(
-          userStatusRef,
-          {
-            date: selectedDate,
-            upForGoingOutTonight: status,
-            timestamp: serverTimestamp(),
-          },
-          { merge: true },
-        );
-
-        // Update local state immediately for better UX
-        setDateCounts((prev) => {
-          const newDateCounts = { ...prev };
-          const currentDate = newDateCounts[selectedDate];
-
-          if (!currentDate) {
-            newDateCounts[selectedDate] = {
-              available: status === true ? 1 : 0,
-              unavailable: status === false ? 1 : 0,
-            };
-          } else {
-            // Determine the change needed based on current and new status
-            let availableDiff = 0;
-            let unavailableDiff = 0;
-
-            if (status === true) {
-              availableDiff = 1;
-              // If this crew was previously marked unavailable, subtract from unavailable
-              if (currentDate.unavailable > 0) {
-                unavailableDiff = -1;
-              }
-            } else if (status === false) {
-              unavailableDiff = 1;
-              // If this crew was previously marked available, subtract from available
-              if (currentDate.available > 0) {
-                availableDiff = -1;
-              }
-            } else {
-              // Setting to null - might remove from either count
-              if (currentDate.available > 0) {
-                availableDiff = -1;
-              } else if (currentDate.unavailable > 0) {
-                unavailableDiff = -1;
-              }
-            }
-
-            newDateCounts[selectedDate] = {
-              available: Math.max(0, currentDate.available + availableDiff),
-              unavailable: Math.max(
-                0,
-                currentDate.unavailable + unavailableDiff,
-              ),
-            };
-          }
-
-          return newDateCounts;
-        });
-      } catch (error) {
-        console.error('Error updating status for crew:', error);
-        throw error;
-      }
+      const userStatusRef = doc(
+        db,
+        'crews',
+        crewId,
+        'statuses',
+        selectedDate,
+        'userStatuses',
+        user.uid,
+      );
+      await setDoc(
+        userStatusRef,
+        {
+          date: selectedDate,
+          upForGoingOutTonight: status,
+          timestamp: serverTimestamp(),
+        },
+        { merge: true },
+      );
     },
     [user?.uid],
   );
@@ -226,97 +181,38 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
   const setStatusForDateAllCrews = useCallback(
     async (date: string, toggleTo: boolean | null) => {
       if (!user?.uid || crewIds.length === 0) return;
-
-      try {
-        // Use individual setDoc operations instead of batch to avoid permissions issues
-        const promises = crewIds.map((crewId) => {
-          const userStatusRef = doc(
-            db,
-            'crews',
-            crewId,
-            'statuses',
-            date,
-            'userStatuses',
-            user.uid,
-          );
-          return setDoc(
-            userStatusRef,
-            {
-              date: date,
-              upForGoingOutTonight: toggleTo,
-              timestamp: serverTimestamp(),
-            },
-            { merge: true },
-          );
-        });
-
-        await Promise.all(promises);
-
-        // Update local state immediately for better UX
-        setDateCounts((prev) => {
-          const newDateCounts = { ...prev };
-          const currentAvailable = newDateCounts[date]?.available || 0;
-          const currentUnavailable = newDateCounts[date]?.unavailable || 0;
-
-          // Calculate the difference based on what the previous status was and what it's being set to
-          let availableDiff = 0;
-          let unavailableDiff = 0;
-
-          if (toggleTo === true) {
-            // User is now available for all crews
-            availableDiff = crewIds.length;
-            // Remove from unavailable count if they were previously unavailable
-            unavailableDiff = -Math.min(currentUnavailable, crewIds.length);
-          } else if (toggleTo === false) {
-            // User is now unavailable for all crews
-            unavailableDiff = crewIds.length;
-            // Remove from available count if they were previously available
-            availableDiff = -Math.min(currentAvailable, crewIds.length);
-          } else {
-            // Setting to null - remove from both counts
-            availableDiff = -Math.min(currentAvailable, crewIds.length);
-            unavailableDiff = -Math.min(currentUnavailable, crewIds.length);
-          }
-
-          newDateCounts[date] = {
-            available: Math.max(0, currentAvailable + availableDiff),
-            unavailable: Math.max(0, currentUnavailable + unavailableDiff),
-          };
-
-          return newDateCounts;
-        });
-
-        Toast.show({
-          type: 'success',
-          text1: 'Success',
-          text2: 'Availability updated for all crews.',
-        });
-      } catch (error) {
-        console.error('Error updating status for all crews:', error);
-        Toast.show({
-          type: 'error',
-          text1: 'Error',
-          text2: 'Failed to update availability. Please try again.',
-        });
-      }
+      const promises = crewIds.map((crewId) => {
+        const userStatusRef = doc(
+          db,
+          'crews',
+          crewId,
+          'statuses',
+          date,
+          'userStatuses',
+          user.uid,
+        );
+        return setDoc(
+          userStatusRef,
+          {
+            date: date,
+            upForGoingOutTonight: toggleTo,
+            timestamp: serverTimestamp(),
+          },
+          { merge: true },
+        );
+      });
+      await Promise.all(promises);
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: 'Availability updated for all crews.',
+      });
     },
     [user?.uid, crewIds],
   );
 
-  // Refs to track real-time listeners
-  const statusListenersRef = useRef<{ [key: string]: Unsubscribe }>({});
-  const eventListenersRef = useRef<{ [key: string]: Unsubscribe }>({});
-
-  // Helper function to process status data and calculate matches
   const processStatusData = useCallback(
-    (
-      statusData: {
-        [key: string]: {
-          [crewId: string]: { [userId: string]: boolean | null };
-        };
-      },
-      crewIds: string[],
-    ) => {
+    (activeCrewIds: string[]) => {
       const newDateCounts: {
         [key: string]: { available: number; unavailable: number };
       } = {};
@@ -328,8 +224,8 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         newDateMatches[date] = 0;
         newDateMatchingCrews[date] = [];
 
-        for (const crewId of crewIds) {
-          const crewStatuses = statusData[date]?.[crewId] || {};
+        for (const crewId of activeCrewIds) {
+          const crewStatuses = statusDataRef.current[date]?.[crewId] || {};
           let userIsUp = false;
           let otherMembersUp = false;
 
@@ -362,9 +258,80 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     [user?.uid, weekDates],
   );
 
-  // Helper function to process event data
+  const setupStatusListeners = useCallback(
+    (activeCrewIds: string[]) => {
+      const currentStatusData = statusDataRef.current;
+
+      // Clean up listeners for crews that are no longer active
+      Object.keys(statusListenersRef.current).forEach((key) => {
+        const [crewIdFromKey] = key.split('_');
+        if (!activeCrewIds.includes(crewIdFromKey)) {
+          statusListenersRef.current[key]();
+          delete statusListenersRef.current[key];
+          // Also remove data for this crew from statusDataRef
+          weekDates.forEach((date) => {
+            if (currentStatusData[date]) {
+              delete currentStatusData[date][crewIdFromKey];
+            }
+          });
+        }
+      });
+
+      // Initialize/ensure paths in statusDataRef for new active crews
+      weekDates.forEach((date) => {
+        currentStatusData[date] = currentStatusData[date] || {};
+        activeCrewIds.forEach((crewId) => {
+          currentStatusData[date][crewId] =
+            currentStatusData[date][crewId] || {};
+        });
+      });
+
+      activeCrewIds.forEach((crewId) => {
+        weekDates.forEach((date) => {
+          const key = `${crewId}_${date}`;
+          if (statusListenersRef.current[key]) return; // Listener already exists
+
+          const statusQuery = collection(
+            db,
+            'crews',
+            crewId,
+            'statuses',
+            date,
+            'userStatuses',
+          );
+          const unsubscribe = onSnapshot(
+            statusQuery,
+            (snapshot) => {
+              currentStatusData[date][crewId] = {}; // Reset for this specific crew/date
+              snapshot.forEach((doc) => {
+                const data = doc.data();
+                currentStatusData[date][crewId][doc.id] =
+                  data.upForGoingOutTonight !== undefined
+                    ? data.upForGoingOutTonight
+                    : null;
+              });
+              processStatusData(activeCrewIds); // Pass activeCrewIds
+            },
+            (error) => {
+              if (error.code !== 'permission-denied') {
+                console.error(`Error listening to statuses for ${key}:`, error);
+              }
+            },
+          );
+          statusListenersRef.current[key] = unsubscribe;
+        });
+      });
+      // Initial process with potentially empty data to ensure correct loading state
+      processStatusData(activeCrewIds);
+      setLoadingStatuses(false);
+      setLoadingMatches(false);
+    },
+    [weekDates, processStatusData], // processStatusData is stable
+  );
+
   const processEventData = useCallback(
-    (eventData: { [crewId: string]: any[] }, crewIds: string[]) => {
+    (activeCrewIds: string[]) => {
+      const currentEventData = eventDataRef.current;
       const newDateEvents: { [key: string]: number } = {};
       const newDateEventCrews: { [key: string]: string[] } = {};
 
@@ -373,8 +340,8 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         newDateEventCrews[date] = [];
       });
 
-      crewIds.forEach((crewId) => {
-        const events = eventData[crewId] || [];
+      activeCrewIds.forEach((crewId) => {
+        const events = currentEventData[crewId] || [];
         events.forEach((event) => {
           const start = moment(event.startDate, 'YYYY-MM-DD');
           const end = moment(event.endDate, 'YYYY-MM-DD');
@@ -395,105 +362,37 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     [weekDates],
   );
 
-  // Set up real-time listeners for status changes
-  const setupStatusListeners = useCallback(
-    (crewIds: string[]) => {
-      // Clean up existing listeners
-      Object.values(statusListenersRef.current).forEach((unsub) => unsub());
-      statusListenersRef.current = {};
-
-      const statusData: {
-        [key: string]: {
-          [crewId: string]: { [userId: string]: boolean | null };
-        };
-      } = {};
-
-      // Initialize status data structure
-      weekDates.forEach((date) => {
-        statusData[date] = {};
-        crewIds.forEach((crewId) => {
-          statusData[date][crewId] = {};
-        });
-      });
-
-      // Set up listeners for each crew and date combination
-      crewIds.forEach((crewId) => {
-        weekDates.forEach((date) => {
-          const key = `${crewId}_${date}`;
-          const statusQuery = collection(
-            db,
-            'crews',
-            crewId,
-            'statuses',
-            date,
-            'userStatuses',
-          );
-
-          const unsubscribe = onSnapshot(
-            statusQuery,
-            (snapshot) => {
-              // Update status data for this crew/date combination
-              statusData[date][crewId] = {};
-              snapshot.forEach((doc) => {
-                const data = doc.data();
-                statusData[date][crewId][doc.id] =
-                  data.upForGoingOutTonight !== undefined
-                    ? data.upForGoingOutTonight
-                    : null;
-              });
-
-              // Reprocess all status data to update counts and matches
-              processStatusData(statusData, crewIds);
-            },
-            (error) => {
-              if (error.code !== 'permission-denied') {
-                console.error(`Error listening to statuses for ${key}:`, error);
-              }
-            },
-          );
-
-          statusListenersRef.current[key] = unsubscribe;
-        });
-      });
-
-      setLoadingStatuses(false);
-      setLoadingMatches(false);
-    },
-    [weekDates, processStatusData],
-  );
-
-  // Set up real-time listeners for event changes
   const setupEventListeners = useCallback(
-    (crewIds: string[]) => {
-      // Clean up existing listeners
-      Object.values(eventListenersRef.current).forEach((unsub) => unsub());
-      eventListenersRef.current = {};
+    (activeCrewIds: string[]) => {
+      const currentEventData = eventDataRef.current;
 
-      const eventData: { [crewId: string]: any[] } = {};
-
-      // Initialize event data structure
-      crewIds.forEach((crewId) => {
-        eventData[crewId] = [];
+      Object.keys(eventListenersRef.current).forEach((key) => {
+        if (!activeCrewIds.includes(key)) {
+          eventListenersRef.current[key]();
+          delete eventListenersRef.current[key];
+          delete currentEventData[key];
+        }
       });
 
-      // Set up listeners for each crew's events
-      crewIds.forEach((crewId) => {
+      activeCrewIds.forEach((crewId) => {
+        currentEventData[crewId] = currentEventData[crewId] || [];
+        if (eventListenersRef.current[crewId]) return;
+
         const eventsQuery = query(
           collection(db, 'crews', crewId, 'events'),
           orderBy('startDate'),
         );
-
         const unsubscribe = onSnapshot(
           eventsQuery,
           (snapshot) => {
-            // Update event data for this crew
-            eventData[crewId] = snapshot.docs.map((doc) => ({
-              id: doc.id,
-              ...doc.data(),
-            }));
-
-            // Reprocess all event data to update counts
-            processEventData(eventData, crewIds);
+            currentEventData[crewId] = snapshot.docs.map(
+              (doc) =>
+                ({
+                  id: doc.id,
+                  ...doc.data(),
+                }) as CrewEvent,
+            );
+            processEventData(activeCrewIds); // Pass activeCrewIds
           },
           (error) => {
             if (error.code !== 'permission-denied') {
@@ -504,13 +403,12 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
             }
           },
         );
-
         eventListenersRef.current[crewId] = unsubscribe;
       });
-
+      processEventData(activeCrewIds);
       setLoadingEvents(false);
     },
-    [processEventData],
+    [processEventData], // processEventData is stable
   );
 
   useEffect(() => {
@@ -521,6 +419,12 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       setLoadingEvents(false);
       setCrews([]);
       setCrewIds([]);
+      Object.values(userSubscriptionsRef.current).forEach((unsub) => unsub());
+      userSubscriptionsRef.current = {};
+      Object.values(statusListenersRef.current).forEach((unsub) => unsub());
+      statusListenersRef.current = {};
+      Object.values(eventListenersRef.current).forEach((unsub) => unsub());
+      eventListenersRef.current = {};
       return;
     }
 
@@ -534,7 +438,7 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
       where('memberIds', 'array-contains', user.uid),
     );
 
-    const unsubscribe = onSnapshot(
+    const unsubscribeCrews = onSnapshot(
       crewsQuery,
       (snapshot) => {
         const fetchedCrews = snapshot.docs.map(
@@ -542,8 +446,20 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
         );
         const fetchedCrewIds = fetchedCrews.map((c) => c.id);
 
-        setCrews(fetchedCrews);
-        setCrewIds(fetchedCrewIds);
+        // Only update state if there's an actual change to avoid re-renders
+        setCrews((prevCrews) => {
+          if (JSON.stringify(prevCrews) !== JSON.stringify(fetchedCrews)) {
+            return fetchedCrews;
+          }
+          return prevCrews;
+        });
+        setCrewIds((prevIds) => {
+          if (JSON.stringify(prevIds) !== JSON.stringify(fetchedCrewIds)) {
+            return fetchedCrewIds;
+          }
+          return prevIds;
+        });
+
         setLoadingCrews(false);
 
         if (fetchedCrewIds.length > 0) {
@@ -552,14 +468,22 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
             crew.memberIds.forEach((id) => allMemberIds.add(id)),
           );
           subscribeToUsers(Array.from(allMemberIds));
-
-          // Set up real-time listeners for status and event changes
           setupStatusListeners(fetchedCrewIds);
           setupEventListeners(fetchedCrewIds);
         } else {
           setLoadingStatuses(false);
           setLoadingMatches(false);
           setLoadingEvents(false);
+          setDateCounts({});
+          setDateMatches({});
+          setDateMatchingCrews({});
+          setDateEvents({});
+          setDateEventCrews({});
+          // Clean up status/event listeners if no crews
+          Object.values(statusListenersRef.current).forEach((unsub) => unsub());
+          statusListenersRef.current = {};
+          Object.values(eventListenersRef.current).forEach((unsub) => unsub());
+          eventListenersRef.current = {};
         }
       },
       (error) => {
@@ -574,21 +498,16 @@ export const CrewsProvider: React.FC<{ children: ReactNode }> = ({
     );
 
     return () => {
-      unsubscribe();
+      unsubscribeCrews();
+      // Full cleanup when this effect is torn down (e.g., user logs out)
       Object.values(userSubscriptionsRef.current).forEach((unsub) => unsub());
-      Object.values(statusListenersRef.current).forEach((unsub) => unsub());
-      Object.values(eventListenersRef.current).forEach((unsub) => unsub());
       userSubscriptionsRef.current = {};
+      Object.values(statusListenersRef.current).forEach((unsub) => unsub());
       statusListenersRef.current = {};
+      Object.values(eventListenersRef.current).forEach((unsub) => unsub());
       eventListenersRef.current = {};
     };
-  }, [
-    user?.uid,
-    weekDates,
-    subscribeToUsers,
-    setupStatusListeners,
-    setupEventListeners,
-  ]);
+  }, [user?.uid, subscribeToUsers, setupStatusListeners, setupEventListeners]); // Dependencies are stable
 
   return (
     <CrewsContext.Provider

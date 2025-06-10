@@ -52,6 +52,7 @@ const CrewSettingsScreen: React.FC = () => {
   const [isUpdatingName, setIsUpdatingName] = useState(false);
   const [isUpdatingActivity, setIsUpdatingActivity] = useState(false);
   const [isUpdatingSettings, setIsUpdatingSettings] = useState(false);
+  const [isLeavingCrew, setIsLeavingCrew] = useState(false);
 
   // Fetch crew data and listen for real-time updates
   useEffect(() => {
@@ -216,6 +217,7 @@ const CrewSettingsScreen: React.FC = () => {
           style: 'destructive',
           onPress: async () => {
             try {
+              setIsLeavingCrew(true);
               const crewRef = doc(db, 'crews', crewId);
 
               // Remove the crew from the user's crew order list
@@ -235,6 +237,7 @@ const CrewSettingsScreen: React.FC = () => {
                   setCrewIds((prevIds) =>
                     prevIds.filter((id) => id !== crewId),
                   );
+                  setIsLeavingCrew(false);
                   router.push('/crews');
                   Toast.show({
                     type: 'success',
@@ -256,6 +259,7 @@ const CrewSettingsScreen: React.FC = () => {
                     ownerId: newOwnerId,
                     memberIds: remainingMembers,
                   });
+                  setIsLeavingCrew(false);
 
                   router.push('/crews');
                   Toast.show({
@@ -281,7 +285,7 @@ const CrewSettingsScreen: React.FC = () => {
 
                 // Remove the crew ID from the user's list
                 setCrewIds((prevIds) => prevIds.filter((id) => id !== crewId));
-
+                setIsLeavingCrew(false);
                 router.push('/crews');
                 Toast.show({
                   type: 'success',
@@ -291,6 +295,7 @@ const CrewSettingsScreen: React.FC = () => {
               }
             } catch (error) {
               console.error('Error leaving crew:', error);
+              setIsLeavingCrew(false);
               Toast.show({
                 type: 'error',
                 text1: 'Error',
@@ -598,6 +603,7 @@ const CrewSettingsScreen: React.FC = () => {
             variant="secondaryDanger" // Red variant indicating a destructive action
             accessibilityLabel="Leave Crew"
             accessibilityHint="Leave the current crew"
+            loading={isLeavingCrew}
           />
         </View>
 
