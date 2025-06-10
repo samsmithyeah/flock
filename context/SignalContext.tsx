@@ -159,12 +159,26 @@ export const SignalProvider: React.FC<SignalProviderProps> = ({ children }) => {
 
   useEffect(() => {
     if (user) {
-      subscribeToActiveSignals();
-      subscribeToReceivedSignals();
-      subscribeToSharedLocations();
+      const unsubActive = subscribeToActiveSignals();
+      const unsubReceived = subscribeToReceivedSignals();
+      const unsubShared = subscribeToSharedLocations();
+
       checkLocationPermissions();
       checkBackgroundLocationTrackingStatus();
       checkForegroundLocationTrackingStatus();
+
+      // Return a cleanup function to unsubscribe when the component unmounts or the user logs out
+      return () => {
+        unsubActive?.();
+        unsubReceived?.();
+        unsubShared?.();
+      };
+    } else {
+      // When user logs out, clear all signal-related state
+      setActiveSignals([]);
+      setReceivedSignals([]);
+      setSharedLocations([]);
+      setCurrentLocation(null);
     }
   }, [user]);
 
